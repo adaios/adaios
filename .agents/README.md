@@ -43,7 +43,7 @@ tags: [ai, meta, engineering]
 | `ai-guard-feature.sh` | **功能索引自检**：`docs/features/` 的「一行一卡」是否真实（字段/链接/状态枚举/欠着编号/卡内无实现细节/卡 ≤12 行/卡文件非孤儿），F0 防「解析失败 → 假绿」；git pre-commit 触发（2026-10-01 建，RFC 20261001）|
 | `ai-guard-unfixed.sh` | **未修复问题总清单**：聚合 REVIEW.md + task-log + audits 游离项 + 状态对账矛盾，一条命令拿全（2026-08-23 建）|
 | `ai-guard-tools.sh` | **工具接入自检**：T1-T7 检测「跨工具互通 + harness 自身健壮性」是否真到位（hook/快照/技能/注册/入口/shell 变量花括号/定时任务真跑过），机制替人记得；`--shell-lint` 单跑 T6 供 pre-commit 调用（2026-08-23 建，2026-09-14 加 T6、T7）|
-| `ai-guard-release.sh` | **发版体检**（发布前随时问）：一条命令答「现在欠着什么没发」——生产当前 commit/上批清单 + 逐端判定（后端 · Web 桌面端 · 管理后台 · iOS App）+ 下一步命令；`--json` 供二次处理。与 `deploy-gate.sh`（发布时算清单）/`ai-guard-prod.sh`（发布后核对）共用路径映射 `lib/release-units.sh`（2026-09-24 建）|
+| `ai-guard-release.sh` | **发版体检**（发布前随时问）：一条命令答「现在欠着什么没发」——生产当前 commit/上批清单 + 逐端判定（后端 · Web 桌面端 · 管理后台 · iOS App）+ 下一步命令；`--json` 供二次处理。与 `code-deploy-gate.sh`（发布时算清单）/`ai-guard-prod.sh`（发布后核对）共用路径映射 `lib/release-units.sh`（2026-09-24 建）|
 | `assets/` | 资产层：ADR 决策索引 / 已知坑 / 边界 / 规范 |
 | `workflow/` | 工作流层：discuss/design/develop 前置段（review/audit/ship 在 process/）|
 | `state/` | 状态层：完成度 / 测试数 / 未修项（指针化）|

@@ -37,7 +37,7 @@ tags: [review, audit, ai-engineering]
 3. ai-guard-meta 纳入 projects/**（4 卡 lines 校准 + depends-on 修复）
 4. REVIEW P2 清理（已修项出表）
 5. 检查点沉淀：K32-K35 + C8-C12
-6. setup-hooks.sh（换机 clone 一条命令启用 hooks）
+6. ai-setup-hooks.sh（换机 clone 一条命令启用 hooks）
 
 ## 三、剩余待办（非本轮）
 

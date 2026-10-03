@@ -13,7 +13,7 @@ tags: [meta, directory]
 
 # process/ 目录契约
 
-**职责**：具体动作的流程定义——审查（audit/review）· **审核驱动主链（review-driven：需求→设计→编码）** · 收尾（ship）· 节奏（cadence）
+**职责**：具体动作的流程定义——审查（audit/review）· **审核驱动主链（review-driven：需求→设计→编码）** · 收尾（ship）· 节奏（task-cadence）
 
 ## 职责边界
 - **放**：可执行的流程：触发条件 → 步骤 → 门禁节点 → 产出
@@ -31,10 +31,10 @@ tags: [meta, directory]
 
 | 时机 | 谁触发 | 读 / 执行什么 |
 |:--|:--|:--|
-| 用户说「收工」 | `cadence.sh ship` | `ship.md` |
+| 用户说「收工」 | `task-cadence.sh ship` | `ship.md` |
 | 要全量走查 | 人 | `audit.md` |
 | 按 diff 深审 | 人 / AI | `review.md` |
-| 固定节奏 | 用户触发词 | `cadence.md`（总表） |
+| 固定节奏 | 用户触发词 | `task-cadence.md`（总表） |
 
 ## 约束
 

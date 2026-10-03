@@ -120,16 +120,16 @@ tags: [ai, spec, naming]
 
 | 历史名 | **体系名** |
 |:--|:--|
-| `setup-hooks.sh` | **`ai-setup-hooks.sh`** |
-| `setup-launchd.sh` | **`ai-setup-launchd.sh`** |
-| `link-skills.sh` | **`ai-link-skills.sh`** |
-| `sync-agents.sh` | **`ai-sync-agents.sh`** |
-| `worktree-prep.sh` | **`ai-worktree-prep.sh`** |
-| `cadence.sh` | **`task-cadence.sh`** |
-| `deploy-gate.sh` | **`code-deploy-gate.sh`** |
-| `weekly-audit.sh` | **`task-weekly-audit.sh`** |
-| `noon-task.sh` | **`task-noon.sh`** |
-| `backup_prod.sh` | **`code-backup-prod.sh`** |
+| `ai-setup-hooks.sh` | **`ai-setup-hooks.sh`** |
+| `ai-setup-launchd.sh` | **`ai-setup-launchd.sh`** |
+| `ai-link-skills.sh` | **`ai-link-skills.sh`** |
+| `ai-sync-agents.sh` | **`ai-sync-agents.sh`** |
+| `ai-worktree-prep.sh` | **`ai-worktree-prep.sh`** |
+| `task-cadence.sh` | **`task-cadence.sh`** |
+| `code-deploy-gate.sh` | **`code-deploy-gate.sh`** |
+| `task-weekly-audit.sh` | **`task-weekly-audit.sh`** |
+| `task-noon.sh` | **`task-noon.sh`** |
+| `code-backup-prod.sh` | **`code-backup-prod.sh`** |
 | 其余（数据同步 / 扫描器等）| 按 `<域>-<动作>-<对象>` 逐个定 |
 
 > **说明**：`scripts/` 里有些是**项目专属**（数据同步、生产备份），改名时要**逐个判断归哪个域**；本表只定原则与已明确的项。
@@ -137,8 +137,8 @@ tags: [ai, spec, naming]
 ## 七、落地步骤（B 方案）
 
 1. **落盘本规范**（`naming-spec.md`）+ 登记到 `assets/_index.md`
-2. **`roles/` 改名**（13 个文件 + 全仓库引用替换 + `sync-agents.sh` 的 `REGISTER` + 生成物）
-3. **`skills/` 改名**（4 个 + `link-skills.sh` 的 `REGISTER` + 出口软链）
+2. **`roles/` 改名**（13 个文件 + 全仓库引用替换 + `ai-sync-agents.sh` 的 `REGISTER` + 生成物）
+3. **`skills/` 改名**（4 个 + `ai-link-skills.sh` 的 `REGISTER` + 出口软链）
 4. **`guards/` 改名**（11 个 + `pre-commit` 的调用 + 所有流程文档引用）
 5. **`scripts/` 改名**（逐个判断 + launchd plist 重装）
 6. **每步验证**：`ai-guard-meta` / `ai-guard-structure` / `ai-guard-skills` / `ai-guard-tools` 全绿 + **反例可用**

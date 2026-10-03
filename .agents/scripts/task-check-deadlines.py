@@ -8,10 +8,10 @@ AdaiOS 到期红线检查（单一事实源）——2026-09-14 建
       一度连 task-log / 快照都没有，新会话完全看不到）。
 
 本文件是**唯一事实源**：日期只在这里写一次，三个出口共用——
-  ① 人工查看   bash: python3 .agents/scripts/check_deadlines.py
-  ② 日历提醒   python3 .agents/scripts/check_deadlines.py --ics [输出路径]
+  ① 人工查看   bash: python3 .agents/scripts/task-check-deadlines.py
+  ② 日历提醒   python3 .agents/scripts/task-check-deadlines.py --ics [输出路径]
                默认 ~/Desktop/adaios-deadlines.ics，双击导入 macOS 日历（提前 30 天 + 7 天响铃）
-  ③ 每周审查   python3 .agents/scripts/check_deadlines.py --one-line（weekly-audit.sh W6 调用）
+  ③ 每周审查   python3 .agents/scripts/task-check-deadlines.py --one-line（task-weekly-audit.sh W6 调用）
 
 新增到期项：只改下面 DEADLINES / UNSCHEDULED 两处，然后重跑 --ics 覆盖导入。
 """

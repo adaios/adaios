@@ -164,7 +164,7 @@ python3 .agents/scripts/testflight_external.py --invite friend@example.com
 ## 6. 邀请之后：续期与维护
 
 - **构建 90 天过期**（到期所有测试员都打不开）→ 上传新构建加入同一测试组即可，**不用重新邀请**
-- 到期红线已登记在 `docs/guides/routine.md`（由 `.agents/scripts/check_deadlines.py` 提前 30 天告警）
+- 到期红线已登记在 `docs/guides/routine.md`（由 `.agents/scripts/task-check-deadlines.py` 提前 30 天告警）
 - 同一个外部测试组可长期复用；换了 Bundle ID / 能力才需要重建组
 
 ## 7. 常见被拒原因与处置

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────
-# 游标库（cadence state）— 「上次到哪了」的唯一存储
+# 游标库（task-cadence state）— 「上次到哪了」的唯一存储
 #
 # 为什么需要它（2026-09-26 用户提出「我们需要某种默契」）：
 #   此前的固定动作全是**无状态**的——每日巡检永远看「今天 + 近 7 天」，
@@ -15,7 +15,7 @@
 #     "weekly":     {"last_at": "...", "week": "2026-W39"}
 #   }
 #
-# 用法（被 cadence.sh / ai-guard-prod.sh source）:
+# 用法（被 task-cadence.sh / ai-guard-prod.sh source）:
 #   source .agents/lib/cadence-lib.sh
 #   cadence_get inspection.covered_through          # 取值（无则空）
 #   cadence_set inspection.covered_through 2026-09-26

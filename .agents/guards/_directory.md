@@ -32,7 +32,7 @@ tags: [meta, directory]
 | 时机 | 谁触发 | 读 / 执行什么 |
 |:--|:--|:--|
 | 提交时 | `.githooks/pre-commit` | align / meta / feature / skills / tools / sediment |
-| 收工时 | `cadence.sh ship` | meta（--fix 回写） |
+| 收工时 | `task-cadence.sh ship` | meta（--fix 回写） |
 | 开工时 | AGENTS.md 规则 0 | `ai-guard-context.sh` |
 
 ## 约束

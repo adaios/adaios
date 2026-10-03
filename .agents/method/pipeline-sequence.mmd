@@ -10,8 +10,8 @@ sequenceDiagram
     participant CODE as 💻 代码工程<br/>(services/apps/os)
     participant HOOK as 🛡 pre-commit<br/>(四层门禁)
     participant SED as 📦 ai-guard-sediment<br/>(沉淀检查)
-    participant GATE as 🚢 deploy-gate<br/>(部署门禁+smoke)
-    participant WEEK as 📅 weekly-audit<br/>(每周审查)
+    participant GATE as 🚢 code-deploy-gate<br/>(部署门禁+smoke)
+    participant WEEK as 📅 task-weekly-audit<br/>(每周审查)
     participant STATE as 📊 状态层<br/>(status/REVIEW/change-log)
 
     %% ① 任务规划（进攻侧）

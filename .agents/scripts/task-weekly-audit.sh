@@ -2,21 +2,21 @@
 # ─────────────────────────────────────────────────────────────
 # 定时审查（触发侧：每周自动跑，防审查休眠）
 #
-# 用法:  bash .agents/scripts/weekly-audit.sh [--auto]
+# 用法:  bash .agents/scripts/task-weekly-audit.sh [--auto]
 # 说明:  每周自动执行：
 #         W1 守护检查（G1-G7 防 P0 复发）
 #         W2 结构门禁（ai-guard-meta）+ 内容对齐（ai-guard-align）
 #         W3 沉淀检查（ai-guard-sediment——change-log 是否连续）
 #         W4 失真扫描（端点数/测试数三方对拍报告）
 #         W5 未修项报告（REVIEW 战略/P1 清单）
-#         W6 到期红线（公安备案/域名/Apple 账号；见 .agents/scripts/check_deadlines.py）
+#         W6 到期红线（公安备案/域名/Apple 账号；见 .agents/scripts/task-check-deadlines.py）
 #        --auto = 只输出 FAIL 摘要，适合日志（保留参数兼容）
 #
 # 触发方式（2026-09-14 起）：
 #   ❌ 旧：crontab `0 9 * * 1` —— macOS TCC 拦截 crontab，**从未真正跑过**
 #   ✅ 新：LaunchAgent `com.adai.adaios-weekly-audit`（每周一 09:00）
-#          日志 .agents/state/weekly-audit.log
-#          重装：bash .agents/scripts/setup-launchd.sh
+#          日志 .agents/state/task-weekly-audit.log
+#          重装：bash .agents/scripts/ai-setup-launchd.sh
 # ─────────────────────────────────────────────────────────────
 set -u
 
@@ -61,7 +61,7 @@ bash .agents/guards/ai-guard-context.sh 2>&1 | sed -n '/## C2/,/## C3/p' | grep 
 
 # W6 到期红线（2026-09-14 加：盘点发现到期型事项只写在文档里，文档不会主动叫人）
 echo "▸ W6 到期红线..."
-python3 .agents/scripts/check_deadlines.py --one-line 2>&1 || true
+python3 .agents/scripts/task-check-deadlines.py --one-line 2>&1 || true
 
 echo ""
 echo "═══ 每周审查完成（${TODAY}）═══"

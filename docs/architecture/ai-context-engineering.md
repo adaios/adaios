@@ -102,9 +102,9 @@ flowchart TB
 | 资产 | 位置 | 规模 / 保真 |
 |:--|:--|:--|
 | 技能（目录布局 `<name>/SKILL.md`）| `.agents/skills/` | `ai-guard-skills` S3/S4/S5/S7 |
-| 审查官（**扁平** `<name>.md`＝ subagent 真相源）| `.agents/roles/` | `ai-guard-skills` + `sync-agents` |
+| 审查官（**扁平** `<name>.md`＝ subagent 真相源）| `.agents/roles/` | `ai-guard-skills` + `ai-sync-agents` |
 | 守卫与执行器 | `.agents/guards/*.sh`（11）· `.agents/scripts/*.sh` | shell-lint + 自检 |
-| 流程定义 | `.agents/process/*.md` | **4 份**（audit / review / ship / cadence）|
+| 流程定义 | `.agents/process/*.md` | **4 份**（audit / review / ship / task-cadence）|
 | 检查清单 | `.agents/checklists/*.md` | **14 份** |
 | 契约 | `.agents/frontmatter-spec.md`（**顶层**）· `assets/skills-spec.md` · `assets/ai-context-layer-spec.md` | `ai-guard-meta` / `ai-guard-skills` |
 | 注册与环境脚本 | `scripts/*.sh` · `.agents/lib/*.sh` | shell-lint |
@@ -134,9 +134,9 @@ flowchart TB
 
 | 项 | 位置 | 重建方式 |
 |:--|:--|:--|
-| 协作游标 · 成本账 · 心跳缓存 | `.agents/state/*` | `worktree-prep.sh` **恒 link 主仓库**（全局唯一一本）|
+| 协作游标 · 成本账 · 心跳缓存 | `.agents/state/*` | `ai-worktree-prep.sh` **恒 link 主仓库**（全局唯一一本）|
 | 开工快照 | `AGENTS.local.md` | 同上 |
-| **6 个工具出口** | `.dsh/skills` · `.agents/skills` · `.claude/skills` · `.qoder/skills` · `.qoder/agents/*` · `.codex/agents/*` | `worktree-prep.sh` = `link-skills` + `sync-agents` |
+| **6 个工具出口** | `.dsh/skills` · `.agents/skills` · `.claude/skills` · `.qoder/skills` · `.qoder/agents/*` · `.codex/agents/*` | `ai-worktree-prep.sh` = `ai-link-skills` + `ai-sync-agents` |
 
 > **代码本体不在本清单内**——`services/` · `apps/` · `os/` 的实现文件是**被上下文描述、被 AI 读取的对象**，不是上下文本身。两者的关系靠「**事实对拍**」维持（上表 L3 的 `api-spec` / `status`）——**文档与代码不一致时，是文档错还是代码错，由门禁逼你回答**。
 
@@ -183,9 +183,9 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["① 开分支<br/>git worktree add ../adaios-&lt;任务&gt; -b feat/&lt;任务&gt; main<br/>cd 进去 && bash .agents/scripts/worktree-prep.sh"] --> B["② 改文件<br/>上下文资产（L2 规范/坑/决策 · L3 事实文档 · 工具层技能/审查官）<br/>——若同时改了业务代码，L3 事实文档要跟着更新"]
-    B --> C["③ 本分支注册<br/>bash .agents/scripts/link-skills.sh（新技能）<br/>bash .agents/scripts/sync-agents.sh（新审查官）<br/>⇒ 本分支内立即可用"]
-    C --> D["④ 自测<br/>bash .agents/scripts/cadence.sh check<br/>（AI 资产另跑 ai-guard-skills / --check）"]
+    A["① 开分支<br/>git worktree add ../adaios-&lt;任务&gt; -b feat/&lt;任务&gt; main<br/>cd 进去 && bash .agents/scripts/ai-worktree-prep.sh"] --> B["② 改文件<br/>上下文资产（L2 规范/坑/决策 · L3 事实文档 · 工具层技能/审查官）<br/>——若同时改了业务代码，L3 事实文档要跟着更新"]
+    B --> C["③ 本分支注册<br/>bash .agents/scripts/ai-link-skills.sh（新技能）<br/>bash .agents/scripts/ai-sync-agents.sh（新审查官）<br/>⇒ 本分支内立即可用"]
+    C --> D["④ 自测<br/>bash .agents/scripts/task-cadence.sh check<br/>（AI 资产另跑 ai-guard-skills / --check）"]
     D --> E["⑤ 提交<br/>显式路径 + ADAI_BATCH_PATHS（pre-commit 多层门禁）<br/>账本类改动写进 L1，不碰全局账本"]
 ```
 
@@ -200,8 +200,8 @@ flowchart TD
     B -->|"④ git merge --squash feat/plugin-b"| MAIN
     MAIN -->|"⑤ git merge main"| A2["feat/plugin-a 拿到别人的改动"]
     MAIN -->|"⑤ git merge main"| B2["feat/plugin-b 拿到别人的改动"]
-    A2 --> A3["⑥ 重跑 worktree-prep.sh<br/>⇒ 新技能/新审查官真的可见"]
-    B2 --> B3["⑥ 重跑 worktree-prep.sh<br/>⇒ 新技能/新审查官真的可见"]
+    A2 --> A3["⑥ 重跑 ai-worktree-prep.sh<br/>⇒ 新技能/新审查官真的可见"]
+    B2 --> B3["⑥ 重跑 ai-worktree-prep.sh<br/>⇒ 新技能/新审查官真的可见"]
     A3 --> W["★ ⑥ 最易漏：出口不在 git 里——真相源合过来了，工具里还看不见<br/>（「我明明加了技能，怎么没有？」）"]
     B3 --> W
     W --> Y["★ 也不存在「实时共享」：传播＝对方 merge main，一条命令"]
@@ -213,8 +213,8 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["① bash .agents/scripts/cadence.sh release<br/>只判定：欠什么 / 发哪几端"] --> B["② 用户点头（B8：外向动作须人确认）"]
-    B --> C["③ bash .agents/scripts/deploy-gate.sh<br/>门禁 + 部署 + smoke"]
+    A["① bash .agents/scripts/task-cadence.sh release<br/>只判定：欠什么 / 发哪几端"] --> B["② 用户点头（B8：外向动作须人确认）"]
+    B --> C["③ bash .agents/scripts/code-deploy-gate.sh<br/>门禁 + 部署 + smoke"]
     C --> D["④ 部署成功后打 tag<br/>git tag -a v3.x &lt;生产实际部署的那个 commit&gt;"]
     D --> E["⑤ GitHub Release（用 docs/releases/ 的内容）"]
     E --> F["★ tag ＝ 生产实际部署的 commit（唯一对齐点）"]
@@ -321,7 +321,7 @@ flowchart LR
 | **产作者（编码）** | ✅ 现成——`skills/code-api-writer` / `code-domain-writer` 已是建设技能 |
 | **产作者（设计）** | ❌ **缺**——没有「设计作者」角色（待定：主 agent 兼任，还是建 subagent）|
 | **多轮交叉的流程** | ❌ 缺——本节即其定义，待落成 `.agents/process/review-driven.md` |
-| **门禁 / 收工 / 归档** | ✅ 全部现成（`pre-commit` 11 层 + `cadence ship`）|
+| **门禁 / 收工 / 归档** | ✅ 全部现成（`pre-commit` 11 层 + `task-cadence ship`）|
 | **在制品目录** | ✅ `workspace/` 三目录齐备——`tasks/`（分支账本）· `requirements/`（需求稿）· `designs/`（设计与审核的多轮记录，**一需求一目录**、轮次命名带日期，含两个模板）|
 
 ## 五、工作流：触发词 → 动作
@@ -329,10 +329,10 @@ flowchart LR
 | 触发 | 动作 | 现状 |
 |:--|:--|:--:|
 | **开工**（自动，无需交代）| 注入 L0 + `ai-guard-context.sh` + 读 L1 | ✅ |
-| **每日巡检** | `cadence.sh daily`（从上次覆盖日补看到今天）→ 只讲「用户之声 / 新异常 / 心跳趋势」| ✅ |
-| **收工** | `cadence.sh ship`（diff + 快照 + 成本入账）→ **显式路径提交** → `cadence.sh mark ship` | ✅ |
-| **发布 / 发版** | `cadence.sh release`（**只判定，不部署**）| ✅ |
-| **每周** / **待办** /（无参数）**总览** | `cadence.sh weekly`（W1–W6 + 到期红线）· `todo`（REVIEW 未修项）· 无参数=状态总览（节奏 + 欠账 + 红线）| ✅ |
+| **每日巡检** | `task-cadence.sh daily`（从上次覆盖日补看到今天）→ 只讲「用户之声 / 新异常 / 心跳趋势」| ✅ |
+| **收工** | `task-cadence.sh ship`（diff + 快照 + 成本入账）→ **显式路径提交** → `task-cadence.sh mark ship` | ✅ |
+| **发布 / 发版** | `task-cadence.sh release`（**只判定，不部署**）| ✅ |
+| **每周** / **待办** /（无参数）**总览** | `task-cadence.sh weekly`（W1–W6 + 到期红线）· `todo`（REVIEW 未修项）· 无参数=状态总览（节奏 + 欠账 + 红线）| ✅ |
 | **加一个 skill / 审查官** | 走 §4.2 分支流程 | ✅ 机制已备 |
 | **接一个新工具** | `ai-context-layer-spec.md` §五 四步 | ✅ |
 | **沉淀** | AI 主动提示「待沉淀清单」→ 人确认 → 写 L2（§4.5）| ❌ **待建** |

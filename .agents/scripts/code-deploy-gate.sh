@@ -2,7 +2,7 @@
 # ─────────────────────────────────────────────────────────────
 # 部署门禁 + 部署后验证（触发侧：部署前强制 review，部署后自动 smoke）
 #
-# 用法:  bash .agents/scripts/deploy-gate.sh <服务器IP> <JAR路径>
+# 用法:  bash .agents/scripts/code-deploy-gate.sh <服务器IP> <JAR路径>
 # 说明:  包装 services/adai-core/deploy.sh：
 #         GATE-BEFORE  部署前：guard 全量 + 增量 review（不过关拒绝部署）
 #         GATE-AFTER   部署后：自动 smoke（核心端点验证）
@@ -20,7 +20,7 @@ SERVER="${1:-}"
 JAR="${2:-}"
 
 if [ -z "$SERVER" ] || [ -z "$JAR" ]; then
-    echo "用法: bash .agents/scripts/deploy-gate.sh <服务器IP> <JAR路径>"
+    echo "用法: bash .agents/scripts/code-deploy-gate.sh <服务器IP> <JAR路径>"
     exit 1
 fi
 

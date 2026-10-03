@@ -35,7 +35,7 @@ init-ai-engineering.sh <项目名>
 │   └── state/                 状态指针（模板）
 ├── AGENTS.md                  AI 入口（模板）
 ├── .githooks/pre-commit       四层门禁（模板）
-├── .agents/scripts/setup-hooks.sh     hooks 启用
+├── .agents/scripts/ai-setup-hooks.sh     hooks 启用
 └── .gitlab-ci.yml             CI 模板（可选）
 ```
 
@@ -43,7 +43,7 @@ init-ai-engineering.sh <项目名>
 
 ```
 ┌──────────┐   ┌──────────────┐   ┌───────────────┐   ┌─────────────┐
-│ 跑脚手架  │ → │ 填项目元信息   │ → │ 复制模板+适配   │ → │ setup-hooks  │
+│ 跑脚手架  │ → │ 填项目元信息   │ → │ 复制模板+适配   │ → │ ai-setup-hooks  │
 │ init-xxx │   │ (名/栈/语言)   │   │ (guard 路径)   │   │ + 首个提交   │
 └──────────┘   └──────────────┘   └───────────────┘   └─────────────┘
                                                               │
@@ -68,7 +68,7 @@ init-ai-engineering.sh <项目名>
 
 ```
 1. 跑完脚本 → ai-engineering/ 完整（ai-guard-meta 对模板 PASS）
-2. setup-hooks → 提交时四层自动跑
+2. ai-setup-hooks → 提交时四层自动跑
 3. 首个功能批次 → 走通 discuss→ship→guard 全链
 4. 人只在三处介入：方案确认 / 审核内容 / 部署决策
 ```

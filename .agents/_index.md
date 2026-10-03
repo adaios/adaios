@@ -26,7 +26,7 @@ tags: [meta, index, ai]
 | `guards/` | 守卫与自检脚本——**机制层**：把规范变成机器能拦的门 | [→](./guards/_index.md) | [→](./guards/_directory.md) |
 | `lib/` | 被复用的 shell 库——**不含业务判断**，只提供稳定能力 | [→](./lib/_index.md) | [→](./lib/_directory.md) |
 | `method/` | **元方法层**——怎么从零搭一套 AI 工程（给新项目用，不是日常流程） | [→](./method/_index.md) | [→](./method/_directory.md) |
-| `process/` | 具体动作的流程定义——**天天用**：审查（audit/review）· 收尾（ship）· 节奏（cadence） | [→](./process/_index.md) | [→](./process/_directory.md) |
+| `process/` | 具体动作的流程定义——**天天用**：审查（audit/review）· 收尾（ship）· 节奏（task-cadence） | [→](./process/_index.md) | [→](./process/_directory.md) |
 | `roles/` | 审查官定义——**subagent 的真相源**（8 客观官 + 1 对抗官 + 3 外部视角官） | [→](./roles/_index.md) | [→](./roles/_directory.md) |
 | `scripts/` | 环境与注册脚本——**换机或新工作区**时要跑的那些（不是门禁） | [→](./scripts/_index.md) | [→](./scripts/_directory.md) |
 | `skills/` | 建设与流程技能——**加载即执行**的工作流封装（工具的 skill 出口直连这里） | [→](./skills/_index.md) | [→](./skills/_directory.md) |

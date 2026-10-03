@@ -4,7 +4,7 @@
 #
 # 为什么单抽成一个文件（2026-09-24 用户「接下来需要你判定前后端是否发布，
 # 我建议整理个机制，知道哪些需要生产发布」）：
-#   这条映射原先散在三处——deploy-gate.sh 算 artifacts、ai-guard-prod.sh 读 artifacts 判落后、
+#   这条映射原先散在三处——code-deploy-gate.sh 算 artifacts、ai-guard-prod.sh 读 artifacts 判落后、
 #   deploy.sh 注释里说明。要加 iOS 端时无处可加，于是出现「app 改了 7 个文件，
 #   却不在任何发布清单里，只能靠人记」。
 #   现在统一从这里取；将来新增发布单元（如 Android 包）只改本文件。
@@ -45,7 +45,7 @@ ru_unit_label() {
 # 单元 → 发布方式（人话，输出层用）
 ru_unit_how() {
     case "${1:-}" in
-        backend) printf 'jar → deploy-gate.sh\n' ;;
+        backend) printf 'jar → code-deploy-gate.sh\n' ;;
         web)     printf 'flutter build web → tar 原子替换 /opt/adaios/web\n' ;;
         admin)   printf 'flutter build web → tar 原子替换 /opt/adaios/admin\n' ;;
         app)     printf 'TestFlight 构建（不落服务器）\n' ;;

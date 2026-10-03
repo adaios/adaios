@@ -1,6 +1,6 @@
 ---
 title: AdaiOS Git 工作规范（单人 + 多 AI 工具 + GitHub）
-description: 分支怎么开、怎么合、怎么推、怎么发——为「单人但并行（同日多会话 + worktree）」这一形态定规矩。与 worktree-workflow.md（并行线机制）、process/ship.md（收尾）、deploy-gate.sh（部署门禁）配合；含 GitHub 侧的分支保护与最小 CI 建议。
+description: 分支怎么开、怎么合、怎么推、怎么发——为「单人但并行（同日多会话 + worktree）」这一形态定规矩。与 worktree-workflow.md（并行线机制）、process/ship.md（收尾）、code-deploy-gate.sh（部署门禁）配合；含 GitHub 侧的分支保护与最小 CI 建议。
 version: 1
 created: 2026-10-03
 updated: 2026-10-03
@@ -28,7 +28,7 @@ tags: [guide, git, workflow, release]
 - **同日多会话**（DSH / Qoder / Codex 各开一个）——共享同一工作区时靠 `ADAI_BATCH_PATHS` 范围守卫防互卷（已实战两次）
 - **worktree 并行线**——每条线一个分支一个工作区（见 `worktree-workflow.md`）
 - **本地常是唯一工作副本**——未推送 = 没有备份
-- **生产是手工部署**——必须始终能回答「生产跑的是哪个 commit」（`deploy-gate.sh` 把 `DEPLOYED` 写到生产，就是这个锚点）
+- **生产是手工部署**——必须始终能回答「生产跑的是哪个 commit」（`code-deploy-gate.sh` 把 `DEPLOYED` 写到生产，就是这个锚点）
 
 **仓库现状基线**（2026-10-03）：远端 `github.com:adaios/adaios`（SSH）· 唯一常驻分支 `main` · tag 仅 `v1.0.0` · 尚未配 CI。
 
@@ -83,8 +83,8 @@ tags: [guide, git, workflow, release]
 
 **规范**：
 
-1. **每批收工（`cadence.sh ship`）之后推一次**——GitHub 既是备份，也是回顾与（将来的）CI 触发点。
-2. **推送 ≠ 发布**：`git push` 只上代码，**不上生产**；部署始终走 `deploy-gate.sh`。
+1. **每批收工（`task-cadence.sh ship`）之后推一次**——GitHub 既是备份，也是回顾与（将来的）CI 触发点。
+2. **推送 ≠ 发布**：`git push` 只上代码，**不上生产**；部署始终走 `code-deploy-gate.sh`。
 3. ⚠️ 按边界 **B8「外向动作须人确认」**，push 仍需你点头 → 建议把它并入**收工流程的默认项**（收工时一并同意，而不是每次单独问）。
 4. **永不** `git push --force` 到 `main`（GitHub 分支保护可挡）。
 
@@ -92,15 +92,15 @@ tags: [guide, git, workflow, release]
 
 **版本号**：`v3.x`（与生产版本对齐，见 `docs/reference/status.md`）。
 
-**铁律：tag 必须打在「生产实际部署的那个 commit」上。** 这是版本号与代码唯一的对齐点；`deploy-gate.sh` 写到生产 `DEPLOYED` 里的 commit 就是它。
+**铁律：tag 必须打在「生产实际部署的那个 commit」上。** 这是版本号与代码唯一的对齐点；`code-deploy-gate.sh` 写到生产 `DEPLOYED` 里的 commit 就是它。
 
 **标准流程**：
 
 ```bash
 # 1) 只判定（不部署）：欠什么、要发哪几端
-bash .agents/scripts/cadence.sh release
+bash .agents/scripts/task-cadence.sh release
 # 2) 你点头后 —— 门禁 + 部署 + smoke
-bash .agents/scripts/deploy-gate.sh
+bash .agents/scripts/code-deploy-gate.sh
 # 3) 部署成功后 —— 打 tag 并推送
 git tag -a v3.95 -m "第二十一次部署：<一句话>"
 git push origin v3.95
@@ -120,7 +120,7 @@ git push origin v3.95
 | **最小 CI**（Actions） | push / PR 时跑后端 `./gradlew test`（+ 前端 `flutter analyze` 可选） | **解决本地真实痛点**：并发会话会污染本地构建（`pitfalls.md` 记过「构建产物夹带另一个会话的未完成改动」）——**GitHub 的干净检出是唯一可信验证** |
 | 仓库可见性 | private | 代码虽不含 `data/`，但 `os/` 里有交易知识资产 |
 | Actions 额度 | 私有仓库每月 2000 分钟（免费额度） | 后端测试耗时是主要开销，按需只跑后端 |
-| **CI 不做的事** | **不部署** | 部署仍走 `deploy-gate.sh` 手工门禁（B8：外向动作须人确认）|
+| **CI 不做的事** | **不部署** | 部署仍走 `code-deploy-gate.sh` 手工门禁（B8：外向动作须人确认）|
 
 ## 九、与现有流程的衔接
 
@@ -128,9 +128,9 @@ git push origin v3.95
 开发（main 或 worktree 分支）
   ↓ 提交：显式路径 + ADAI_BATCH_PATHS + pre-commit 多层门禁
   ↓ 推送：随收工一并同意              ← 本规范新增的默认动作（此前常积压）
-收工：bash .agents/scripts/cadence.sh ship   （diff + 快照 + 成本入账 + 提交）
-发布：bash .agents/scripts/cadence.sh release （只判定）→ 你点头
-      → bash .agents/scripts/deploy-gate.sh  （门禁 + 部署 + smoke）
+收工：bash .agents/scripts/task-cadence.sh ship   （diff + 快照 + 成本入账 + 提交）
+发布：bash .agents/scripts/task-cadence.sh release （只判定）→ 你点头
+      → bash .agents/scripts/code-deploy-gate.sh  （门禁 + 部署 + smoke）
   ↓ 部署成功
 打 tag + GitHub Release（tag ＝ 生产那个 commit）
 ```

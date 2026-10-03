@@ -94,14 +94,14 @@ supersedes: 20260815-trading-interaction-redesign.md
 | 推送默认 | 时段逐票建议、15:10「到买点了」默认开 | 熟人/公开默认关建议类；本人保留（记忆需要事件积累，推送是记录触发点） |
 | 第五层 | 无 | 认知层对话形态（问"我为什么总拿不住"）；从你的历史生成回话并沉淀 |
 | 案例库 | 相似度只匹配形态 | 深水区：匹配形态 × 你的行为模式（"上次你在这类形态破止损没走"） |
-| 行情数据维护 | 仅命令行 `.agents/scripts/sync_tdx_data.sh`（SSH 操作，无 UI） | **职责分层：个人数据导入归用户（web 产品端）；全局行情导入归 admin（运维侧）**——app/web 永不出现行情数据导入（见下） |
+| 行情数据维护 | 仅命令行 `.agents/scripts/data-sync-tdx.sh`（SSH 操作，无 UI） | **职责分层：个人数据导入归用户（web 产品端）；全局行情导入归 admin（运维侧）**——app/web 永不出现行情数据导入（见下） |
 
 ### 数据职责分层（2026-09-02 补充：admin vs app/web）
 
 | 导入内容 | 数据归属 | 负责端 | 现状 |
 |:---|:---|:---|:---|
 | 历史成交/持仓/自选/清仓/资金 | 个人 `data/{userId}/` | **web 产品端**（用户自己） | ✅ 已有 |
-| 全 A 日线行情包（tdx .day） | 全局 `data/market/tdx/` | **admin / 运维侧** | ⚠️ 仅 `sync_tdx_data.sh`（SSH，无 UI） |
+| 全 A 日线行情包（tdx .day） | 全局 `data/market/tdx/` | **admin / 运维侧** | ⚠️ 仅 `data-sync-tdx.sh`（SSH，无 UI） |
 
 - **判定**：`data/market/` 在 userId 层之外 = 全局公共资产（基础设施），动它归 admin（`role=admin` 门禁先例：/admin/**、/accounts/**）；个人业务数据归用户自己在产品端导入。产品红线：**app/web 永不出现行情数据导入**（个人记录 App 不该让用户理解 K 线数据源）。
 - **共享性**：行情全局共享——一份 tdx + 网络源兜底服务所有 trading 用户，行情成本**不随用户数线性涨**（随用户涨的只有 LLM 调用）。

@@ -66,9 +66,9 @@ AI 工程
 | pre-commit | 提交 | ✅ | 文档对齐/结构/隐私/防复发 | ✅ 已做（四层）|
 | post-commit | 提交后 | ✅ | 轻量自审（diff 派官）| ❌ 缺 |
 | pre-push | 推送 | ✅ | CI 等效检查 | ❌ 缺 |
-| 部署前门禁 | 部署 | ✅ | 强制 review + guard | ✅ 已做（`deploy-gate.sh`，2026-08-23 对拍修正）|
-| 部署后 smoke | 部署后 | ✅ | 新端点/核心链路 | ✅ 已做（deploy-gate.sh 内置六端点 smoke，2026-08-23 对拍修正）|
-| 定时 audit | cron | ✅ | 审查 + 沉淀 | ✅ 脚本已做（`weekly-audit.sh`）；cron 挂载待确认（P2-3）|
+| 部署前门禁 | 部署 | ✅ | 强制 review + guard | ✅ 已做（`code-deploy-gate.sh`，2026-08-23 对拍修正）|
+| 部署后 smoke | 部署后 | ✅ | 新端点/核心链路 | ✅ 已做（code-deploy-gate.sh 内置六端点 smoke，2026-08-23 对拍修正）|
+| 定时 audit | cron | ✅ | 审查 + 沉淀 | ✅ 脚本已做（`task-weekly-audit.sh`）；cron 挂载待确认（P2-3）|
 
 ## 新项目范式（搭流水线再写内容）
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────
 # 启用 git hooks（core.hooksPath → .githooks/）+ 恢复仓库级 git 设置
-# 换机器 clone 后执行一次：bash .agents/scripts/setup-hooks.sh
+# 换机器 clone 后执行一次：bash .agents/scripts/ai-setup-hooks.sh
 # 作用：pre-commit 自动跑 本批范围守卫 + 隐私/密钥闸门 + ai-guard-align + ai-guard-meta + guard.sh + shell-lint
 #
 # 为什么顺手设 git config：下面三条是**仓库级**设置（写在 .git/config 里）——

@@ -30,8 +30,8 @@ ADAI_SMOKE_ACCOUNT / ADAI_SMOKE_PASSWORD），另有 APNs 私钥（`.p8`）与�
 
 ## 用法
 
-    python3 .agents/scripts/scan-secrets.py              # 扫暂存区（pre-commit 调用）
-    python3 .agents/scripts/scan-secrets.py <file>...    # 扫指定文件全文（人工审计 / 自测）
+    python3 .agents/scripts/ai-scan-secrets.py              # 扫暂存区（pre-commit 调用）
+    python3 .agents/scripts/ai-scan-secrets.py <file>...    # 扫指定文件全文（人工审计 / 自测）
 
 退出码：0 = 干净或只有 WARN；1 = 有 BLOCK；2 = 读取暂存区失败（git 出错）。
 """

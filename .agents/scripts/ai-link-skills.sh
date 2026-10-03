@@ -3,8 +3,8 @@
 # 注册「用户直触发」技能到本机 AI 工具（换机器 clone 后执行一次）
 #
 # 用法:
-#   bash .agents/scripts/link-skills.sh          # 建立 / 修复软链
-#   bash .agents/scripts/link-skills.sh --check  # 只检查不写，缺失或悬空则退出码 1
+#   bash .agents/scripts/ai-link-skills.sh          # 建立 / 修复软链
+#   bash .agents/scripts/ai-link-skills.sh --check  # 只检查不写，缺失或悬空则退出码 1
 #
 # 背景：工具侧技能目录（.dsh/skills/ 等）被 .gitignore 忽略（注册是「本机状态」，不是仓库资产），
 #       所以新 clone / 换机后必须重建。真相源始终是 git 里的
@@ -81,7 +81,7 @@ for t in "${TARGETS[@]}"; do
       if [ -L "$DST" ]; then
         echo "  ❌ 悬空/过期软链: ${DST} → $(readlink "$DST")（期望 ${REL}）"
       else
-        echo "  ❌ 未注册: ${DST}（跑 bash .agents/scripts/link-skills.sh）"
+        echo "  ❌ 未注册: ${DST}（跑 bash .agents/scripts/ai-link-skills.sh）"
       fi
       FAIL=$((FAIL+1)); continue
     fi

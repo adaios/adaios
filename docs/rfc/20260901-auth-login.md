@@ -88,7 +88,7 @@ AuthInterceptor（新，仿 AdminAuthInterceptor 注册方式）
 1. **后端批次**：AuthController + AuthInterceptor + SessionRepository + Account.passwordHash + 限流 + 测试（核心回归：无 token 401 / 伪造 X-User-Id 被覆盖 / 登录注销 / setup 一次性 / 限流锁 / 会话续期 / 改密踢会话）→ 部署 + `curl setup` 为 adai 设密码。
 2. **web 批次**：登录页 + token 接入 + 401 处理 → 构建部署。
 3. **app 批次**：登录页 + token → 随下次重签（7 天周期）发布。
-4. REVIEW #179 关闭；REVIEW P1-A4（deploy-gate smoke 零鉴权验证）同步改为带 token 验证。
+4. REVIEW #179 关闭；REVIEW P1-A4（code-deploy-gate smoke 零鉴权验证）同步改为带 token 验证。
 5. 上线后旧 IP 直连（:8080 公网）已由安全组/域名收敛，若仍暴露需收紧。
 
 ### 3.7 回滚

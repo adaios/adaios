@@ -1,6 +1,6 @@
 ---
 title: 开发者上下文（Developer Context）—— 已退役
-description: 早期「开发者上下文」模板（当前会话/迭代/待办/技术债/进行中变更/已知问题）。2026-10-03 退役——全部字段为未填占位符，实际承担者是 AGENTS.local.md / task-log.md / REVIEW.md / git status + cadence.sh ship。
+description: 早期「开发者上下文」模板（当前会话/迭代/待办/技术债/进行中变更/已知问题）。2026-10-03 退役——全部字段为未填占位符，实际承担者是 AGENTS.local.md / task-log.md / REVIEW.md / git status + task-cadence.sh ship。
 version: 1
 created: 2026-08-01
 updated: 2026-10-03

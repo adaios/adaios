@@ -59,7 +59,7 @@ flowchart TB
     T4 --> G3["ai-guard-meta --fix<br/>元治理 · lines 校准"]
     G3 --> G4["ai-guard-sediment<br/>沉淀 / 出表 / 登记检查"]
     G4 --> T5["部署"]
-    T5 --> G5["deploy-gate<br/>最硬闸门 + smoke"]
+    T5 --> G5["code-deploy-gate<br/>最硬闸门 + smoke"]
     G1 -. 收工 .-> G6["ai-guard-cost --record<br/>成本入账"]
 ```
 

@@ -30,7 +30,7 @@ bad()  { echo "  ❌ $1"; FAIL=$((FAIL+1)); }
 # T6 独立快速模式：pre-commit 只需要这一项，避免整轮自检拖慢提交
 if [ "${1:-}" = "--shell-lint" ]; then
   echo '── T6 shell 脚本健壮性（$VAR 紧跟非 ASCII）──'
-  python3 "$ROOT/.agents/scripts/lint-shell-vars.py" || exit 1
+  python3 "$ROOT/.agents/scripts/ai-lint-shell-vars.py" || exit 1
   exit 0
 fi
 
@@ -44,7 +44,7 @@ if [ -n "$HP" ] && [ -f "$ROOT/$HP/pre-commit" ]; then
   ok "hooksPath=$HP → pre-commit 生效"
 else
   bad "hooksPath 未配置或 pre-commit 缺失 → 四层闸门未生效"
-  echo "    修复: bash .agents/scripts/setup-hooks.sh（或 git config core.hooksPath .githooks）"
+  echo "    修复: bash .agents/scripts/ai-setup-hooks.sh（或 git config core.hooksPath .githooks）"
 fi
 
 # T2: AGENTS.local.md 快照
@@ -111,7 +111,7 @@ for d in "$ROOT/.dsh/skills" "$HOME/.dsh/skills" "$ROOT/.claude/skills" "$HOME/.
 done
 if [ "$REG" -eq 0 ]; then
   warn "未发现指向 ai-engineering/ 的技能注册（.dsh / .claude / .agents 均无）"
-  echo "    修复: bash .agents/scripts/link-skills.sh（换机/新 clone 后必跑一次）"
+  echo "    修复: bash .agents/scripts/ai-link-skills.sh（换机/新 clone 后必跑一次）"
 fi
 
 # T5: 工具侧上下文入口（**仅当该工具确实在用**才校验；不用则跳过，避免永久警告让「全绿」失去信号）
@@ -131,7 +131,7 @@ fi
 # `set -u` 时 unbound variable 中止——而代码看起来完全正常、本机跑也正常，只在 cron/hook 炸。
 echo ""
 echo "T6 shell 脚本健壮性（\$VAR 紧跟非 ASCII）"
-LINT_OUT="$(python3 "$ROOT/.agents/scripts/lint-shell-vars.py" 2>&1)"; LINT_RC=$?
+LINT_OUT="$(python3 "$ROOT/.agents/scripts/ai-lint-shell-vars.py" 2>&1)"; LINT_RC=$?
 if [ "$LINT_RC" -eq 0 ]; then
   ok "${LINT_OUT#SHELL-LINT: }"
 else
@@ -144,7 +144,7 @@ fi
 # 而当时没有任何一处会报出来（crontab 被 TCC 拦，声称「已挂载」却无日志）。
 echo ""
 echo "T7 定时任务（launchd：每日备份 / 每周审查）"
-T7_OUT="$(bash "$ROOT/.agents/scripts/setup-launchd.sh" --check 2>&1)"; T7_RC=$?
+T7_OUT="$(bash "$ROOT/.agents/scripts/ai-setup-launchd.sh" --check 2>&1)"; T7_RC=$?
 if [ "$T7_RC" -eq 0 ]; then
   # 绿灯但「最近一次尝试失败」也要说出来——否则偶发失败会被「绿」永久藏掉
   # （2026-09-14：一次 ssh 抖动的空目录曾把 T7 判红；改成看「最近成功」后，又可能反向掩盖这次失败）
@@ -156,7 +156,7 @@ if [ "$T7_RC" -eq 0 ]; then
   fi
 else
   echo "$T7_OUT" | sed 's/^/  /'
-  bad "定时任务未就绪（备份 / 每周审查可能静默失效）→ bash .agents/scripts/setup-launchd.sh"
+  bad "定时任务未就绪（备份 / 每周审查可能静默失效）→ bash .agents/scripts/ai-setup-launchd.sh"
 fi
 
 echo ""

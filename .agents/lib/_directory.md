@@ -23,7 +23,7 @@ tags: [meta, directory]
 
 | 方向 | 对象 | 说明 |
 |:--|:--|:--|
-| 被依赖 | `../scripts/cadence.sh` · `../guards/ai-guard-prod.sh` | 共用 `cadence-lib.sh` 的游标 |
+| 被依赖 | `../scripts/task-cadence.sh` · `../guards/ai-guard-prod.sh` | 共用 `cadence-lib.sh` 的游标 |
 
 ## 触发关系
 

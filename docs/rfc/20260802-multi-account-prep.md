@@ -40,7 +40,7 @@ implementedIn: 2026-08-02（全链路 userId 透传 + 数据迁移 + 隔离测�
 | A | 数据层：FileStorage 5 方法加 userId + 8 存储实现透传 | ✅ |
 | B | 服务层：ContextEngine / 5 个 Contributor / 8 AppService 透传 | ✅ |
 | C | 接口层：12 Controller 加 `@RequestHeader` 透传 | ✅ |
-| D | 数据迁移：`.agents/scripts/migrate-data-to-user-layer.sh` + .gitignore 通配 | ✅ |
+| D | 数据迁移：`.agents/scripts/data-migrate-user-layer.sh` + .gitignore 通配 | ✅ |
 | E | 隔离测试：MultiUserIsolationTest（FileStorage/Record/TagIndex/Memory 四维） | ✅ |
 | F | 收尾：api-spec + 本文档 + CLAUDE.md | ✅ |
 

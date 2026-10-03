@@ -41,13 +41,13 @@ subgraph SEDIMENT["📦 沉淀检查（进攻侧②③）"]
 end
 
 subgraph DEPLOY["🚢 部署门禁（触发侧 · 最硬闸门）"]
-    G1["⑥ deploy-gate.sh"]
+    G1["⑥ code-deploy-gate.sh"]
     G2["GATE-BEFORE<br/>ai-guard-meta + align + guard.sh<br/>不过关 → 拒绝部署"]
     G3["GATE-AFTER<br/>自动 smoke 六端点<br/>feed/advice/parse/..."]
 end
 
 subgraph WEEKLY["📅 每周审查（触发侧 · 防休眠）"]
-    W1["⑤ weekly-audit.sh<br/>cron 每周一 9:00"]
+    W1["⑤ task-weekly-audit.sh<br/>cron 每周一 9:00"]
     W2["W1 守护 G1-G7"]
     W3["W2 结构+对齐"]
     W4["W3 沉淀连续性"]

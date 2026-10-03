@@ -440,7 +440,7 @@ params:
 | 格式 | .day 二进制（32 字节/条小端 int32：date/OHLC(×100)/amount/volume(股)/reserved）；因子 FactorFile JSON（{symbol, updatedAt, events[{exDate, cashPerShare, sendPerShare, transferPerShare}]}）；names.json [{symbol, name}] |
 | 真相源 | TdxFileKlineSource / AdjFactorRepository / NameToSymbolResolver |
 | 变更 | **MINOR（2026-08-30 TDX + 2026-08-31 名称表）**：新增 |
-| 说明 | 全局行情数据（非用户隐私），gitignore 不入库；.day 由用户通达信盘后同步（.agents/scripts/sync_tdx_data.sh）；前复权口径 = TDX 原始 × 除权因子换算 |
+| 说明 | 全局行情数据（非用户隐私），gitignore 不入库；.day 由用户通达信盘后同步（.agents/scripts/data-sync-tdx.sh）；前复权口径 = TDX 原始 × 除权因子换算 |
 
 **配套**：`trading/knowledge.md`（用户私有交易知识，LLM 注入；`TradingKnowledgeSource` 优先读，os/ 作 adai 默认）。**无规则文件 → 全部默认值 = adai 现状行为**（降级不坏）。
 

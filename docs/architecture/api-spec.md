@@ -938,7 +938,7 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 - `gaps[]`：重放时**卖超/未持有**的缺口行（与导入响应 `rejected` 是同一件事，可重复核算，不依赖当时返回）——缺口行**既不计入 `derived` 也不计入 `ledgerDelta`**（否则会得出「应有 −800 股」这种荒谬结论），只以 `gaps` 报出等人工核对/重导快照
 - **降级诚实**：锚定缺失 → `anchor.known=false` + `note`「无法判定」+ `drift:[]`；锚定有但基线未记录（`holdingsKnown=false`）→ 同样不误报差异，`note` 指路「重导一次『持仓股』快照即可建立基线」
 - **`degraded[]`（v3.79，2026-09-22，P1-交易61）**：`{symbol,name,direction,volume,price,entryDate,inferred,reason}`——**成交日 == 锚定日** 的流水被按「已含在券商快照内」处理（只记流水、未进持仓）。这类情况 `drift`/`gaps` **结构上查不出来**（两边同源于那份快照，必然相等 = 假绿），所以单独列出：**`inferred=true`** 表示锚定日是**推断**出来的（快照文件日期被归一化——盘前/非交易日导出会退到上一交易日），此时若快照实际基准日不是那一天，这些成交就不会体现在持仓里 → **前端据此出橙色横幅**；`inferred=false`（锚定日 = 文件日期）只是事实说明，**不出横幅**。锚定存在但没记录文件日期（老数据）→ `note` 补一句「无法判断锚定日是否被归一化推断过」
-- 发现不符时后端记 ERROR 日志（含明细前 5 条）；deploy-gate 以「`anchor.known=false` 或 `drift` 非空」为显式告警
+- 发现不符时后端记 ERROR 日志（含明细前 5 条）；code-deploy-gate 以「`anchor.known=false` 或 `drift` 非空」为显式告警
 
 ### `GET /api/v1/trading/anchor` — 券商快照锚定状态（v3.61，2026-09-12）
 > 需 trading 插件（403）。

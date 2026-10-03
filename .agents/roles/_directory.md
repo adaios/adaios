@@ -25,14 +25,14 @@ tags: [meta, directory]
 |:--|:--|:--|
 | 依赖 | `../assets/` · `../checklists/` | 判据与勾选项 |
 | 被依赖 | `../process/review.md` | 按 diff 派官 |
-| 工具 | `../scripts/sync-agents.sh` | 生成 `.qoder/agents/` 与 `.codex/agents/` |
+| 工具 | `../scripts/ai-sync-agents.sh` | 生成 `.qoder/agents/` 与 `.codex/agents/` |
 
 ## 触发关系
 
 | 时机 | 谁触发 | 读 / 执行什么 |
 |:--|:--|:--|
 | deep 审查派官时 | `../process/review.md` 派官表 | 对应 `<name>.md` |
-| 生成 subagent 时 | `sync-agents.sh` | 全部 `roles/*.md` |
+| 生成 subagent 时 | `ai-sync-agents.sh` | 全部 `roles/*.md` |
 
 ## 约束
 
@@ -46,4 +46,4 @@ tags: [meta, directory]
 
 ## 维护动作
 
-1. 新增官 → 写 `roles/<name>.md` → 建 `checklists/review-<name>.md` → 加进 `scripts/sync-agents.sh` 的 `REGISTER` → 补 `_index.md`
+1. 新增官 → 写 `roles/<name>.md` → 建 `checklists/review-<name>.md` → 加进 `scripts/ai-sync-agents.sh` 的 `REGISTER` → 补 `_index.md`

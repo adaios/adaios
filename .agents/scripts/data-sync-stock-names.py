@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-sync-stock-names.py — 全 A 股票名称表同步（2026-08-31 批量导入兜底）
+data-sync-stock-names.py — 全 A 股票名称表同步（2026-08-31 批量导入兜底）
 东财 suggest 对部分名称（昂立康/百普塞斯等）返回空——本地精确名称表兜底。
 
-用法: python3 ai-engineering/09-.agents/scripts/sync-stock-names.py
+用法: python3 ai-engineering/09-.agents/scripts/data-sync-stock-names.py
 产出: data/market/names.json [{"symbol":"600519","name":"贵州茅台"}, ...]（沪深 A 股 ~5554）
 """
 import json

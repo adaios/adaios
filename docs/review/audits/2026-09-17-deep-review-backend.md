@@ -72,7 +72,7 @@ tags: [review, backend, audit]
   ```
 - **证据（2）同类修复的正解就在同文件**（`:161-171`）：
   > `hasProductOrigin`：**对抗审查 P1-A（2026-09-12）修复：只在前言块里找**——原先扫全文，外部卡正文/代码块里只要出现一行 `origin: product` …就会被误判成「产品卡」进而被产品改写。正文一概不算。
-- **证据（3）A 形态卡模板确含 status**：`.agents/skills/data-learn-writer.md:79`
+- **证据（3）A 形态卡模板确含 status**：`.agents/skills/data-learn-writer/SKILL.md:79`
   > **frontmatter**：learn 卡片模板（title/type/source/created/**status**/trade_related/tags）
   同文件 24 行进一步明确：「**产品卡带 `origin: product` 标记（用于区分可写性）**」——区分键是 origin，不是 status。
 - **证据（4）文档把错判据写成「产品独有键」**：`docs/architecture/api-spec.md`（v3.70 restore-origin 段）
@@ -244,9 +244,9 @@ tags: [review, backend, audit]
 
 ## 附录 A：范围外 commit `bc6656b`（午间谷时任务壳 + LaunchAgent）单独标注
 
-- 该 commit 属**另一会话**的 AI 工程工具链改动（`.agents/scripts/noon-task.sh` 新增、`ai-guard-prod.sh`、`.agents/scripts/setup-launchd.sh`、`docs/guides/routine.md`、`ai-guard-tools.sh` T7 已认它）。本轮不评判其设计，仅记两条观察：
-  1. **时区偏移只告警不阻断**：`.agents/scripts/noon-task.sh:44-47` 检测到本机 `%z ≠ +0800` 时只打印 `⚠️ 本机时区偏移…峰谷判定不可信`，随后**照常执行**。若本机时区被改，闸门会按本机钟放行高峰时段（2 倍价计费）。建议非 +0800 时 fail-closed（需 `--force` 才继续）。
-  2. `.agents/scripts/setup-launchd.sh` 修掉了「重装即把历史日志截断清零」的真实事故（改为仅在文件不存在时创建）——这条是有价值的修复，已记入 `pitfalls.md` 的候选（未确认是否已沉淀）。
+- 该 commit 属**另一会话**的 AI 工程工具链改动（`.agents/scripts/task-noon.sh` 新增、`ai-guard-prod.sh`、`.agents/scripts/ai-setup-launchd.sh`、`docs/guides/routine.md`、`ai-guard-tools.sh` T7 已认它）。本轮不评判其设计，仅记两条观察：
+  1. **时区偏移只告警不阻断**：`.agents/scripts/task-noon.sh:44-47` 检测到本机 `%z ≠ +0800` 时只打印 `⚠️ 本机时区偏移…峰谷判定不可信`，随后**照常执行**。若本机时区被改，闸门会按本机钟放行高峰时段（2 倍价计费）。建议非 +0800 时 fail-closed（需 `--force` 才继续）。
+  2. `.agents/scripts/ai-setup-launchd.sh` 修掉了「重装即把历史日志截断清零」的真实事故（改为仅在文件不存在时创建）——这条是有价值的修复，已记入 `pitfalls.md` 的候选（未确认是否已沉淀）。
 - 守护脚本对本 commit 覆盖良好：`ai-guard-tools.sh` T6（`$VAR` 紧跟非 ASCII）PASS、T7 显示 `com.adai.adaios-noon-task` 已加载且「午间谷时 0 天前跑过」。
 
 ---

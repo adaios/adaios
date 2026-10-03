@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-verify-tdx-data.py — TDX 通达信本地数据抽查（2026-08-30 建议 #5）
+data-verify-tdx.py — TDX 通达信本地数据抽查（2026-08-30 建议 #5）
 验证 data/market/tdx 的 .day 数据与腾讯行情源一致（同口径：原始不复权价）。
 
-用法: python3 ai-engineering/09-.agents/scripts/verify-tdx-data.py [抽样数]
+用法: python3 ai-engineering/09-.agents/scripts/data-verify-tdx.py [抽样数]
 默认抽样 10 只（随机），每只对比最近 3 个交易日收盘价，偏差 >0.5% 记失败。
 
 输出: 每只偏差 + 汇总 PASS/FAIL（数据源可靠性证据）。

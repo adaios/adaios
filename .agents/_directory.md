@@ -34,8 +34,8 @@ tags: [meta, directory, ai]
 |:--|:--|:--|
 | 任何会话开工 | `AGENTS.md` 规则 0 | `guards/ai-guard-context.sh` |
 | 提交 | `.githooks/pre-commit` | `guards/` 的六层门禁 |
-| 收工 / 巡检 / 发布 | 用户触发词 | `scripts/cadence.sh` |
-| 换机 / 新 worktree | 人 | `scripts/setup-hooks.sh` · `link-skills.sh` · `sync-agents.sh` · `worktree-prep.sh` |
+| 收工 / 巡检 / 发布 | 用户触发词 | `scripts/task-cadence.sh` |
+| 换机 / 新 worktree | 人 | `scripts/ai-setup-hooks.sh` · `ai-link-skills.sh` · `ai-sync-agents.sh` · `ai-worktree-prep.sh` |
 | 工具加载技能/子代理 | 工具自身 | `skills/`（直连）· `roles/`（经生成物） |
 
 ## 约束

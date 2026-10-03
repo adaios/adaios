@@ -16,7 +16,7 @@
 #
 # 与既有机制的分工（共用同一份路径映射 .agents/lib/release-units.sh）:
 #   ai-guard-release  发布前：现在欠什么（本脚本，**只读**，不碰生产）
-#   deploy-gate    发布时：算 artifacts 落 DEPLOYED + 门禁 + smoke
+#   code-deploy-gate    发布时：算 artifacts 落 DEPLOYED + 门禁 + smoke
 #   ai-guard-prod     发布后：巡检核对「声明要发的端，产物是否真的更新了」
 #
 # 判定基线：生产 DEPLOYED 里的 commit（本地查不到该 commit 时退回「部署时刻」，
@@ -282,8 +282,8 @@ else
             backend)
                 printf '  【后端】\n'
                 printf '    cd services/adai-core && ./gradlew bootJar\n'
-                printf '    bash .agents/scripts/deploy-gate.sh %s services/adai-core/build/libs/adai-core-0.0.1-SNAPSHOT.jar\n' "$PROD_IP"
-                printf '    （deploy-gate 会跑三门门禁 + 部署后 smoke，并自动把发版清单写进生产 DEPLOYED）\n'
+                printf '    bash .agents/scripts/code-deploy-gate.sh %s services/adai-core/build/libs/adai-core-0.0.1-SNAPSHOT.jar\n' "$PROD_IP"
+                printf '    （code-deploy-gate 会跑三门门禁 + 部署后 smoke，并自动把发版清单写进生产 DEPLOYED）\n'
                 ;;
             web)
                 printf '  【Web 桌面端】\n'

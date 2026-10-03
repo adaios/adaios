@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # =============================================================================
-# sync_tdx_data.sh — 通达信盘后数据同步（2026-08-30 建议 #6）
+# data-sync-tdx.sh — 通达信盘后数据同步（2026-08-30 建议 #6）
 #
 # 用途：用户在 Windows 通达信「盘后数据下载」后，把 vipdoc/sh/lday + sz/lday
 #       打包（7z/zip）→ 本脚本解压并按文件名前缀分流到 data/market/tdx/。
 #
-# 用法：sh .agents/scripts/sync_tdx_data.sh <打包文件...>
-#       例：sh .agents/scripts/sync_tdx_data.sh ~/Desktop/sh_lday.7z ~/Desktop/sz_lday.7z
+# 用法：sh .agents/scripts/data-sync-tdx.sh <打包文件...>
+#       例：sh .agents/scripts/data-sync-tdx.sh ~/Desktop/sh_lday.7z ~/Desktop/sz_lday.7z
 #
 # 分流规则：解压后把 lday/ 下的文件按前缀归位——sh*.day → tdx/sh/lday/、
 #           sz*.day → tdx/sz/lday/（兼容包内 `lday/` 混装 或 `vipdoc/sh/lday/` 嵌套）。
@@ -20,7 +20,7 @@ TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 if [ "$#" -eq 0 ]; then
-  echo "用法: sh .agents/scripts/sync_tdx_data.sh <sh包.7z|zip> [sz包.7z|zip] ..."
+  echo "用法: sh .agents/scripts/data-sync-tdx.sh <sh包.7z|zip> [sz包.7z|zip] ..."
   exit 1
 fi
 
@@ -61,4 +61,4 @@ done
 
 COUNT=$(find "$TDX_DIR" -name "*.day" | wc -l | tr -d ' ')
 echo "=== 同步完成：新增/覆盖 $MOVED 个 .day，当前共 $COUNT 个 ==="
-echo "提示：复权因子按日 TTL 自动刷新；抽查可用 python3 .agents/scripts/verify-tdx-data.py"
+echo "提示：复权因子按日 TTL 自动刷新；抽查可用 python3 .agents/scripts/data-verify-tdx.py"

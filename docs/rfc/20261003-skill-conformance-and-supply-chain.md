@@ -41,7 +41,7 @@ related:
 | frontmatter 10 字段 | ai-guard-meta 必查 ✅ | 已覆盖 |
 | 内容完整性 | 无 | **无哈希、无锁定**，改动不可见 |
 | 依赖锁定 | Flutter 两端 `pubspec.lock` 自带 content-hash | 后端依赖无清单快照 |
-| 门禁基座 | `.githooks/pre-commit` 六层 + `.agents/scripts/scan-secrets.py`（Python 执行器 + bash 守卫的先例） | 可复用该模式 |
+| 门禁基座 | `.githooks/pre-commit` 六层 + `.agents/scripts/ai-scan-secrets.py`（Python 执行器 + bash 守卫的先例） | 可复用该模式 |
 
 ## 三、方案 A：技能包规范校准
 
@@ -150,7 +150,7 @@ related:
 
 - 不做技能目录全量迁移（选项 A）。
 - 不改现有 16 个技能的内容。
-- 不引入联网 SCA、不装额外运行时依赖（Python3 已用于 `scan-secrets.py`，可复用）。
+- 不引入联网 SCA、不装额外运行时依赖（Python3 已用于 `ai-scan-secrets.py`，可复用）。
 - 不动 `data/`、产品代码、既有守卫脚本的判据。
 
 ## 八、待拍板点

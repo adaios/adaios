@@ -80,10 +80,10 @@ bash .agents/guards/ai-guard-align.sh         # 代码↔文档内容对齐：�
 - **git pre-commit hook 自动触发**（`.githooks/pre-commit`，`core.hooksPath` 已配置）：任何代码/测试/契约文档变更，提交时自动跑 ai-guard-align，FAIL 阻止提交——**无需人工提醒**
 - 校验范围：AGENTS.md + docs/_index.md + 全部 docs/*/_index.md + .agents/**（frontmatter-spec §四 强制区）
 
-### 6. 部署（触发侧：deploy-gate 门禁 + smoke）
+### 6. 部署（触发侧：code-deploy-gate 门禁 + smoke）
 
 ```bash
-bash .agents/scripts/deploy-gate.sh 82.156.111.146 build/libs/adai-core-0.0.1-SNAPSHOT.jar
+bash .agents/scripts/code-deploy-gate.sh 82.156.111.146 build/libs/adai-core-0.0.1-SNAPSHOT.jar
 ```
 
 - 部署前自动强制：ai-guard-meta + ai-guard-align + guard.sh（不过关拒绝部署）
@@ -97,7 +97,7 @@ bash .agents/scripts/deploy-gate.sh 82.156.111.146 build/libs/adai-core-0.0.1-SN
 
 ### 7. 规范提交
 
-> **2026-10-03 起：本节是「收工」的默认最后一步**——用户说「收工」即包含提交（不再需要单独说一次）；`cadence.sh ship` 本身仍只出 diff/快照/审查判定，**提交由 AI 在审查判定之后执行**（因为「有 P0/P1 → 先修再提交」这层判断只有审查完才知道）。**仍不 push、不部署**（B8）。
+> **2026-10-03 起：本节是「收工」的默认最后一步**——用户说「收工」即包含提交（不再需要单独说一次）；`task-cadence.sh ship` 本身仍只出 diff/快照/审查判定，**提交由 AI 在审查判定之后执行**（因为「有 P0/P1 → 先修再提交」这层判断只有审查完才知道）。**仍不 push、不部署**（B8）。
 
 - 提交信息按批次主题（如 `feat:` / `fix:` / `docs:`），含批次要点
 - 一个批次一个提交，不混合无关改动

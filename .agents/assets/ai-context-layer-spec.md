@@ -11,7 +11,7 @@ depends-on:
   - ../frontmatter-spec.md
 related:
   - ../../AGENTS.md
-  - ../../.agents/scripts/link-skills.sh
+  - ../../.agents/scripts/ai-link-skills.sh
   - ../guards/ai-guard-tools.sh
   - ../../docs/rfc/20261003-project-level-ai-context-layer.md
 tags: [ai, meta, governance, context-layer]
@@ -35,7 +35,7 @@ tags: [ai, meta, governance, context-layer]
 
 ```
 真相源      项目层，进 git，唯一可写         ← 本仓库的 .agents/ 等
-出口        各工具目录，软链，不进 git        ← 由 .agents/scripts/link-skills.sh 重建
+出口        各工具目录，软链，不进 git        ← 由 .agents/scripts/ai-link-skills.sh 重建
 工具私有    各工具自己的配置，项目不代管      ← .idea/ 等
 ```
 
@@ -81,9 +81,9 @@ tags: [ai, meta, governance, context-layer]
 ## 五、新增工具接入流程（四步，缺一不可）
 
 1. **查官方文档确认项目级路径**——**不猜**。文档滞后于实现是常态（Qoder 插件文档未提 skills，实测支持），所以第 4 步必做。
-2. **加进 `.agents/scripts/link-skills.sh` 的 `TARGETS`**（技能出口）。
+2. **加进 `.agents/scripts/ai-link-skills.sh` 的 `TARGETS`**（技能出口）。
 3. **加进 `.agents/guards/ai-guard-tools.sh` T4 的扫描清单**——否则新出口**无人检查**（T4 按软链真身判定，不认名字）。
-   - **子代理出口同理**：加进 `.agents/scripts/sync-agents.sh` 的 `TARGETS`（并按该工具的 subagent 格式加一种生成分支）。
+   - **子代理出口同理**：加进 `.agents/scripts/ai-sync-agents.sh` 的 `TARGETS`（并按该工具的 subagent 格式加一种生成分支）。
 4. **放探针实测**：技能 + 子代理各一个最小探针 → 目标工具里验证 → **结果写回 §四（含日期）** → 清理探针。
 
 > 探针一律**本地忽略**（`.git/info/exclude` 或 `.gitignore`），验证完即删。
@@ -101,9 +101,9 @@ tags: [ai, meta, governance, context-layer]
 | 场景 | 动作 |
 |:--|:--|
 | 改技能内容 | **只改真相源**；出口是软链，自动生效 |
-| 改审查官内容 | 跑 `bash .agents/scripts/sync-agents.sh` **重新生成** subagent 定义；自检 `--check`（生成物不进 git）|
-| 换机 / 新 clone | `bash .agents/scripts/link-skills.sh`（+ `setup-hooks.sh`）；自检 `--check` |
-| 自检一致性 | `bash .agents/scripts/link-skills.sh --check` · `bash .agents/guards/ai-guard-tools.sh`（T4）|
+| 改审查官内容 | 跑 `bash .agents/scripts/ai-sync-agents.sh` **重新生成** subagent 定义；自检 `--check`（生成物不进 git）|
+| 换机 / 新 clone | `bash .agents/scripts/ai-link-skills.sh`（+ `ai-setup-hooks.sh`）；自检 `--check` |
+| 自检一致性 | `bash .agents/scripts/ai-link-skills.sh --check` · `bash .agents/guards/ai-guard-tools.sh`（T4）|
 | 新增/删除出口 | 改 `TARGETS` → 跑脚本 → 更新 §四 表 |
 | 有意的偏离 | **必须留痕**（写进本规范 + `pitfalls.md`）|
 
@@ -114,12 +114,12 @@ tags: [ai, meta, governance, context-layer]
 | 资产 | 在 worktree 里怎么来 | 随分支？ |
 |:--|:--|:--:|
 | `AGENTS.md` ×7 · `ARCHITECTURE.md` · `.agents/**`（技能 / 审查官 / 规范） | git 检出 | ✅ |
-| **技能出口 ×4** | `bash .agents/scripts/link-skills.sh`（**相对软链** → 指向本 worktree） | ✅ |
-| **子代理出口 ×2** | `bash .agents/scripts/sync-agents.sh`（**生成**） | ✅ |
-| `data/` · `services/adai-core/.env` | `.agents/scripts/worktree-prep.sh`（link 或 `--copy`） | — |
+| **技能出口 ×4** | `bash .agents/scripts/ai-link-skills.sh`（**相对软链** → 指向本 worktree） | ✅ |
+| **子代理出口 ×2** | `bash .agents/scripts/ai-sync-agents.sh`（**生成**） | ✅ |
+| `data/` · `services/adai-core/.env` | `.agents/scripts/ai-worktree-prep.sh`（link 或 `--copy`） | — |
 | **`.agents/state/` · `AGENTS.local.md`** | **恒 link 主仓库**——账本与开工快照**必须唯一** | ❌（有意）|
 
-**一条命令补齐**：`bash .agents/scripts/worktree-prep.sh`（自动含出口注册与 `--check`）。
+**一条命令补齐**：`bash .agents/scripts/ai-worktree-prep.sh`（自动含出口注册与 `--check`）。
 
 **分支开发下的全流程**（资产全景 · **加 skill 也开分支** · 改完怎么传给其他分支 · **合并后重建出口**）见 `docs/guides/branch-development.md`。
 

@@ -11,8 +11,8 @@
 #
 # 安全：幂等（data/{userId} 已存在则跳过）；先自动备份 tar.gz 再迁移。
 #
-# 用法：cd <monorepo 根> && bash .agents/scripts/migrate-data-to-user-layer.sh
-#       或传数据根 + 目标用户： bash .agents/scripts/migrate-data-to-user-layer.sh <data-dir> <userId>
+# 用法：cd <monorepo 根> && bash .agents/scripts/data-migrate-user-layer.sh
+#       或传数据根 + 目标用户： bash .agents/scripts/data-migrate-user-layer.sh <data-dir> <userId>
 
 set -euo pipefail
 

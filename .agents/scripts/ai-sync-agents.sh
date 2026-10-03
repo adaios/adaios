@@ -3,8 +3,8 @@
 # 把「审查官」真相源生成为各工具的 subagent 定义（换机 / 改动后执行）
 #
 # 用法:
-#   bash .agents/scripts/sync-agents.sh          # 生成 / 更新
-#   bash .agents/scripts/sync-agents.sh --check  # 只检不写；不一致则退出码 1
+#   bash .agents/scripts/ai-sync-agents.sh          # 生成 / 更新
+#   bash .agents/scripts/ai-sync-agents.sh --check  # 只检不写；不一致则退出码 1
 #
 # 为什么是「生成」而不是「软链」（与技能层的根本差别）：
 #   审查官的真相源是 .agents/roles/<name>.md（项目层，进 git，**扁平**）。
@@ -110,7 +110,7 @@ PYEOF
       if [ -f "$DST" ] && cmp -s "$TMP" "$DST"; then
         echo "  ✅ 已同步: ${DST}"
       else
-        echo "  ❌ 未生成/已过期: ${DST}（跑 bash .agents/scripts/sync-agents.sh）"
+        echo "  ❌ 未生成/已过期: ${DST}（跑 bash .agents/scripts/ai-sync-agents.sh）"
         FAIL=$((FAIL+1))
       fi
       rm -f "$TMP"; continue
@@ -129,5 +129,5 @@ done
 if [ "$FAIL" -gt 0 ]; then
   echo ""; echo "结果: ${FAIL} 项异常"; exit 1
 fi
-[ "$CHECK" -eq 0 ] && { echo ""; echo "✅ subagent 定义生成完成（验证: bash .agents/scripts/sync-agents.sh --check）"; }
+[ "$CHECK" -eq 0 ] && { echo ""; echo "✅ subagent 定义生成完成（验证: bash .agents/scripts/ai-sync-agents.sh --check）"; }
 exit 0

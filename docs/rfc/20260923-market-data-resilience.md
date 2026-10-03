@@ -82,7 +82,7 @@ related:
 
 ## 七、部署与验收（2026-09-23 实施）
 
-**后端 v3.84 上线**：`deploy-gate.sh` **GATE-BEFORE 三门 PASS**（ai-guard-meta 154 文件 · ai-guard-align 160 端点 + 四数对齐 · guard.sh 10 PASS/0 HIT）
+**后端 v3.84 上线**：`code-deploy-gate.sh` **GATE-BEFORE 三门 PASS**（ai-guard-meta 154 文件 · ai-guard-align 160 端点 + 四数对齐 · guard.sh 10 PASS/0 HIT）
 + **GATE-AFTER smoke 6/6 + 领域自检 3/3**。
 
 **生产真链验证**（部署后实测）：

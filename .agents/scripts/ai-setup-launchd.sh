@@ -3,18 +3,18 @@
 # 安装/自检 定时任务（LaunchAgent）— 2026-09-14 建
 #
 # 为什么不用 crontab：macOS TCC 拦截 crontab（本机 `crontab -l` 直接
-#   "Operation not permitted"），2026-08-29 声称「weekly-audit cron 已挂载」，
-#   实际 /tmp/weekly-audit.log 从未出现 —— 定时任务静默失效了 16 天没人知道。
+#   "Operation not permitted"），2026-08-29 声称「task-weekly-audit cron 已挂载」，
+#   实际 /tmp/task-weekly-audit.log 从未出现 —— 定时任务静默失效了 16 天没人知道。
 #   launchd 不受该限制，且「错过就在唤醒后补跑」。
 #
-# 换机 clone 后执行一次：bash .agents/scripts/setup-launchd.sh
-# 自检：                bash .agents/scripts/setup-launchd.sh --check
-# 卸载：                bash .agents/scripts/setup-launchd.sh --uninstall
+# 换机 clone 后执行一次：bash .agents/scripts/ai-setup-launchd.sh
+# 自检：                bash .agents/scripts/ai-setup-launchd.sh --check
+# 卸载：                bash .agents/scripts/ai-setup-launchd.sh --uninstall
 #
 # 装了哪三个：
 #   com.adai.adaios-backup        每天 21:10    生产 data/os/.env/jar 快备到 ~/backups
-#   com.adai.adaios-weekly-audit  每周一 09:00  weekly-audit.sh W1-W6（防审查休眠）
-#   com.adai.adaios-noon-task     工作日 12:01  noon-task.sh（DeepSeek 午间谷时半价窗口）
+#   com.adai.adaios-weekly-audit  每周一 09:00  task-weekly-audit.sh W1-W6（防审查休眠）
+#   com.adai.adaios-noon-task     工作日 12:01  task-noon.sh（DeepSeek 午间谷时半价窗口）
 # ─────────────────────────────────────────────────────────────
 set -uo pipefail
 
@@ -22,8 +22,8 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 AGENTS="$HOME/Library/LaunchAgents"
 STATE="${ROOT}/.agents/state"
 BACKUP_LOG="${STATE}/backup.log"
-AUDIT_LOG="${STATE}/weekly-audit.log"
-NOON_LOG="${STATE}/noon-task.log"
+AUDIT_LOG="${STATE}/task-weekly-audit.log"
+NOON_LOG="${STATE}/task-noon.log"
 
 BACKUP_LABEL="com.adai.adaios-backup"
 AUDIT_LABEL="com.adai.adaios-weekly-audit"
@@ -35,7 +35,7 @@ uid_num="$(id -u)"
 # 参数: 标签 脚本绝对路径 额外参数(可空) 日志路径 若干 StartCalendarInterval 键值
 #       键值成对给；独立参数 '|' 表示再开一个 <dict>。
 #       StartCalendarInterval 是数组 = OR 关系，且 launchd 不支持 Weekday 范围，
-#       所以「工作日」只能靠 5 个 dict 展开（见 do_install 的 noon-task）。
+#       所以「工作日」只能靠 5 个 dict 展开（见 do_install 的 task-noon）。
 write_plist() {
   local label="$1" script="$2" extra="$3" log="$4"; shift 4
   local out="${AGENTS}/${label}.plist"
@@ -103,17 +103,17 @@ do_install() {
 
   # 日志文件必须先能创建：launchd 打不开 StandardOutPath 时任务会直接起不来（静默）
   # 但只能在「不存在」时创建 —— 不能写 ': > 文件'：那会把历史日志截断清零。
-  # （2026-09-16 实测踩到：重装一次，backup / weekly-audit 两个历史日志当场变 0 字节。）
+  # （2026-09-16 实测踩到：重装一次，backup / task-weekly-audit 两个历史日志当场变 0 字节。）
   local _log
   for _log in "${BACKUP_LOG}" "${AUDIT_LOG}" "${NOON_LOG}"; do
     [ -e "${_log}" ] || : > "${_log}" 2>/dev/null || true
   done
 
-  write_plist "${BACKUP_LABEL}" "${ROOT}/.agents/scripts/backup_prod.sh" "" "${BACKUP_LOG}" \
+  write_plist "${BACKUP_LABEL}" "${ROOT}/.agents/scripts/code-backup-prod.sh" "" "${BACKUP_LOG}" \
     Hour 21 Minute 10
-  write_plist "${AUDIT_LABEL}" "${ROOT}/.agents/scripts/weekly-audit.sh" "--auto" "${AUDIT_LOG}" \
+  write_plist "${AUDIT_LABEL}" "${ROOT}/.agents/scripts/task-weekly-audit.sh" "--auto" "${AUDIT_LOG}" \
     Weekday 1 Hour 9 Minute 0
-  write_plist "${NOON_LABEL}" "${ROOT}/.agents/scripts/noon-task.sh" "" "${NOON_LOG}" \
+  write_plist "${NOON_LABEL}" "${ROOT}/.agents/scripts/task-noon.sh" "" "${NOON_LOG}" \
     Weekday 1 Hour 12 Minute 1 '|' \
     Weekday 2 Hour 12 Minute 1 '|' \
     Weekday 3 Hour 12 Minute 1 '|' \
@@ -131,7 +131,7 @@ do_install() {
 
   echo ""
   echo "✅ 安装完成（日志在 .agents/state/）"
-  echo "   立即验证: bash .agents/scripts/setup-launchd.sh --check"
+  echo "   立即验证: bash .agents/scripts/ai-setup-launchd.sh --check"
   echo "   手动触发: launchctl kickstart -k gui/${uid_num}/${BACKUP_LABEL}"
   echo "             launchctl kickstart -k gui/${uid_num}/${NOON_LABEL}"
 }
@@ -145,7 +145,7 @@ do_check() {
     if launchctl print "gui/${uid_num}/${label}" >/dev/null 2>&1; then
       echo "  ✅ ${label} 已加载"
     else
-      echo "  ❌ ${label} 未加载 → bash .agents/scripts/setup-launchd.sh"
+      echo "  ❌ ${label} 未加载 → bash .agents/scripts/ai-setup-launchd.sh"
       rc=1
     fi
   done
@@ -194,7 +194,7 @@ do_check() {
   fi
 
   # 午间谷时新鲜度：只在工作日跑，跨周末 3 天属正常 → 阈值给到 5 天
-  # （长假会误报，属已知误差：宁可提示也不要静默失效，这正是 weekly-audit 踩过的坑）
+  # （长假会误报，属已知误差：宁可提示也不要静默失效，这正是 task-weekly-audit 踩过的坑）
   if [ -s "${NOON_LOG}" ]; then
     local nage=$(( ( $(date +%s) - $(stat -f %m "${NOON_LOG}") ) / 86400 ))
     if [ "${nage}" -le 5 ]; then

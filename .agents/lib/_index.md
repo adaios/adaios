@@ -19,7 +19,7 @@ tags: [meta, index]
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
-| `cadence-lib.sh` | 游标库（cadence state）— 「上次到哪了」的唯一存储 | active |
+| `cadence-lib.sh` | 游标库（task-cadence state）— 「上次到哪了」的唯一存储 | active |
 | `release-units.sh` | 发版单元映射（唯一真相源）：「哪些路径被改了」→「要发布哪几端」 | active |
 
 ## 过期判断

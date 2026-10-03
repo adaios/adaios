@@ -3,7 +3,7 @@ title: state/ 目录索引
 description: state/ 的文件清单与过期判断；目录的职责边界与依赖契约见 ./_directory.md
 version: 1
 created: 2026-10-03
-updated: 2026-10-03
+updated: 2026-10-04
 status: active
 lines: 34
 depends-on: []
@@ -19,13 +19,13 @@ tags: [meta, index]
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
-| `backup.log` | — | active |
 | `cadence.json` | — | active |
+| `code-backup-prod.log` | — | active |
 | `cost-cache.json` | — | active |
 | `cost-log.jsonl` | — | active |
-| `noon-task.log` | — | active |
+| `task-noon.log` | — | active |
+| `task-weekly-audit.log` | — | active |
 | `usage-cache.json` | — | active |
-| `weekly-audit.log` | — | active |
 
 ## 过期判断
 

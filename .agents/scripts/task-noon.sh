@@ -16,21 +16,21 @@
 #
 # 触发方式（2026-09-16 起）：
 #   LaunchAgent `com.adai.adaios-noon-task`（周一至周五 12:01）
-#   日志 .agents/state/noon-task.log
-#   重装：bash .agents/scripts/setup-launchd.sh
-#   自检：bash .agents/scripts/setup-launchd.sh --check
+#   日志 .agents/state/task-noon.log
+#   重装：bash .agents/scripts/ai-setup-launchd.sh
+#   自检：bash .agents/scripts/ai-setup-launchd.sh --check
 #
-# 用法:  bash .agents/scripts/noon-task.sh [--force]
+# 用法:  bash .agents/scripts/task-noon.sh [--force]
 #        --force = 跳过空闲时段闸门（手工补跑时用，会按高峰价计费）
 #
-# 加任务：把可执行 .sh 丢进 .agents/scripts/noon-task.d/（按文件名顺序执行）。
+# 加任务：把可执行 .sh 丢进 .agents/scripts/task-noon.d/（按文件名顺序执行）。
 #         壳只负责「到点 + 闸门 + 留痕」，任务内容与壳解耦——加任务不用动壳。
 # ─────────────────────────────────────────────────────────────
 set -uo pipefail
 
 cd "$(dirname "$0")/../.." || exit 1
 ROOT="$(pwd)"
-HOOK_DIR="${ROOT}/.agents/scripts/noon-task.d"
+HOOK_DIR="${ROOT}/.agents/scripts/task-noon.d"
 FORCE="${1:-}"
 
 # 时钟来源：默认读本机钟；NOON_FAKE_* 可注入，供闸门矩阵测试（launchd 到点才跑，无法单测）
@@ -65,7 +65,7 @@ fi
 
 if [ "${in_peak}" -eq 1 ] && [ "${FORCE}" != "--force" ]; then
     echo "⛔ 当前是高峰时段（${HOUR}:${MIN}），按纪律跳过本次执行"
-    echo "   手工补跑：bash .agents/scripts/noon-task.sh --force"
+    echo "   手工补跑：bash .agents/scripts/task-noon.sh --force"
     exit 0
 fi
 
@@ -96,8 +96,8 @@ for hook in "${HOOK_DIR}"/*.sh; do
 done
 
 if [ "${ran}" -eq 0 ]; then
-    echo "▸ 无任务钩子（noon-task.d/ 为空）—— 壳已通，任务待填"
-    echo "   加任务：把可执行 .sh 放进 .agents/scripts/noon-task.d/，无需改壳"
+    echo "▸ 无任务钩子（task-noon.d/ 为空）—— 壳已通，任务待填"
+    echo "   加任务：把可执行 .sh 放进 .agents/scripts/task-noon.d/，无需改壳"
 fi
 
 echo "▸ 完成，耗时 $(( $(date +%s) - ${START_TS} ))s"

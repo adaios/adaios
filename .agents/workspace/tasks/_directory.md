@@ -25,7 +25,7 @@ tags: [meta, directory]
 |:--|:--|:--|
 | 被依赖 | `../../../AGENTS.md` | 规则 9（收工）与分支流程引用 |
 | 归档去向 | `../../../docs/reference/change-log.md` · `../../../docs/review/REVIEW.md` | 合并时把「待归档」搬进去 |
-| 工具 | `../../scripts/worktree-prep.sh` | 新 worktree 就位后创建账本 |
+| 工具 | `../../scripts/ai-worktree-prep.sh` | 新 worktree 就位后创建账本 |
 
 ## 触发关系
 
@@ -44,7 +44,7 @@ tags: [meta, directory]
 ## 守卫（谁保证这里不腐烂）
 - `ai-guard-structure`：两件套齐备 · 清单⇄实际 · 契约依赖 · 守卫引用 · 两件套不重复
 - `ai-guard-meta`：frontmatter / lines / 断链
-- 归档检查：`cadence.sh ship` 提示 `main` 上残留的账本（见 `.agents/process/ship.md`）
+- 归档检查：`task-cadence.sh ship` 提示 `main` 上残留的账本（见 `.agents/process/ship.md`）
 
 ## 维护动作
 1. 开分支 → `cp _template.md <分支名>.md`（填「目标」）

@@ -1,6 +1,6 @@
 ---
 title: 固定动作清单（每天 / 每周 / 到期）
-description: AdaiOS 的周期性人肉工作总清单——哪些系统已自动（只需看）、哪些必须你亲自做（生产日报/盘后导入/备份/审查）、哪些是到期红线；配套 check_deadlines.py、ai-guard-prod.sh 与三个 LaunchAgent
+description: AdaiOS 的周期性人肉工作总清单——哪些系统已自动（只需看）、哪些必须你亲自做（生产日报/盘后导入/备份/审查）、哪些是到期红线；配套 task-check-deadlines.py、ai-guard-prod.sh 与三个 LaunchAgent
 version: 1
 created: 2026-09-14
 updated: 2026-10-03
@@ -28,18 +28,18 @@ tags: [guide, routine, ops]
 **日常只需要一句话**——「每日巡检 / 收工 / 每周 / 待办」四个词，AI 自动跑对应动作（触发协议见 `AGENTS.md` 规则 8–10，机制见 `.agents/process/cadence.md`）。**默契的核心是「接着上次走」**：AI 记得上次巡检覆盖到哪天、上次收工是哪个 commit，你不用交代。
 
 ```bash
-bash .agents/scripts/cadence.sh          # 节奏总览：上次巡检/收工/周审 + 欠账（秒回，开工第一眼）
-bash .agents/scripts/cadence.sh daily    # 每日巡检：自动从上次覆盖日补看到今天，讲人话三条
-bash .agents/scripts/cadence.sh ship     # 收工：本批 diff + 刷开工快照 + 成本入账 + 审查判定 + 提交本批（不 push/部署）
-bash .agents/scripts/cadence.sh weekly   # 每周：W1–W6 审查 + 本周人肉清单 + 到期红线
-bash .agents/scripts/cadence.sh release  # 发布判定：欠着什么没发、要发哪几端（只判定，不部署）
-bash .agents/scripts/cadence.sh check    # 交付门禁一键：meta / align / tools / 防复发
-bash .agents/scripts/cadence.sh todo     # 待办：REVIEW 未修项一眼看全
+bash .agents/scripts/task-cadence.sh          # 节奏总览：上次巡检/收工/周审 + 欠账（秒回，开工第一眼）
+bash .agents/scripts/task-cadence.sh daily    # 每日巡检：自动从上次覆盖日补看到今天，讲人话三条
+bash .agents/scripts/task-cadence.sh ship     # 收工：本批 diff + 刷开工快照 + 成本入账 + 审查判定 + 提交本批（不 push/部署）
+bash .agents/scripts/task-cadence.sh weekly   # 每周：W1–W6 审查 + 本周人肉清单 + 到期红线
+bash .agents/scripts/task-cadence.sh release  # 发布判定：欠着什么没发、要发哪几端（只判定，不部署）
+bash .agents/scripts/task-cadence.sh check    # 交付门禁一键：meta / align / tools / 防复发
+bash .agents/scripts/task-cadence.sh todo     # 待办：REVIEW 未修项一眼看全
 
 # 单件工具（动作本体，需要深挖时用）：
 bash .agents/guards/ai-guard-prod.sh       # 只跑今天 + 近 7 天趋势（不带增量）
 bash .agents/guards/ai-guard-context.sh    # 开工自动跑：状态/未修项/待办/C0 使用心跳
-python3 .agents/scripts/check_deadlines.py      # 到期红线（≤30 天告警，≤7 天紧急）
+python3 .agents/scripts/task-check-deadlines.py      # 到期红线（≤30 天告警，≤7 天紧急）
 bash .agents/guards/ai-guard-unfixed.sh    # 未修问题全量（REVIEW + task-log + audits）
 ```
 
@@ -66,7 +66,7 @@ bash .agents/guards/ai-guard-unfixed.sh    # 未修问题全量（REVIEW + task-
 工程侧（定时机制，见 §六 现状）：
 - 每日 21:10 → 生产数据备份（`com.adai.adaios-backup`）
 - 每周一 09:00 → 每周审查 W1–W6（`com.adai.adaios-weekly-audit`）
-- 工作日 12:01 → 午间谷时任务壳（`com.adai.adaios-noon-task`）：12:00–14:00 是 DeepSeek **半价窗口**，壳自带峰谷闸门；要跑的东西放 `.agents/scripts/noon-task.d/`
+- 工作日 12:01 → 午间谷时任务壳（`com.adai.adaios-noon-task`）：12:00–14:00 是 DeepSeek **半价窗口**，壳自带峰谷闸门；要跑的东西放 `.agents/scripts/task-noon.d/`
 
 ---
 
@@ -75,11 +75,11 @@ bash .agents/guards/ai-guard-unfixed.sh    # 未修问题全量（REVIEW + task-
 ### 0. 先看一眼生产日报（每天，1 分钟；2026-09-16 起固定）
 
 > **你不用敲命令**——对 AI 说「**每日巡检**」四个字即可（触发协议见 `AGENTS.md` 规则 8）：
-> AI 跑 `cadence.sh daily`——**自动从上次巡检覆盖日补看到今天**（不再重复同一窗口），然后只用人话讲三件事：**用户之声 / 有没有新异常 / 心跳趋势**。
+> AI 跑 `task-cadence.sh daily`——**自动从上次巡检覆盖日补看到今天**（不再重复同一窗口），然后只用人话讲三件事：**用户之声 / 有没有新异常 / 心跳趋势**。
 > 想自己看时再手动跑：
 
 ```bash
-bash .agents/scripts/cadence.sh daily
+bash .agents/scripts/task-cadence.sh daily
 ```
 
 一条命令同时给两侧真相，**别看数字，看内容**：
@@ -123,8 +123,8 @@ bash .agents/scripts/cadence.sh daily
 
 | 事项 | 怎么做 | 为什么不能省 |
 |:--|:--|:--|
-| 看每周审查结论 | 看 `.agents/state/weekly-audit.log` 尾部 | W1–W5 是「防审查休眠」，FAIL 才是重点 |
-| TDX 盘后行情包同步 | admin「系统 → 维护」上传 .zip，或 `.agents/scripts/sync_tdx_data.sh <包>` | 本地 .day 决定前复权与买点特征精度；周级全量即可 |
+| 看每周审查结论 | 看 `.agents/state/task-weekly-audit.log` 尾部 | W1–W5 是「防审查休眠」，FAIL 才是重点 |
+| TDX 盘后行情包同步 | admin「系统 → 维护」上传 .zip，或 `.agents/scripts/data-sync-tdx.sh <包>` | 本地 .day 决定前复权与买点特征精度；周级全量即可 |
 | 未修项过一遍 | `bash .agents/guards/ai-guard-unfixed.sh` | REVIEW 有 30+ 条，没有人替你判断优先级 |
 | 盘一次账 | 交易页看账实自检 + 资金快照 | 期末对不上，越晚越难回溯 |
 
@@ -134,11 +134,11 @@ bash .agents/scripts/cadence.sh daily
 
 ## 四、到期红线（真正的「不能忘」）
 
-**单一事实源**：`.agents/scripts/check_deadlines.py` 顶部的 `DEADLINES`——日期只写一次，三个出口共用：
+**单一事实源**：`.agents/scripts/task-check-deadlines.py` 顶部的 `DEADLINES`——日期只写一次，三个出口共用：
 
 ```bash
-python3 .agents/scripts/check_deadlines.py                # 人工查看
-python3 .agents/scripts/check_deadlines.py --ics          # 生成日历文件（默认 ~/Desktop/adaios-deadlines.ics）
+python3 .agents/scripts/task-check-deadlines.py                # 人工查看
+python3 .agents/scripts/task-check-deadlines.py --ics          # 生成日历文件（默认 ~/Desktop/adaios-deadlines.ics）
 ```
 
 `--ics` 生成的事件**自带「提前 30 天 + 提前 7 天」两条提醒**，双击导入 macOS 日历即可——
@@ -155,7 +155,7 @@ python3 .agents/scripts/check_deadlines.py --ics          # 生成日历文件�
 | 2027-09-13 | iOS 描述文件到期 | ✅ |
 | **未登记** | **生产服务器续费日** | ⚠️ 连日期都不知道，建议先去腾讯云查 |
 
-> 到期日变更：只改 `check_deadlines.py`，然后重跑 `--ics` 覆盖导入（日历里旧的同名事件先删）。
+> 到期日变更：只改 `task-check-deadlines.py`，然后重跑 `--ics` 覆盖导入（日历里旧的同名事件先删）。
 
 ---
 
@@ -176,8 +176,8 @@ python3 .agents/scripts/check_deadlines.py --ics          # 生成日历文件�
 | # | 缺口 | 真相 | 处置 |
 |:--|:--|:--|:--|
 | 1 | 生产备份 26 天没跑（最后一次 2026-08-19） | ① 从未挂定时；② **脚本用 `root@` 登录，而生产只允许 `ubuntu@` → 脚本本身根本跑不通** | 改 `ubuntu@` + `sudo`；新增 `com.adai.adaios-backup` 每日 21:10 |
-| 2 | 每周审查疑似从未运行 | `crontab` 被 macOS TCC 拦截（2026-08-23 元审核标「⚠️ 待确认」），`/tmp/weekly-audit.log` 不存在 | 新增 `com.adai.adaios-weekly-audit`（launchd 绕开 TCC），日志改 `state/weekly-audit.log` |
-| 3 | 到期日只活在文档里 | 公安备案 16 天后到期，此前连 task-log / 快照都没有 | 新增 `.agents/scripts/check_deadlines.py`（§四）+ 日历导入 + weekly-audit **W6** 每周播报 |
+| 2 | 每周审查疑似从未运行 | `crontab` 被 macOS TCC 拦截（2026-08-23 元审核标「⚠️ 待确认」），`/tmp/task-weekly-audit.log` 不存在 | 新增 `com.adai.adaios-weekly-audit`（launchd 绕开 TCC），日志改 `state/task-weekly-audit.log` |
+| 3 | 到期日只活在文档里 | 公安备案 16 天后到期，此前连 task-log / 快照都没有 | 新增 `.agents/scripts/task-check-deadlines.py`（§四）+ 日历导入 + task-weekly-audit **W6** 每周播报 |
 
 > **为什么不直接自动续费/自动备案**：B8「外向动作默认不做」——付钱、提交备案必须人确认。
 > 自动化只负责**准时叫人**，不代替你拍板。

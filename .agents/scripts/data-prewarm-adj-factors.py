@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-prewarm-adj-factors.py — 全 A 复权因子预热（2026-08-30 建议 #7，可选）
+data-prewarm-adj-factors.py — 全 A 复权因子预热（2026-08-30 建议 #7，可选）
 把全 A 股票的除权因子预先拉取到 data/market/adj/factors/（对齐 AdjFactorRepository
 的 FactorFile JSON 格式）——减少用户标注时首次拉取的网络等待。
 
@@ -9,7 +9,7 @@ prewarm-adj-factors.py — 全 A 复权因子预热（2026-08-30 建议 #7，可
    默认分批 + 限速（每批 50 只 + 0.5s 间隔 → 约 2-3 分钟）。
    懒加载（标注哪只拉哪只）已覆盖主要场景；预热仅用于「想提前备好」时。
 
-用法: python3 ai-engineering/09-.agents/scripts/prewarm-adj-factors.py [最大只数，默认 2000]
+用法: python3 ai-engineering/09-.agents/scripts/data-prewarm-adj-factors.py [最大只数，默认 2000]
 """
 import json
 import os

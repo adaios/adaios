@@ -76,7 +76,7 @@ out['deployed'] = sh('sudo cat /opt/adaios/backend/DEPLOYED 2>/dev/null').strip(
 # 都发了，admin 还停在 09-08、落后整整 8 天，而没有任何地方看得出来）。摆在这里，谁落后一眼可见。
 # P2-工程9（2026-09-23）：**只看时间戳会骗人**——admin 自 09-17 起就没改过，产物当然停在 09-17，
 # 却每次报红（告警疲劳）；而 09-23 app 侧明明改了（`4c303b9` 行情横幅），app-web 却没重建、
-# 真落后 6 天，反倒淹在噪音里。故改为「按发版清单核对」：deploy-gate 部署时把 `artifacts=` 写进
+# 真落后 6 天，反倒淹在噪音里。故改为「按发版清单核对」：code-deploy-gate 部署时把 `artifacts=` 写进
 # 生产 DEPLOYED，这里只对「本批应当更新」的端判落后，其余如实标「本批未含」。
 # 采集格式：name|显示时间|epoch（epoch 用于与部署时刻比对）。
 out['artifacts'] = sh(
@@ -331,7 +331,7 @@ else:
     print("  生产代码 unknown（还没有 backend/DEPLOYED——这是加上部署记录之前的版本）")
 if d.get('artifacts'):
     # P2-工程9（2026-09-23）：按**发版清单**核对（清单来自 DEPLOYED 的 artifacts= 行，
-    # 由 deploy-gate 部署前按「上次部署 commit → HEAD」的改动路径算出）：
+    # 由 code-deploy-gate 部署前按「上次部署 commit → HEAD」的改动路径算出）：
     #   清单内的端 → 产物时间必须不早于部署时刻（容忍 2 小时构建差），否则 = 漏发嫌疑；
     #   清单外的端 → 本批没含它的改动，**不判落后**（旧版一律报红，admin 白挨了一个月）。
     _expect = set((_f.get('artifacts') or 'backend').split(',')) if _dep else {'backend'}
@@ -506,11 +506,11 @@ check_expiry "iOS 描述文件 / 付费账号" "2027-09-13" "到期当天 App �
 check_expiry "域名 adaiadai.com" "2027-01-30" "DNSPod 续费"
 echo
 
-# ── 游标记账（2026-09-26「默契」机制，见 process/cadence.md）──────────────────
-# 无论谁跑（人直接跑，或 cadence.sh daily 调度）都记下「已巡检到哪天」，
+# ── 游标记账（2026-09-26「默契」机制，见 process/task-cadence.md）──────────────────
+# 无论谁跑（人直接跑，或 task-cadence.sh daily 调度）都记下「已巡检到哪天」，
 # 于是下次「每日巡检」能自动接着走，而不是永远重复同一个窗口。
 #   · 只前进不后退（cadence_advance_day），补看历史不会把游标拖回去
-#   · 带 --date 的补看**不记账**（补看 ≠ 覆盖今天），游标由 cadence.sh 统一推进
+#   · 带 --date 的补看**不记账**（补看 ≠ 覆盖今天），游标由 task-cadence.sh 统一推进
 #   · 全程失败静默：巡检是主角，记账是附注，不能因为记账拖垮巡检
 if [ "$JSON_ONLY" != "1" ] && [ -z "$ONLY_DATE" ]; then
     if source "$(dirname "$0")/../lib/cadence-lib.sh" 2>/dev/null; then

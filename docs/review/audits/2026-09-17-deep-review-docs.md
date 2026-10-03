@@ -166,7 +166,7 @@ tags: [review, docs, audit, api-spec, honesty]
 - **未验证 web/app/admin 的具体代码改动**（本批未触三端逻辑；app 侧 357→359 只核了数量）。
 - **未做 iOS 侧实测**（无 Xcode/flutter 运行）：`Xcode` 重签、Keychain 跨 target 实际可读性、真实 401 迁移路径均未验证。
 - **未连生产**：`ai-guard-prod.sh` 倒数三项、`P2-工程5` 的 `deploy.sh` 真实执行、公安备案/描述文件真实到期日均未取证（P3-6 属待验证）。
-- **未审 `bc6656b` 的脚本内容**（`noon-task.sh` / `setup-launchd.sh` / `ai-guard-prod.sh` 的午间部分），只看了它对文档治理的影响。
+- **未审 `bc6656b` 的脚本内容**（`task-noon.sh` / `ai-setup-launchd.sh` / `ai-guard-prod.sh` 的午间部分），只看了它对文档治理的影响。
 - **未逐条核 REVIEW「已修复区」历史 ✅**（只核本批 14 条 + task-log #149）。
 - **未核 `docs/architecture/api-spec.md` 全量 2732 行的存量失真**（只针对本批 hunk 及其直接上下文）。
 

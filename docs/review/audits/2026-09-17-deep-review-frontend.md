@@ -189,7 +189,7 @@ tags: [review, frontend, audit]
 
 1. **`POST /learn/cards/restore-origin` 三端零入口**（本批新增，P2-learn21 的修复）：web / app / admin grep 均 0 命中；用户遇到「`origin` 被别处工具抹掉 → 卡静默变只读」时，前端只能看到只读说明（app `learn_page.dart:1107`、web `learn_page.dart:884`），**没有自助恢复入口**，只能手打 API。若是有意「后端先落地、前端随后」，建议在 change-log / REVIEW 里注明「暂无前端入口」，避免读者以为用户可达。
 2. **`POST /learn/cards/repages` 同样零前端调用**（2026-09-15 加的端点，本批未动）——同上，仅作登记。
-3. **范围外 commit `bc6656b`（另一会话，午间谷时任务壳）**：非前端，我未做深入审查。仅两点如实转述：① 该 commit message **自曝** `.agents/scripts/setup-launchd.sh` 的 `': > 日志'` 实为截断，已把 `backup.log`(2019B) 与 `weekly-audit.log`(4656B) 清零且**无法恢复**（`*.log` 被 gitignore，无副本）—— 属真实的一次性数据丢失（本地日志），已在提交信息里声明，是否需要单独出表由你定；② `.agents/scripts/noon-task.sh` 在时区 ≠ +0800 时只打印告警仍按本机钟继续跑峰谷闸门（`MIN_LEFT` 固定按 14:00 计算），属「提醒而非阻止」的设计取舍。
+3. **范围外 commit `bc6656b`（另一会话，午间谷时任务壳）**：非前端，我未做深入审查。仅两点如实转述：① 该 commit message **自曝** `.agents/scripts/ai-setup-launchd.sh` 的 `': > 日志'` 实为截断，已把 `backup.log`(2019B) 与 `task-weekly-audit.log`(4656B) 清零且**无法恢复**（`*.log` 被 gitignore，无副本）—— 属真实的一次性数据丢失（本地日志），已在提交信息里声明，是否需要单独出表由你定；② `.agents/scripts/task-noon.sh` 在时区 ≠ +0800 时只打印告警仍按本机钟继续跑峰谷闸门（`MIN_LEFT` 固定按 14:00 计算），属「提醒而非阻止」的设计取舍。
 4. **跨 target 契约清单未同步**：`ShareBridge.swift:57` 已把 access group 记为「跨 target 契约（**第五处**）」，而 `apps/adai-app/AGENTS.md:149` 仍只列「四处必须逐字一致」（App Group id + 键名 × 4 文件），**没有**把新增的 `keychain-access-groups` / `service` / `fallbackTeamId` / `teamIdentifier` 取法写进去。将来排查「扩展说没拿到钥匙」的人按 AGENTS.md 核对四处会**正好漏掉本次这批**。建议把 AGENTS.md 那一行扩成五处（纯文档，成本一行）。
 
 ## 八、覆盖面声明
@@ -204,7 +204,7 @@ tags: [review, frontend, audit]
 **未覆盖 / 未做**：
 - **真机验证**：Keychain 的实际读写、老装机升级迁移、分享扩展提交、通知点击高亮均**未在真机/模拟器上跑过**（我只做了静态与产物级的核实）；`flutter build ios` 本批**未重跑**（用的是 9-16 23:49 的既有产物做描述文件取证）。
 - **Swift 单测**：项目没有 iOS 单测 target，`ShareKeychain` 的迁移/失败分支只有逻辑推演，没有可执行证据；`ShareViewController` 的网络分支同样未跑。
-- DeepSeek/后端、`ai-engineering/` 脚本、`bc6656b` 的实现细节（我只读了 `noon-task.sh` 全文与 `setup-launchd.sh` 的 diff 头部）。
+- DeepSeek/后端、`ai-engineering/` 脚本、`bc6656b` 的实现细节（我只读了 `task-noon.sh` 全文与 `ai-setup-launchd.sh` 的 diff 头部）。
 - **未验证**：`SecItemAdd` 在真实失败模式（锁屏/首次解锁前/磁盘满）下的行为；`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` 在 App 后台被唤醒时是否可能 `errSecInteractionNotAllowed`。
 
 ## 九、不确定项（待验证 + 验证方法）

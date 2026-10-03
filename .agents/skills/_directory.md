@@ -24,14 +24,14 @@ tags: [meta, directory]
 | 方向 | 对象 | 说明 |
 |:--|:--|:--|
 | 被依赖 | 工具出口 | `.dsh/skills` · `.claude/skills` · `.qoder/skills`（软链）+ `.agents/skills`（**本目录本身**） |
-| 工具 | `../scripts/link-skills.sh` | 注册到各工具出口 |
+| 工具 | `../scripts/ai-link-skills.sh` | 注册到各工具出口 |
 
 ## 触发关系
 
 | 时机 | 谁触发 | 读 / 执行什么 |
 |:--|:--|:--|
 | 用户直触发 | 用户在工具里调用技能名 | 对应 SKILL.md |
-| 注册时 | `link-skills.sh` | `REGISTER` 清单内的技能 |
+| 注册时 | `ai-link-skills.sh` | `REGISTER` 清单内的技能 |
 
 ## 约束
 
@@ -41,8 +41,8 @@ tags: [meta, directory]
 
 ## 守卫（谁保证这里不腐烂）
 
-- `ai-guard-skills`（S3/S4/S5/S7）· `link-skills.sh --check`
+- `ai-guard-skills`（S3/S4/S5/S7）· `ai-link-skills.sh --check`
 
 ## 维护动作
 
-1. 新增技能 → 建 `<name>/SKILL.md` → 若是直触发，加进 `scripts/link-skills.sh` 的 `REGISTER` → 补 `_index.md`
+1. 新增技能 → 建 `<name>/SKILL.md` → 若是直触发，加进 `scripts/ai-link-skills.sh` 的 `REGISTER` → 补 `_index.md`

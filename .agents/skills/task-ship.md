@@ -37,7 +37,7 @@ tags: [skill, build, ship]
 ## 约束与规则
 
 - 反模式勿重演（2026-08-16 反思）：功能跑通=完成 / 测试后置 / gradle 绿=安全 / 不翻清单凭感觉写
-- 部署是外向动作（B8）：deploy-gate 由人确认触发，本技能不自动部署
+- 部署是外向动作（B8）：code-deploy-gate 由人确认触发，本技能不自动部署
 
 ## 输出要求
 
@@ -48,4 +48,4 @@ tags: [skill, build, ship]
 
 - 权威流程：`../process/ship.md`
 - 元治理：`../ai-guard-meta.sh`；对齐：`../ai-guard-align.sh`
-- 沉淀：`../ai-guard-sediment.sh`；部署门禁：`../deploy-gate.sh`；审查：`../process/review.md`
+- 沉淀：`../ai-guard-sediment.sh`；部署门禁：`../code-deploy-gate.sh`；审查：`../process/review.md`

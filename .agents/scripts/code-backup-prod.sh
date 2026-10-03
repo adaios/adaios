@@ -9,7 +9,7 @@
 # 备份内容：
 #   - data/（个人数据：records/memory/ai-logs/identity/trading/learn/index/accounts）— 不可重建
 #     ⚠️ 快备**排除 data/market**（2026-09-14 实测 315MB / data 总 343MB）：那是全 A .day 行情包，
-#        属全局公共资产、非用户隐私，且 admin「系统→维护」可重新上传（.agents/scripts/sync_tdx_data.sh 同源）。
+#        属全局公共资产、非用户隐私，且 admin「系统→维护」可重新上传（.agents/scripts/data-sync-tdx.sh 同源）。
 #        含它会让「快备」从秒级变成 4~5 分钟、14 天占 3GB+。真正不可重建的个人数据只有 ~28MB。
 #        需要连行情一起备 → 用 --full。
 #   - os/（Domain OS 知识资产：trading-engine/life-os/project-os）— git 可重建但含服务器运行时副本
@@ -26,8 +26,8 @@
 # 安全：备份在仓库外（$HOME/backups/adaios-prod/），因含密钥，绝不进 git。
 #
 # 用法：
-#   bash .agents/scripts/backup_prod.sh            # 快备（每天定期用）
-#   bash .agents/scripts/backup_prod.sh --full     # 全量（首次/含前端产物）
+#   bash .agents/scripts/code-backup-prod.sh            # 快备（每天定期用）
+#   bash .agents/scripts/code-backup-prod.sh --full     # 全量（首次/含前端产物）
 #
 # 免密前提（勿改）：服务器只允许 **ubuntu@** + ~/.ssh/id_ed25519 登录，读 /opt/adaios 需 sudo。
 #   （2026-09-14 实测：root@ 登录被拒 → 脚本此前完全跑不通；这是「26 天没备份」的第二个死因）
@@ -77,7 +77,7 @@ LOCAL_MD5="$(md5 -q "$BACKUP_DIR/adaios-prod-$STAMP.tar.gz")"
 if [ "$REMOTE_MD5" != "$LOCAL_MD5" ]; then
   echo "!! checksum 不一致（本地 ${LOCAL_MD5} ≠ 服务器 ${REMOTE_MD5}），备份中止"
   # 关键：删掉这次的不完整副本。否则「失败的备份」会以「一份新鲜备份」的样子躺在
-  # ~/backups 里，新鲜度自检（setup-launchd.sh --check / ai-guard-tools T7）反而报绿灯——
+  # ~/backups 里，新鲜度自检（ai-setup-launchd.sh --check / ai-guard-tools T7）反而报绿灯——
   # 那是比「没备份」更危险的假信号（2026-09-14 实测踩到）。
   rm -rf "$BACKUP_DIR"
   echo "   已移除不完整副本: ${BACKUP_DIR}"

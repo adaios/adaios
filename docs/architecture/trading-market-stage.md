@@ -100,4 +100,4 @@ data/{userId}/trading/market-stage.json  ← 用户私有，File First
 2. 本地数据预置 `market-stage.json` = bear
 3. Web/App 双端 UI + 测试
 4. 文档登记：api-spec v3.41（已写）/ feature-reference（已写）/ 本方案 / status.md / change-log
-5. 生产上线（deploy-gate）：后端 jar + web 重建 + 生产 `market-stage.json` 预置 bear + smoke
+5. 生产上线（code-deploy-gate）：后端 jar + web 重建 + 生产 `market-stage.json` 预置 bear + smoke

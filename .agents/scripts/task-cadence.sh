@@ -1,28 +1,28 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────
-# 协作默契执行器（cadence）— 2026-09-26 用户「我们需要某种默契」落地
+# 协作默契执行器（task-cadence）— 2026-09-26 用户「我们需要某种默契」落地
 #
 # 一句话：把「每日巡检 / 收工 / 每周 / 待办 / 发布」五件事，从**靠人记**变成
 #         **有游标、能接着上次走、AI 自己读得到**。
 #
-# 为什么不是又一个脚本（此前已有 ai-guard-prod / weekly-audit / ship）：
+# 为什么不是又一个脚本（此前已有 ai-guard-prod / task-weekly-audit / ship）：
 #   那些是**动作**，缺的是**记忆**——上次巡检看到哪天、上次收工是哪个 commit。
 #   本脚本 = 游标（lib/cadence-lib.sh）+ 五件事的调度，把散落的动作串成节奏。
 #   动作本体不变，本脚本只负责「从上次到现在」+「做完记账」。
 #
 # 用法:
-#   bash .agents/scripts/cadence.sh                 # 默契状态总览（开工第一眼，秒回）
-#   bash .agents/scripts/cadence.sh daily           # 每日巡检：自动补看「上次巡检 → 今天」
-#   bash .agents/scripts/cadence.sh ship            # 收工：本批 diff + 刷快照 + 成本入账
-#   bash .agents/scripts/cadence.sh release [--json]# 发版判定：现在欠着什么没发（只读，不部署）
-#   bash .agents/scripts/cadence.sh check           # 交付门禁一键（meta/align/tools/防复发）
-#   bash .agents/scripts/cadence.sh weekly          # 每周：跑每周审查 + 本周人肉清单
-#   bash .agents/scripts/cadence.sh todo            # 当前待办（REVIEW 未修项）
-#   bash .agents/scripts/cadence.sh cost [--record] # 成本：按天/会话算钱（--record 入账）
-#   bash .agents/scripts/cadence.sh mark <key> [日] # 手工补记游标（inspection|ship|weekly|release）
+#   bash .agents/scripts/task-cadence.sh                 # 默契状态总览（开工第一眼，秒回）
+#   bash .agents/scripts/task-cadence.sh daily           # 每日巡检：自动补看「上次巡检 → 今天」
+#   bash .agents/scripts/task-cadence.sh ship            # 收工：本批 diff + 刷快照 + 成本入账
+#   bash .agents/scripts/task-cadence.sh release [--json]# 发版判定：现在欠着什么没发（只读，不部署）
+#   bash .agents/scripts/task-cadence.sh check           # 交付门禁一键（meta/align/tools/防复发）
+#   bash .agents/scripts/task-cadence.sh weekly          # 每周：跑每周审查 + 本周人肉清单
+#   bash .agents/scripts/task-cadence.sh todo            # 当前待办（REVIEW 未修项）
+#   bash .agents/scripts/task-cadence.sh cost [--record] # 成本：按天/会话算钱（--record 入账）
+#   bash .agents/scripts/task-cadence.sh mark <key> [日] # 手工补记游标（inspection|ship|weekly|release）
 #
 # 边界：**不自动部署、不自动 push**——发布只做判定，执行须用户点头（AGENTS.md 规则 11）。
-# 触发协议（用户说的话 → 跑什么）见 .agents/process/cadence.md 与 AGENTS.md 规则 8–11。
+# 触发协议（用户说的话 → 跑什么）见 .agents/process/task-cadence.md 与 AGENTS.md 规则 8–11。
 # ─────────────────────────────────────────────────────────────
 set -uo pipefail
 
@@ -54,8 +54,8 @@ if [ -n "${MAIN_ROOT}" ] && [ "${ROOT}" != "${MAIN_ROOT}" ]; then
         echo "   主仓库：${MAIN_ROOT}"
         echo "   原因：.agents/state/ 在 worktree 里是 link 主仓库的，而 ${CMD} 会**按当前 HEAD**"
         echo "         写收工基线 → 会把主仓库的基线推到本分支的 HEAD（全局游标错乱）。"
-        echo "   处置：回主仓库跑 —— cd ${MAIN_ROOT} && bash .agents/scripts/cadence.sh ${CMD}"
-        echo "   若只想看本分支差异：git log / git status / git diff（无需 cadence）。"
+        echo "   处置：回主仓库跑 —— cd ${MAIN_ROOT} && bash .agents/scripts/task-cadence.sh ${CMD}"
+        echo "   若只想看本分支差异：git log / git status / git diff（无需 task-cadence）。"
       } >&2
       exit 2
       ;;
@@ -114,28 +114,28 @@ cmd_status() {
     if [ -n "$rel_at" ]; then
         printf '  %-10s %s\n' "发版体检" "上次 ${rel_at:0:16} · 生产 ${rel_prod:-?} · 欠发 ${rel_need:-?}"
     else
-        printf '  %-10s %s\n' "发版体检" "${YEL}未做过 → bash .agents/scripts/cadence.sh release${RST}"
+        printf '  %-10s %s\n' "发版体检" "${YEL}未做过 → bash .agents/scripts/task-cadence.sh release${RST}"
     fi
 
     # 欠账（这才是「默契」要防的东西：别让任何一条静默过期）
     local owe=0
     if [ -z "$insp" ]; then
-        printf '  %s欠账：尚未巡检过 → %sbash .agents/scripts/cadence.sh daily%s\n' "$YEL" "$CYN" "$RST"; owe=1
+        printf '  %s欠账：尚未巡检过 → %sbash .agents/scripts/task-cadence.sh daily%s\n' "$YEL" "$CYN" "$RST"; owe=1
     elif [ "$insp" != "$today" ]; then
-        printf '  %s欠账：上次巡检在 %s，欠 %s 天 → %sbash .agents/scripts/cadence.sh daily%s\n' \
+        printf '  %s欠账：上次巡检在 %s，欠 %s 天 → %sbash .agents/scripts/task-cadence.sh daily%s\n' \
             "$YEL" "$insp" "$(days_between "$insp" "$today" | wc -l | tr -d ' ')" "$CYN" "$RST"; owe=1
     fi
     [ "$owe" = 0 ] && printf '  %s✅ 今日已巡检，无欠账%s\n' "$GRN" "$RST"
 
     hr "到期红线（30 天内告警）"
-    python3 .agents/scripts/check_deadlines.py --one-line 2>/dev/null | sed 's/^/  /' \
-        || printf '  %s（取不到 → python3 .agents/scripts/check_deadlines.py）%s\n' "$DIM" "$RST"
+    python3 .agents/scripts/task-check-deadlines.py --one-line 2>/dev/null | sed 's/^/  /' \
+        || printf '  %s（取不到 → python3 .agents/scripts/task-check-deadlines.py）%s\n' "$DIM" "$RST"
 
     hr "自动任务（LaunchAgent）"
     local pair name logf age
     for pair in "每日备份:.agents/state/backup.log" \
-                "每周审查:.agents/state/weekly-audit.log" \
-                "午间谷时:.agents/state/noon-task.log"; do
+                "每周审查:.agents/state/task-weekly-audit.log" \
+                "午间谷时:.agents/state/task-noon.log"; do
         name="${pair%%:*}"; logf="${pair#*:}"
         if [ -f "$logf" ]; then
             age=$(( ( $(date +%s) - $(stat -f %m "$logf" 2>/dev/null || echo 0) ) / 86400 ))
@@ -146,7 +146,7 @@ cmd_status() {
     done
 
     hr "当前待办"
-    printf '  %s（REVIEW 未修项，跑 %sbash .agents/scripts/cadence.sh todo%s 看全）\n' "$DIM" "$CYN" "$RST"
+    printf '  %s（REVIEW 未修项，跑 %sbash .agents/scripts/task-cadence.sh todo%s 看全）\n' "$DIM" "$CYN" "$RST"
 }
 
 # ── daily：每日巡检（增量：上次巡检 → 今天）────────────────────────────
@@ -260,12 +260,12 @@ cmd_ship() {
     # 2026-10-03：收工默认含提交（规则 9）——基线必须落在**提交之后**的 commit 上，否则
     # 下次收工会把本批已提交的内容再算一遍（同一批显示两遍）。本命令自身跑在提交之前，
     # 故此处只提示；提交完补一句即对齐（不自动做：提交由 AI 在审查判定之后执行）。
-    printf '  %s↳ 本批提交后补推基线：bash .agents/scripts/cadence.sh mark ship%s\n' "$DIM" "$RST"
+    printf '  %s↳ 本批提交后补推基线：bash .agents/scripts/task-cadence.sh mark ship%s\n' "$DIM" "$RST"
 }
 
 # ── release：发版判定（只读；**不部署**）──────────────────────────────
 # 用户 2026-09-26：「不主动部署，通过部署动作一键触发，确定是否更新发布」。
-# 本命令只回答「现在欠着什么没发 + 要发哪几端」；真正部署仍走 deploy-gate.sh（最硬闸门）
+# 本命令只回答「现在欠着什么没发 + 要发哪几端」；真正部署仍走 code-deploy-gate.sh（最硬闸门）
 # 且必须用户点头（AGENTS.md 规则 11 / 边界 B8）。判定与部署的分工详见 ai-guard-release.sh 头注。
 cmd_release() {
     if [ "${1:-}" = "--json" ]; then
@@ -321,7 +321,7 @@ PY
     cadence_set release.need "$(printf '%s' "$raw" | python3 -c 'import json,sys; print(",".join(json.load(sys.stdin).get("needRelease") or []) or "none")')"
     cadence_set release.prod_commit "$(printf '%s' "$raw" | python3 -c 'import json,sys; print(((json.load(sys.stdin).get("prod") or {}).get("commit") or "?")[:8])')"
     hr "边界"
-    printf '  %s本命令只判定、不部署。要发 → deploy-gate.sh（门禁 + smoke）+ 你点头（规则 11）%s\n' "$DIM" "$RST"
+    printf '  %s本命令只判定、不部署。要发 → code-deploy-gate.sh（门禁 + smoke）+ 你点头（规则 11）%s\n' "$DIM" "$RST"
 }
 
 # ── check：交付门禁一键（ship.md §4/§5 三件套 + 防复发）────────────────
@@ -360,14 +360,14 @@ cmd_cost() {
 # ── weekly：每周（跑审查 + 本周清单）──────────────────────────────────
 cmd_weekly() {
     printf '%s═══ 每周（%s）═══%s\n' "$BOLD" "$(date '+%F %H:%M')" "$RST"
-    bash .agents/scripts/weekly-audit.sh
+    bash .agents/scripts/task-weekly-audit.sh
     cadence_set weekly.last_at "$(date '+%Y-%m-%dT%H:%M:%S%z')"
     cadence_set weekly.week "$(date '+%G-W%V')"
     hr "本周你还要亲自做的（routine.md §三）"
     printf '  · TDX 盘后行情包同步（admin「系统 → 维护」上传 .zip）\n'
     printf '  · 盘一次账：交易页账实自检 + 资金快照\n'
     printf '  · 未修项过一遍：bash .agents/guards/ai-guard-unfixed.sh\n'
-    printf '  · 到期红线：python3 .agents/scripts/check_deadlines.py\n'
+    printf '  · 到期红线：python3 .agents/scripts/task-check-deadlines.py\n'
 }
 
 # ── todo：当前待办 ─────────────────────────────────────────────────────
@@ -393,7 +393,7 @@ cmd_mark() {
         shipment|ship) cadence_set ship.head "${val:-$(git rev-parse --short HEAD)}" ;;
         weekly) cadence_set weekly.week "${val:-$(date '+%G-W%V')}" ;;
         release) cadence_set release.prod_commit "${val:-$(git rev-parse --short HEAD)}" ;;
-        *) printf '用法: cadence.sh mark <inspection|ship|weekly|release> [值]\n' >&2; exit 2 ;;
+        *) printf '用法: task-cadence.sh mark <inspection|ship|weekly|release> [值]\n' >&2; exit 2 ;;
     esac
     hr "游标"
     cadence_json

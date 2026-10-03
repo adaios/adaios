@@ -222,10 +222,10 @@ cd services/adai-core
 | `ffmpeg` | 生产服务器需 `sudo apt install -y ffmpeg`（B站音频是 fMP4，必须转 16k 单声道 mp3 才能送云端 ASR）| 无字幕视频走不通，人话提示「服务器上还没装转码工具」；**有字幕视频与文章不受影响** |
 | `DASHSCOPE_API_KEY` | `.env` 补阿里云百炼凭证（fun-asr 转写）| 转写链路整体不可用（同样 fail-visible 提示缺凭证）| **（2026-09-13 已配：凭证不入库、`.env` 权限 640；配好后重启服务，`GET /learn/digest/quota` 应报 `asrAvailable:true`）**
 | `ADAI_BILIBILI_COOKIE`（**可选**）| B站 登录态 Cookie（至少 `SESSDATA=...`）——**未登录时 B站 字幕接口一律返回空**（2026-09-12 实测 6 个视频全空），于是「字幕优先、免费」这条省钱路径实际走不到，每个视频都落进付费转写。配了 Cookie 才有机会拿到 AI 字幕 → 省转写费 | 不配也能用，但视频基本都要转写；**注意隐私**：这等于把你的 B站 登录态放在服务器上，按需开启、随时可撤 |
-> **跑部署门禁的 smoke**：`deploy-gate.sh` 的 GATE-AFTER 从**本机环境变量**读 `ADAI_SMOKE_ACCOUNT` / `ADAI_SMOKE_PASSWORD`（不是服务器 `.env`）。**2026-09-15 起 smoke 走真实生产入口 `https://api.adaiadai.com`**（生产 8080 已绑回环，不再有 IP:8080 可打；顺带把 Caddy + HTTPS 链路也验在内），脚本内已自行 `export no_proxy=api.adaiadai.com` 绕开本机代理。完整可用的跑法：
+> **跑部署门禁的 smoke**：`code-deploy-gate.sh` 的 GATE-AFTER 从**本机环境变量**读 `ADAI_SMOKE_ACCOUNT` / `ADAI_SMOKE_PASSWORD`（不是服务器 `.env`）。**2026-09-15 起 smoke 走真实生产入口 `https://api.adaiadai.com`**（生产 8080 已绑回环，不再有 IP:8080 可打；顺带把 Caddy + HTTPS 链路也验在内），脚本内已自行 `export no_proxy=api.adaiadai.com` 绕开本机代理。完整可用的跑法：
 > ```bash
 > export ADAI_SMOKE_ACCOUNT=adai ADAI_SMOKE_PASSWORD=…
-> bash .agents/scripts/deploy-gate.sh 82.156.111.146 services/adai-core/build/libs/adai-core-0.0.1-SNAPSHOT.jar
+> bash .agents/scripts/code-deploy-gate.sh 82.156.111.146 services/adai-core/build/libs/adai-core-0.0.1-SNAPSHOT.jar
 > ```
 > （`ADAI_GATE_BASE_URL` 可覆盖 BASE，用于打预发/其他环境。历史跑法 `no_proxy=82.156.111.146` 打 `IP:8080` 已随端口收敛失效。）
 | 月度转写配额 | `adai.learn.asr.month-quota-seconds`（**默认 `108000` = 30 小时**，用户 2026-09-13 拍板：前 10 小时走云端免费额度=0 元，超出部分按 0.288 元/小时，最坏 ≈5.76 元/月；想完全不花钱就调回 `36000`）| 用满即拒绝并说明剩余额度，不会静默花钱 |
@@ -235,7 +235,7 @@ cd services/adai-core
 | 防意外扣费（建议在阿里云控制台做）| 百炼控制台 → 免费额度页 → 为目标 ASR 模型开启**免费额度用完即停**（额度耗尽返回 403 `AllocationQuota.FreeTierOnly`，不再按量扣费）| 不开则额度用尽后**自动按量付费**（2026-09-06 那笔 fun-asr 费用就是这种情况）|
 | **单实例部署（硬约束）** | **必须单实例/单进程**：learn 的消化任务态（`jobs`）是**进程内 Map**、转写配额靠 **JVM 内** per-user 条带锁做的读-改-写原子 | **多实例/同机多进程会超卖**：同一素材可能被转写两次（重复花钱）、月度额度可能被突破（REVIEW P2-learn18）。将来要横向扩容，必须先把任务态与账本移出进程（或引入分布式锁）|
 
-> learn 的产物是文件（`data/{userId}/learn/{type}/{topic}/NN-{slug}.md` + 主题 `README.md` + `_raw/`），**与 Mac 侧 DSH 技能 `data-learn-writer` 同契约**——备份/迁移只需拷 `data/`（`backup_prod.sh` 已覆盖）。
+> learn 的产物是文件（`data/{userId}/learn/{type}/{topic}/NN-{slug}.md` + 主题 `README.md` + `_raw/`），**与 Mac 侧 DSH 技能 `data-learn-writer` 同契约**——备份/迁移只需拷 `data/`（`code-backup-prod.sh` 已覆盖）。
 
 ## 7. 多账号数据迁移（v1.0.0）
 

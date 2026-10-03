@@ -217,7 +217,7 @@ R1–R4 是**机制层**根因。再往上一层，有一对更根本的错配�
 3. **守恒用例**：任一笔 BUY/SELL 后断言 `Δassets = −手续费`（I2）。
 4. **T+1 用例**：当日卖出后 `available` 增而 `withdrawable` 不变；次日结算后两者相等；当日买入量不可卖。
 5. **幂等用例**：同 `Idempotency-Key` 重复提交 → 只落一笔。
-6. **回归**：`/trading/integrity`、`pnl-periods`、`equity-curve`、批次视图口径不变（后端全量测试全绿 + deploy-gate smoke）。
+6. **回归**：`/trading/integrity`、`pnl-periods`、`equity-curve`、批次视图口径不变（后端全量测试全绿 + code-deploy-gate smoke）。
 
 ---
 
@@ -229,7 +229,7 @@ R1–R4 是**机制层**根因。再往上一层，有一对更根本的错配�
 | 对账差额「归不了类」 | 股息之外可能还有未知变动，硬归类＝编造；且 13 笔股息痕迹已被清理（存量盘点清单 B），历史区间无法完全归因 | 保留「未知」类并如实显示；历史区间标注「该期间存在已丢失的股息记录」，用户可人工备注 |
 | T+1 结算任务 | 交易日历/节假日依赖已有 `isTradingDayStrict`；漏跑会导致可取卡住 | 结算幂等 + 启动时补算 + `integrity` 报「待结算未结转」 |
 | 存量脏数据 | 现有 3 笔幽灵流水、负现金历史 | 批 3 提供**只读报告 + 人工确认**的清理路径，不自动改历史 |
-| 改动面 | 触及账本核心路径（`recordTradeInternal` 被 4 个入口复用） | 分批 + 每批独立 deploy-gate + 黄金回放夹具 |
+| 改动面 | 触及账本核心路径（`recordTradeInternal` 被 4 个入口复用） | 分批 + 每批独立 code-deploy-gate + 黄金回放夹具 |
 
 ---
 

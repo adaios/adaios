@@ -33,7 +33,7 @@ tags: [review, audit, ai-engineering, meta]
 | P1-6 | README 引用不存在的 ai-engineering-method/ | 证实；**M4 白名单显式固化错误假设** | ⚠️ 待修（删行或改指 method/）|
 | P2-1 | audit.md 归口机制过时 | 部分成立（弱化）：audit.md 内部 58 行 vs 59 行自相矛盾 | ⚠️ 待修 |
 | P2-2 | .claude 残留旧 IP 49.235.37.220 ×5 | 证实；allowlist 是对已下线服务器免确认放行 | ⚠️ 待修（本机手动清）|
-| P2-3 | weekly-audit cron 未挂载 | 部分成立（无法证实）：macOS TCC 拦截 crontab，无任何挂载证据 | ⚠️ 待确认 |
+| P2-3 | task-weekly-audit cron 未挂载 | 部分成立（无法证实）：macOS TCC 拦截 crontab，无任何挂载证据 | ⚠️ 待确认 |
 | P2-4 | frontmatter「9 字段」实为 10 | 证实；命中数字漂移复发信号 | ⚠️ 待修 |
 | P2-5 | AGENTS.md updated 滞后 | 证实；--fix 会把 updated 刷成今天，抹掉审计痕迹 | ⚠️ 待修（设计取舍）|
 
@@ -47,7 +47,7 @@ tags: [review, audit, ai-engineering, meta]
 | P1-A1 | P1 | 隐私闸门只查路径前缀不查内容；`.txt/.json` 类型在触发条件外直接 exit 0 | ✅ 已修（前移+gitignore 复核，实证拦截）|
 | P1-A2 | P1 | cost-log `--record` 覆盖式快照，中途记账锁死当日 | ✅ 已修（改追加+recorded_at）|
 | P1-A3 | P1 | ai-guard-cost 全量解压所有会话，25s 超时静默降级 | ⚠️ 待修（增量/缓存）|
-| P1-A4 | P1 | deploy-gate smoke 用 `X-User-Id: adai` = 用零鉴权漏洞验证部署 | ⚠️ 待修（依赖 #179）|
+| P1-A4 | P1 | code-deploy-gate smoke 用 `X-User-Id: adai` = 用零鉴权漏洞验证部署 | ⚠️ 待修（依赖 #179）|
 | P1-A5 | P1 | G1-G7 是仓库级模糊启发式非逐点检测，低信号结论 | ⚠️ 待修（逐点化）|
 | P2-A1 | P2 | AGENTS.local.md 已达 7826/8192 字节（95% 预算）| ⚠️ 观察（控量策略）|
 | P2-A2 | P2 | 方法论文档自身漂移（research-notes/ 不存在、状态表标 ❌ 缺实已存在）| ⚠️ 待修 |

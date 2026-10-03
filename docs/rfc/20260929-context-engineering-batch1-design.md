@@ -210,7 +210,7 @@ Feed 刷新后由服务端数据重建即消失——**翻历史卡时不会被�
 3. 改 `DeepSeekAiClient`（③ ④）→ 跑 `DeepSeekAiClientTest`；
 4. 改 `ContextPackage`（⑤）→ 更新 2 例既有断言；
 5. 本地 `assembly-mode=v1` 用生产同构卡片跑一次对比（同一段对话，legacy vs v1 的 messages 结构）；
-6. `deploy-gate.sh` 前置三门 + 派审查官（含对抗官）→ **部署等你点头**（B8）。
+6. `code-deploy-gate.sh` 前置三门 + 派审查官（含对抗官）→ **部署等你点头**（B8）。
 
 ---
 

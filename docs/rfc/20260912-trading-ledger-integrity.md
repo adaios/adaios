@@ -15,7 +15,7 @@ related:
 
 # 交易账本完整性——快照锚点 fail-closed + 幂等统一 + 卖超可见
 
-> **一句话**：2026-09-12 生产实测——一次「历史成交导入」把**已经含在券商快照里的成交又重放了一遍**，持仓与现金双计（现金被算成 **-26666.85**，正确值 ≈ **1381.93**），同时 **3 笔真实卖出被静默丢弃**、**4 笔流水重复落账**，导致「券商快照 / 逐笔流水 / 派生持仓」三条真源互相矛盾。本 RFC 定义**账本完整性契约**：快照锚点 **fail-closed**、append 与 replay **同一套幂等判定**、卖超**永不丢数据**、账实不符**当天可见**（自检端点 + deploy-gate 门禁），并把「已修」的判据从「代码改过」升级为「存量回填 + 运行时自检 + 失败可见」。
+> **一句话**：2026-09-12 生产实测——一次「历史成交导入」把**已经含在券商快照里的成交又重放了一遍**，持仓与现金双计（现金被算成 **-26666.85**，正确值 ≈ **1381.93**），同时 **3 笔真实卖出被静默丢弃**、**4 笔流水重复落账**，导致「券商快照 / 逐笔流水 / 派生持仓」三条真源互相矛盾。本 RFC 定义**账本完整性契约**：快照锚点 **fail-closed**、append 与 replay **同一套幂等判定**、卖超**永不丢数据**、账实不符**当天可见**（自检端点 + code-deploy-gate 门禁），并把「已修」的判据从「代码改过」升级为「存量回填 + 运行时自检 + 失败可见」。
 
 ## 一、目标与验收
 
@@ -25,7 +25,7 @@ related:
 | P2 派生量口径 | 持仓/现金 = **锚点快照 + 锚点之后事件净变化** | `entryDate ≤ 锚定日` 的行只补流水（持仓/现金零变化）；`> 锚定日` 才重放；09-12 场景回放得 002428 400 / 600206 900 / 600601 100 / 603113 0 / 其余 0 |
 | P3 幂等统一 | 一个 intake、一个键空间：所有来源共用同一判定 | 重复导入不新增行（`new = 0`、`merged ≥ 1`）；orderId 与指纹**双键都判**，与旧行有无 orderId 无关 |
 | P4 卖超可见 | 真实成交永不因系统状态不准而丢弃 | 卖超/未持有 → **流水照落** + `rejected` 行级明细 + ERROR 日志 + 计入账实缺口；不再出现「WARN 后消失」 |
-| 对账闸门 | 账实不符**当天可见**（替代肉眼发现） | `GET /trading/integrity` 的 `derived = 锚点快照数量 + 锚点后流水净增减`；`drift` 非空或 `anchor.known=false` → deploy-gate **显式告警** |
+| 对账闸门 | 账实不符**当天可见**（替代肉眼发现） | `GET /trading/integrity` 的 `derived = 锚点快照数量 + 锚点后流水净增减`；`drift` 非空或 `anchor.known=false` → code-deploy-gate **显式告警** |
 | 存量自愈 | 无锚点的老环境可显式回填 | `PUT /trading/anchor` 写入锚点（日期**只前进**、不自动改数据）；回填后 fail-open 窗口关闭 |
 | 回归 | 不破坏既有 lot / 清仓 / 推送 / 复盘口径 | 后端全量测试全绿 + §九 用例 R1~R12 全绿 |
 
@@ -184,7 +184,7 @@ related:
 | `diff` | `holdings − derived`；**`diff != 0` 即 drift**（该标的进 `drift` 数组） |
 | `snapshotQty` | 锚点 `holdings` 里的数量（缺 = 0，`note` 标注） |
 | `gaps` | 未闭合的成交缺口：被拒卖出（§3.5）、锚点日之前有流水但快照无数量、负持仓等 |
-| `anchor.known=false` | 视为**不健康**（drift 不可判定 → 响应带 `note`，deploy-gate 按失败处理） |
+| `anchor.known=false` | 视为**不健康**（drift 不可判定 → 响应带 `note`，code-deploy-gate 按失败处理） |
 
 ### 4.3 `PUT /api/v1/trading/anchor`（存量自愈回填）
 
@@ -223,7 +223,7 @@ related:
 | # | 门禁 | 落地物 | 判定 |
 |---|---|---|---|
 | 1 | **「已修」新标准** | `.agents/process/ship.md` + `.agents/assets/conventions.md` 收尾口径 | 「已修」= **存量回填 + 运行时自检 + 失败可见** 三者齐备；只有代码改动 → 记「代码已改，未验收」 |
-| 2 | **部署后自检** | `.agents/scripts/deploy-gate.sh` 增一步：部署后调 `GET /api/v1/trading/integrity` | `anchor.known=false` **或** `drift` 非空 → **显式告警输出**（不许只打日志静默通过） |
+| 2 | **部署后自检** | `.agents/scripts/code-deploy-gate.sh` 增一步：部署后调 `GET /api/v1/trading/integrity` | `anchor.known=false` **或** `drift` 非空 → **显式告警输出**（不许只打日志静默通过） |
 | 3 | **坑位登记** | `.agents/assets/pitfalls.md` 增条目「**隐性 fail-open 防重机制**」 | 复发信号：**机制读不到状态就降级继续**，且**没有自检/告警** |
 | 4 | **REVIEW 更正** | `docs/review/REVIEW.md`：P2-交易34 由「已修」改为「**复发（2026-09-12）**」+ 根因三层结构；并登记本次新增未修项（存量数据修正、负持仓清理等） | 条目含根因一句话 + 指向本 RFC |
 | 5 | **文档补章** | `docs/reference/trading-features.md` 增「**三条真源与锚点语义**」章节 + `docs/architecture/api-spec.md` 登记三个端点 | 写清锚点定义、`snapshot-anchor.json` 字段、`mode`/`dryRun`/`rejected`/自检端点与运维动作 |
@@ -253,7 +253,7 @@ related:
 | T5 | 自检端点 | `GET /trading/integrity`（`anchor/drift/gaps` + `derived` 定义） | R11/R12 绿 |
 | T6 | 锚点回填端点 | `PUT /trading/anchor`（显式动作、只前进、校验） | 单测 + 与 T1 联动 |
 | T7 | 双端接线 | web/app 导入结果展示 `rejected` 明细（人话）+ 账实不符提示（读 `integrity`） | 前端测试 + B1 文案自查 |
-| T8 | 门禁与文档 | deploy-gate 自检步骤、pitfalls 新条目、REVIEW P2-交易34 更正 + 新未修项、trading-features 三条真源章、api-spec 三端点、status/change-log、本 RFC 状态流转 | §4.6 六项 + guard 双 PASS |
+| T8 | 门禁与文档 | code-deploy-gate 自检步骤、pitfalls 新条目、REVIEW P2-交易34 更正 + 新未修项、trading-features 三条真源章、api-spec 三端点、status/change-log、本 RFC 状态流转 | §4.6 六项 + guard 双 PASS |
 
 **不做项（防范围膨胀）**：不自动改生产存量数据（回填走显式端点）；不做批量历史对账工具；不改 lot/复盘/推送口径；不改清仓判定逻辑；不引入数据库；不猜锚点（拿最后一次流水日期当锚点 = 换一种 fail-open）。
 
@@ -266,7 +266,7 @@ related:
 | 真源口径 | 持仓/现金是**派生量**：`③ = ① 锚点快照 + ② 锚点之后净变化` |
 | 幂等口径 | **一个 intake、一个键空间**：append 与 replay 同一判定，orderId 与指纹双键都判 |
 | 成交不丢 | 卖超**落流水 + 可见缺口**，禁止「WARN 后消失」 |
-| 门禁六条 | 「已修」= 存量回填 + 自检 + 失败可见；deploy-gate 增自检；pitfalls/REVIEW/trading-features 同步更正 |
+| 门禁六条 | 「已修」= 存量回填 + 自检 + 失败可见；code-deploy-gate 增自检；pitfalls/REVIEW/trading-features 同步更正 |
 | 夹具纪律 | 回归 golden 夹具**合成数据**，真实成交文件不进 git（B3） |
 
 ## 八、实施状态（2026-09-12：后端已落地，前端接线待收口）
@@ -280,7 +280,7 @@ related:
 | T5 | 自检端点 `GET /trading/integrity`（anchor/drift/gaps + `derived` 定义） | ✅ 已落地 |
 | T6 | 锚点回填端点 `PUT /trading/anchor`（显式动作、只前进、校验） | ✅ 已落地（另附 `GET /trading/anchor` 只读状态查询） |
 | T7 | 双端接线（web 展示 `rejected` 明细 + 账实不符提示，读 `integrity`；app 端本批不做，见 P2-交易39） | ✅ 已落地（web：预检→确认两段式 + rejected 橙卡 + 锚定缺失两条路 + 顶部账实横幅；`flutter test` 236 全绿 / `flutter analyze` 0 issue） |
-| T8 | 门禁与文档（deploy-gate 自检 + pitfalls/REVIEW + 三端点/三真源章 + status/change-log） | ✅ 文档已登记（`api-spec` v3.61 / `trading-features` §八 14 + §九 / `feature-reference` §9 / `status.md` / `change-log.md`）；deploy-gate 自检同批接入 |
+| T8 | 门禁与文档（code-deploy-gate 自检 + pitfalls/REVIEW + 三端点/三真源章 + status/change-log） | ✅ 文档已登记（`api-spec` v3.61 / `trading-features` §八 14 + §九 / `feature-reference` §9 / `status.md` / `change-log.md`）；code-deploy-gate 自检同批接入 |
 
 - **测试**：后端 **1590 → 1634**（+44，0 失败）；§九 9.1 生产场景回放与 R1~R12 回归矩阵随本批落地（golden 夹具为**合成数据**，真实成交导出不进 git，B3）。
 - **端点**：**134 → 137**（`GET /trading/integrity` + `GET /trading/anchor` + `PUT /trading/anchor`）；Controller 21 不变。
@@ -318,11 +318,11 @@ related:
 | R9 | **锚点日期只前进** | 已有锚点 09-10 → 导入 09-04 快照 | 锚点仍 09-10；`holdings` 不被回拨 |
 | R10 | **golden 夹具回放（真实导出结构）** | 合成「历史成交查询」导出：**空格对齐 + 列头 + CRLF + 负数量卖出 + 数量 0 的股息/红利税行 + 79/80/81/82 占位代码行** | 行数/方向/数量/价格/fee/orderId 与期望逐字段一致；占位与税行不进流水 |
 | R11 | 自检端点语义 | 构造漂移 | `drift` 含该标的，`derived`/`diff` 数值正确；无漂移时 `drift:[]` |
-| R12 | 自检在锚点缺失时 | 无锚点文件 | `anchor.known=false` + 「不可判定」note；deploy-gate 判失败 |
+| R12 | 自检在锚点缺失时 | 无锚点文件 | `anchor.known=false` + 「不可判定」note；code-deploy-gate 判失败 |
 
 ### 9.3 工程收口
 
-后端全量测试全绿（含 R1~R12）；`ai-guard-meta` / `ai-guard-align` PASS；文档登记（api-spec 三端点 + trading-features 三条真源章 + REVIEW 更正 + pitfalls 新条目 + change-log）；deploy-gate 自检 PASS。
+后端全量测试全绿（含 R1~R12）；`ai-guard-meta` / `ai-guard-align` PASS；文档登记（api-spec 三端点 + trading-features 三条真源章 + REVIEW 更正 + pitfalls 新条目 + change-log）；code-deploy-gate 自检 PASS。
 
 ## 十、落地记录
 
