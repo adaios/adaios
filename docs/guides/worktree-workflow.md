@@ -3,13 +3,14 @@ title: AdaiOS worktree 并行工作手册（外挂三件套与沙箱边界）
 description: 在本项目用 git worktree 开并行线时的全部额外动作——worktree 是「空壳」（data/.env/state 都不在版本库内）必须补外挂、DSH 沙箱只能写工作区、端口与构建锁冲突、提交与合并纪律、干净构建发布用法、验证清单；通用形态见同目录 Qoder 手册
 version: 1
 created: 2026-10-01
-updated: 2026-10-01
+updated: 2026-10-03
 status: active
-lines: 136
+lines: 137
 depends-on: []
 related:
   - ./development.md
   - ./qoder-parallel-workflow.md
+  - ./git-workflow.md
 tags: [guide, workflow, ai-tooling]
 ---
 

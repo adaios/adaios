@@ -3,9 +3,9 @@ title: 开发指南（Development Guide）
 description: 全局构建/测试/运行/部署命令与开发环境说明——原根 CLAUDE.md 迁移承接，工具无关
 version: 1
 created: 2026-08-19
-updated: 2026-10-01
+updated: 2026-10-03
 status: active
-lines: 57
+lines: 60
 depends-on: []
 related:
   - ../VISION.md
@@ -49,9 +49,12 @@ cd apps/adai-app && flutter run -d android         # Android
 - **零数据库启动**：MVP 阶段不需要 MySQL，所有数据通过 File First 存储到 `data/`。
 - **git hooks（换机 clone 后执行一次）**：`sh scripts/setup-hooks.sh` —— 启用 pre-commit 自动检查（文档对齐 + frontmatter 结构 + G1-G7 防复发 + shell 脚本健壮性）。
 - **技能注册（换机 clone 后执行一次）**：`bash scripts/link-skills.sh` —— 把「用户直触发」技能**软链**到四个工具出口（`.dsh/skills`＝DSH、`.agents/skills`＝DSH 与 Codex/Cursor/Gemini CLI/Copilot 等的公约数、`.claude/skills`＝Claude Code、`.qoder/skills`＝Qoder CLI/IDE/JetBrains 插件），一个真相源喂多工具。工具侧目录被 `.gitignore` 忽略（注册是本机状态，真相源在 `ai-engineering/skills/<name>/SKILL.md`），不跑这条就**没有技能可用**。⚠️ 若将来启用根 `skills/` 出口（OpenClaw 等用根目录的工具），其忽略规则必须写成锚定根的 **`/skills/`**——写成 `skills/` 会连真相源 `ai-engineering/skills/` 一起忽略（见 pitfalls 二十三）。自检：`bash scripts/link-skills.sh --check` 或 `bash ai-engineering/guard-tools.sh`（T4）。
+- **子代理注册（换机 clone 后执行一次）**：`bash scripts/sync-agents.sh` —— 把**审查官**（`ai-engineering/roles/<name>.md`，扁平真相源）**生成**为各工具的 subagent 定义（`.qoder/agents/*.md` ＝ md+YAML、`.codex/agents/*.toml` ＝ TOML；12 个审查官 × 2 家）。生成时做两件不止复制的事：**相对路径重写**（`../assets/x` → `ai-engineering/assets/x`）+ **只读强制**（Qoder `tools: Read, Grep, Glob` / Codex `sandbox_mode="read-only"`）⇒ 把 B7「审查只报告不直接修」从 prompt 自律升级为机制强制。格式因工具而异**故必须生成、不能软链**。自检：`bash scripts/sync-agents.sh --check`。
 - **定时任务（换机 clone 后执行一次）**：`bash scripts/setup-launchd.sh` —— 装两个 LaunchAgent：每日 21:10 生产备份 + 每周一 09:00 每周审查。**不要用 crontab**（macOS TCC 会拦；2026-09-14 前就是这么静默失效 26 天的）。自检：`bash scripts/setup-launchd.sh --check` 或 `guard-tools.sh`（T7）。清单见 `routine.md`。
 
 ## 相关
 
 - 架构红线：`../../ARCHITECTURE.md`（仓库根）
+- **Git 规范**（分支 / 合并 / 推送 / 发布）：`git-workflow.md`
+- worktree 并行线机制：`worktree-workflow.md`
 - 文档索引：`docs/README.md`
