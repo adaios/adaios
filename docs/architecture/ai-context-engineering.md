@@ -1,10 +1,10 @@
 ---
-title: AdaiOS AI 上下文工程体系（方案稿）
-description: 项目级 AI 上下文工程的总览——分层模型（L0 入口 / L1 任务 / L2 约束 / L3 事实 + 横跨的工具层）、完整的目录与文件定位表、层间关系与单一权威来源原则、六张流程图（mermaid：开工 / 改动 / 合并传播 / 发布 / 知识回流 / 全景）、触发词工作流表、个人与团队两种配置、保障体系不腐的机制与守卫、判断依据（企业实践 + 实证数据）、以及现状与目标的落地缺口。本文是方案稿，待拍板。
+title: AdaiOS AI 上下文工程体系
+description: 项目级 AI 上下文工程的总览——分层模型（L0 入口 / L1 任务 / L2 约束 / L3 事实 + 横跨的工具层）、完整的目录与文件定位表、层间关系与单一权威来源原则、六张流程图（mermaid：开工 / 改动 / 合并传播 / 发布 / 知识回流 / 全景）、触发词工作流表、个人与团队两种配置、保障体系不腐的机制与守卫、判断依据（企业实践 + 实证数据）、以及现状与目标的落地缺口。机制部分**已生效**；仍缺的项见 §九。
 version: 1
 created: 2026-10-03
 updated: 2026-10-03
-status: draft
+status: active
 lines: 300
 depends-on:
   - ../reference/status.md
@@ -17,9 +17,9 @@ related:
 tags: [architecture, ai, context, ai-tooling, plan]
 ---
 
-# AdaiOS AI 上下文工程体系（方案稿）
+# AdaiOS AI 上下文工程体系
 
-> **状态**：方案稿（`status: draft`），待拍板。
+> **状态**：方案稿（`status: active`），待拍板。
 > **与另三份的分工**：**本文是总览**（体系全貌、目录定位、流程与工作流）· `.agents/assets/ai-context-layer-spec.md` 是**机制细节**（出口、契约、反模式）· `docs/guides/git-workflow.md` 是**版本控制操作**（分支/提交/合并/推送/发布）· `docs/guides/branch-development.md` 是**分支上的操作流程**（怎么改、怎么传给别人、合并后做什么）。
 
 ## 一、体系全景
