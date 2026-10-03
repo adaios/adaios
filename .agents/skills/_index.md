@@ -5,15 +5,13 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-03
 status: active
-lines: 33
+lines: 31
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index]
 ---
 
 # skills/ 目录索引
-
-**职责**：建设与流程技能——**加载即执行**的工作流封装（工具的 skill 出口直连这里）
 
 > 本文件只列**有什么**；**规则与依赖**见 [`_directory.md`](./_directory.md)。
 

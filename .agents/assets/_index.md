@@ -5,15 +5,13 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-03
 status: active
-lines: 44
+lines: 42
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index]
 ---
 
 # assets/ 目录索引
-
-**职责**：AI 工程静态知识——规范（怎么做）· 边界（不做什么）· ADR（为什么这么定）· 已知坑（别踩什么）
 
 > 本文件只列**有什么**；**规则与依赖**见 [`_directory.md`](./_directory.md)。
 

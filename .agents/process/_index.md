@@ -5,15 +5,13 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-03
 status: active
-lines: 33
+lines: 31
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index]
 ---
 
 # process/ 目录索引
-
-**职责**：具体动作的流程定义——**天天用**：审查（audit/review）· 收尾（ship）· 节奏（cadence）
 
 > 本文件只列**有什么**；**规则与依赖**见 [`_directory.md`](./_directory.md)。
 

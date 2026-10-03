@@ -5,15 +5,13 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-03
 status: active
-lines: 36
+lines: 34
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index]
 ---
 
 # state/ 目录索引
-
-**职责**：**本机状态**（不入 git）——协作节奏的游标与账本
 
 > 本文件只列**有什么**；**规则与依赖**见 [`_directory.md`](./_directory.md)。
 

@@ -5,15 +5,13 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-03
 status: active
-lines: 33
+lines: 31
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index]
 ---
 
 # workflow/ 目录索引
-
-**职责**：**单任务生命周期**——讨论 → 方案 → 开发 → 审核 → 验收 的六节点闭环
 
 > 本文件只列**有什么**；**规则与依赖**见 [`_directory.md`](./_directory.md)。
 

@@ -5,15 +5,13 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-03
 status: active
-lines: 34
+lines: 32
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index]
 ---
 
 # method/ 目录索引
-
-**职责**：**元方法层**——怎么从零搭一套 AI 工程（给新项目用，不是日常流程）
 
 > 本文件只列**有什么**；**规则与依赖**见 [`_directory.md`](./_directory.md)。
 

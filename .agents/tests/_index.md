@@ -5,15 +5,13 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-03
 status: active
-lines: 30
+lines: 28
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index]
 ---
 
 # tests/ 目录索引
-
-**职责**：**守卫反例回归区**——用坏样本证明守卫真的会抓（防「看起来在查、其实查不到」的假绿）
 
 > 本文件只列**有什么**；**规则与依赖**见 [`_directory.md`](./_directory.md)。
 

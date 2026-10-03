@@ -5,15 +5,13 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-03
 status: active
-lines: 43
+lines: 41
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index]
 ---
 
 # checklists/ 目录索引
-
-**职责**：逐条可执行的核对清单——**人与审查官共用**（8 客观官 + 1 对抗官 + 3 外部视角官 + 守护/成本）
 
 > 本文件只列**有什么**；**规则与依赖**见 [`_directory.md`](./_directory.md)。
 

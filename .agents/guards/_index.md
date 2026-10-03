@@ -5,15 +5,13 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-03
 status: active
-lines: 42
+lines: 40
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index]
 ---
 
 # guards/ 目录索引
-
-**职责**：守卫与自检脚本——**机制层**：把规范变成机器能拦的门
 
 > 本文件只列**有什么**；**规则与依赖**见 [`_directory.md`](./_directory.md)。
 

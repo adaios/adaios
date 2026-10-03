@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-03
 status: active
-lines: 185
+lines: 187
 depends-on:
   - skills-spec.md
   - ../frontmatter-spec.md
@@ -31,10 +31,12 @@ tags: [ai, meta, governance, context-layer]
 
 ## 二、三层模型（不变量）
 
+> **本节的层用名字、不用编号**——「加载层」的 `L0–L3` 见 [`docs/architecture/ai-context-engineering.md`](../../docs/architecture/ai-context-engineering.md)；两者是**正交维度**（存放 vs 加载），共用编号会造成跨文档歧义（2026-10-03 审查修正）。
+
 ```
-L1 真相源   项目层，进 git，唯一可写         ← 本仓库的 ai-engineering/ 等
-L2 出口     各工具目录，软链，不进 git        ← 由 .agents/scripts/link-skills.sh 重建
-L3 工具私有 各工具自己的配置，项目不代管      ← .idea/ 等
+真相源      项目层，进 git，唯一可写         ← 本仓库的 .agents/ 等
+出口        各工具目录，软链，不进 git        ← 由 .agents/scripts/link-skills.sh 重建
+工具私有    各工具自己的配置，项目不代管      ← .idea/ 等
 ```
 
 1. **真相源只有一份，永远不在工具目录里。**
