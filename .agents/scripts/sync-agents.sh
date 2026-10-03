@@ -37,6 +37,7 @@ REGISTER=(
   adversarial-reviewer stranger-reviewer backend-reviewer
   context-reviewer docs-reviewer frontend-reviewer knowledge-reviewer
   product-arch social-reviewer support-reviewer ui-reviewer ux-reviewer
+  design-author   # 审核驱动主链的产作者（与设计文档审核者真对打，2026-10-03）
 )
 
 # ── 目标工具 subagent 目录（相对仓库根；格式由脚本按目录名分派）──

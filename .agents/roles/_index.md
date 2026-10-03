@@ -3,9 +3,9 @@ title: roles/ 目录索引
 description: roles/ 的文件清单与过期判断；目录的职责边界与依赖契约见 ./_directory.md
 version: 1
 created: 2026-10-03
-updated: 2026-10-03
+updated: 2026-10-04
 status: active
-lines: 39
+lines: 40
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index]
@@ -15,13 +15,14 @@ tags: [meta, index]
 
 > 本文件只列**有什么**；**规则与依赖**见 [`_directory.md`](./_directory.md)。
 
-## 文件清单（12 项）
+## 文件清单（13 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
 | `adversarial-reviewer.md` | 当需要以对抗视角挑刺改动时加载——假设改动一定有问题，从「哪里会炸 / 用户哪里会骂 / 边界哪里漏」三个方向攻… | active |
 | `backend-reviewer.md` | 当需要对 services/adai-core/ 后端代码做审查时加载——分层、数据安全、AI 集成健壮性、测试… | active |
 | `context-reviewer.md` | 当需要审查 AI 上下文结构（AGENTS.md 加载结构、os/*/11-context/）时加载——四问：P… | active |
+| `design-author.md` | 审核驱动主链的产作者（与设计文档审核者真对打）——读需求定稿与上一轮审核结论，产出设计文档：本轮回应 / 设计 … | active |
 | `docs-reviewer.md` | 当需要审查文档一致性/断链/数字漂移/frontmatter 合规时加载——api-spec、REVIEW、AG… | active |
 | `frontend-reviewer.md` | 当需要对 apps/（Flutter 三端）前端代码做审查时加载——状态管理、生命周期、DTO 契约、跨端对拍、… | active |
 | `knowledge-reviewer.md` | 当需要审查 os/ 知识资产与 data/ 数据健康时加载——跨层闭环、隐私面、数据格式契约 | active |
