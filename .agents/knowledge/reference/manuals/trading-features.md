@@ -22,7 +22,7 @@ related:
   - ../../../direction/rfc/20260814-domain-plugin-model.md
 tags: [trading, plugin, reference]
 updated: 2026-10-04
-lines: 404
+lines: 406
 ---
 
 # 交易模块功能手册（trading 插件）
@@ -92,6 +92,7 @@ lines: 404
 | DELETE | `/trading/watchlist/{symbol}` | 删除自选股 | 不存在 404 |
 | GET | `/trading/buy-points` | 自选股买点信号 | 并发拉 K 线 → B1=回撤到波段**涨幅一半位**（回撤占波段 high−low ≥50% ⇔ close≤(high+low)/2，2026-09-04 课程校准）+缩量(3日均量<5日均量×0.7)+KDJ.J<13；B2=放量(**>5日均量×2.0** 倍量柱)+收盘破前 N 日高点+**三重防护（KDJ.J 拐头向上/J 连续 ≥90 高位钝化排除/距窗口低点涨幅 ≤30%/非近 2 日连板 ≥9.8%）**；B1? 部分满足候选；**判定是提示不是指令**；**第三阶段（2026-08-30）**：五参（回调/缩量/KDJ/放量/前高窗口）从 `data/{userId}/trading/rules.yaml` 读取（`buyPullbackPct`/`buyShrinkRatio`/`buyKdjLow`/`buyVolumeSurge`/`buyPriorHighDays`），无规则用默认（0.5/0.7/13/**2.0**/20）；**命中项附 dataDate**；新鲜度判据（RFC 20260922 B1 起）：早盘推送要求 dataDate **不早于最近一个已收盘交易日**（原 15:10 要求=当日，因该节点已并入早盘而改口径，P1-交易20 的「不用旧数据冒充新信号」原意不变） |
 | GET | `/trading/buy-points/scan` | **完整扫描（B4，2026-09-22）** | `{hits, unavailable, dataDate}`——把「没能判定的标的」（K 线双源失败/异常）与「判定了但没信号」**分开报**（P1-交易60 收口）；`/buy-points` 的数组形状保持不变（三端在消费） |
+| GET | `/trading/market-data/health` | **行情（K 线）链路可用性（v3.84，2026-09-23；v3.93 / 2026-10-04 扩字段）** | `{ok, note, lastSuccessAt, lastSuccessSource, lastFailureAt, consecutiveFailures, lastFailedSymbol, sources, tdxLastDate, fallbackHealthy, fallbackLastProbeAt}`——`note` 为**可直接展示的人话**（双端交易页横幅直接用它）；**只在 `ok=false` 时出横幅**（无异常零显示）；`lastSuccessSource` 让「当前用的是哪个源」可见（新浪为不复权数据，口径差异不藏）；`tdxLastDate`（v3.93）= 本地数据包**最后一根 K 线日期**（`null` = 本地关掉 / 还没取过，「该导数据包了」的机器可读判据）；`fallbackHealthy` / `fallbackLastProbeAt`（2026-10-04，REVIEW P2-交易58 收口）= 兜底源（新浪）**主动体检**的结果与时刻——`false` 时 `ok` **仍可能为 `true`**（主源正常、兜底已挂，属事前可见），`null` = 还没探过或兜底已关闭。需 trading 插件（403） |
 
 ### 5. 清仓复盘
 
@@ -184,8 +185,9 @@ lines: 404
 | 15:15 | 收盘交易日志确认 | 当日有归集候选 → 推「今日操作汇总，是否完整」；无候选静默 |
 | 15:30 | **收盘复盘兜底（RFC 20260922 B3，原「收盘小结」）** | **它是「数据同步完成后」的产物，不是到点硬发**：账已同步 → 出复盘（记账 / 账实 / 只记流水的 / 复盘 / 明天，逐段都是账上的事实）；未同步 → 一句「今天的持仓/成交快照我还没看到，导一下我再给你复盘」（**不落「已发」标记**，补导后仍能拿到真复盘）；**每天至多一条**；账同步完成（≥15:00 的导入）会**提前触发**（用户拍板 D4：可晚于 15:30）。账实段委派 `TradingAppService.integrity`（唯一口径），**判不了就直说判不了**（`holdingsKnown=false` 时绝不报「一致」） |
 | 每 30 分钟（10-11/13-15 点，首轮 10:00） | 行情异动轮询 | stop-loss（现价破止损位 R66 硬判定）/near-stop-loss（距止损≤2%）/loss（日跌≥3%）/gain（日涨≥5%）/break-cost（跌破成本线）；**批次级止损（RFC 20260825）**：某批次现价破它自己的止损（未设默认 −7% 兜底）→ 单独推「批次止损预警」带批次日期/成本（不跟底仓混，signature 带 lotId 独立去重）；同票同类当日去重、同股票多类型合并防刷屏；阈值 `adai.market.alert.*` 可配。**2026-08-30（用户反馈批）两修**：① 轮询时段 9-11/13-15 → 10-11/13-15——9:00/9:30 行情接口仍返回上一交易日收盘，旧数据冒充「今日」（生产 08-27 09:00 实锤「今日跌 -3.11%」实为前日跌幅）且按日去重签名被旧数据烧掉名额、盘中真触发反而不推；② 补法定节假日守卫（B5-1 残留：节假日撞工作日时 break-cost/止损类拿前日收盘价每天重推） |
+| 每 30 分钟（交易时段 09:30-11:30 / 13:00-15:00） | **兜底源体检（KlineService，2026-10-04 REVIEW P2-交易58 收口）** | 链路的最后一层是新浪兜底，它平时零调用、零体检，只在主源熔断时才被逐标的批量打过去——那恰恰是它最可能也挂的时刻。故交易时段内每 30 分钟主动探一次（真实请求、10 根、5s 超时、**绕过日缓存**），结果进 `GET /trading/market-data/health` 的 `fallbackHealthy` / `fallbackLastProbeAt`；失败 ERROR + 1 小时冷却（冷却内降 WARN），异常一律吞掉、**不影响主链路也不动熔断计数**；频率键 `adai.trading.kline.fallback-probe-cron`（默认 `0 0/30 9-11,13-14 * * MON-FRI`，非交易日/非交易时段自动跳过） |
 
-> **节假日**：法定节假日（2026-2027 硬编码表）不推送——`TradingSessionPushService` 全部 7 个定时任务 + `MarketAlertService` 轮询（2026-08-30 补）均有 `isTradingDay` 守卫；周末由 cron MON-FRI 排除。
+> **节假日**：法定节假日（2026-2027 硬编码表）不推送——`TradingSessionPushService` 全部 7 个定时任务 + `MarketAlertService` 轮询（2026-08-30 补）+ 兜底源体检（`KlineService.isTradingDayToday`）均有 `isTradingDay` / `isTradingDayStrict` 守卫；周末由 cron MON-FRI 排除。
 
 ## 三、后端核心机制
 
@@ -199,7 +201,7 @@ lines: 404
 | **区间盈亏口径（v3.68，2026-09-15）** | 日/周/月盈亏 = 逐日总资产差分再剔除银证转账（`EquityCurveService.periods`）；与资金曲线共用同一份回放，不另算一套（防「卡片一个数、列表另一个数」）。**资金曲线锚定重置**：日期走到券商快照锚定日时持仓数量重置为快照基线 `holdings`，之后只叠加锚定日**之后**的流水——修掉「历史成交只补买入、卖出没导全 → 000776/600487 凭空多出持仓、整条曲线市值虚高 3.7 万」 |
 | 成交时间采集（RFC 20260822） | 逐笔流水加 `tradeTime`（成交时刻 HH:mm:ss，可空）：历史成交导入解析通达信「成交时间」列；当日记录缺省落盘时刻时分；旧数据 null 兼容 |
 | 当日复盘聚合（RFC 20260822） | `GET /trading/trades?date=` 返回 `{trades, daily}`：时段分桶（早盘 09:30-11:30 / 午盘 13:00-14:30 / 尾盘 14:30-15:00）+ 买卖笔数金额 + 首末笔时间——纯客观无 AI |
-| K 线数据源 | **TDX 本地（前复权）→ 腾讯（双域名）→ 新浪（2026-09-23 RFC `20260923` 加第三源 → 2026-09-28 RFC `20260928` 批 2 收敛：**东财出链路**（`push2his.eastmoney.com` 长期 000 不可达，7 天 1711 失败 / 182 成功）、新浪由「最后一层」**升为兜底**；腾讯 K 线域名可配 `adai.market.tencent-kline-bases`，批 1 起生产配**两条**（新域名 + 老域名 `web.ifzq.gtimg.cn`，主域名失败自动试第二条——真链演练 23 次失败全由它顶上）；**链路可用性见新端点 `GET /trading/market-data/health`**，双端交易页只在异常时出横幅）**：**TDX 通达信本地（前复权）→ 腾讯主源 → 东财探测兜底（2026-08-30）**：本地 .day 全 A 历史免风控（`TdxFileKlineSource`，`adai.market.tdx-path` 默认 `../../../data/market/tdx`，mtime 缓存）+ **前复权换算**（`AdjustmentCalculator` + 东财除权因子表 `data/market/adj/`，口径对齐腾讯 qfq——除权股不再跳空失真，2026-08-30 茅台校验 ≤0.5%）；tdx 无数据自动走网络源；网络源连续失败 3 次熔断 5 分钟（半开探测），按日缓存（`KlineService`） |
+| K 线数据源 | **TDX 本地（前复权）→ 腾讯（双域名）→ 新浪（2026-09-23 RFC `20260923` 加第三源 → 2026-09-28 RFC `20260928` 批 2 收敛：**东财出链路**（`push2his.eastmoney.com` 长期 000 不可达，7 天 1711 失败 / 182 成功）、新浪由「最后一层」**升为兜底**；腾讯 K 线域名可配 `adai.market.tencent-kline-bases`，批 1 起生产配**两条**（新域名 + 老域名 `web.ifzq.gtimg.cn`，主域名失败自动试第二条——真链演练 23 次失败全由它顶上）；**链路可用性见新端点 `GET /trading/market-data/health`**，双端交易页只在异常时出横幅）**：本地 .day 全 A 历史免风控（`TdxFileKlineSource`，`adai.market.tdx-path` 默认 `../../../data/market/tdx`，mtime 缓存）+ **前复权换算**（`AdjustmentCalculator` + 东财除权因子表 `data/market/adj/`，口径对齐腾讯 qfq——除权股不再跳空失真，2026-08-30 茅台校验 ≤0.5%）；tdx 无数据自动走网络源；网络源连续失败 3 次熔断 5 分钟（半开探测），按日缓存（`KlineService`） |
 | 交易知识注入 | **第三阶段（D1）用户私有优先**：读 `data/{userId}/trading/knowledge.md`（有 → 只用自己的）；无 → **仅 owner（adai）回落** `os/trading-engine/knowledge/context/` 五份交付文件（identity/strategy/rules/mistakes/current.md），其他用户不注入交易知识（P1-3 防跨用户泄漏）；内容哈希缓存（`TradingKnowledgeSource`） |
 | 行情上下文注入 | trading 场景：大盘指数（上证/深证/创业板）+ 持仓行情表；globalContext 全场景短版（`MarketContextContributor`） |
 | 推送渠道 | PushChannel 插件化：FeedPushChannel（落盘 `trading/pushes/{date}.json` 进 Feed）+ BarkPushChannel（iOS 原生推送，2026-08-25 起生产启用，免费无限条数）；WeChatPushChannel（Server酱）已停用（免费 5 条/天不够，代码保留未配置即禁用） |

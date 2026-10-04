@@ -81,8 +81,16 @@ adai:
     # 新浪 K 线（RFC 20260923 B 批加为最后一层；RFC 20260928 批 2 **升为兜底**）：
     # 链路 = tdx → 腾讯（双域名）→ 新浪。东财 K 线源 2026-09-28 已删（push2his 长期 000 不可达），
     # 「两个网络源同属被风控对象」的风险改由「腾讯双域名 + 新浪独立域名体系」承担。
-    # 关掉即退回「tdx → 腾讯」两段（正常日子里新浪一次都不会被调用）。
+    # 关掉即退回「tdx → 腾讯」两段（正常日子里取数用不到新浪，但**主动体检**会每 30 分钟探它一次，见下）。
     sina-kline-enabled: ${ADAI_SINA_KLINE_ENABLED:true}
+    # 兜底源（新浪）主动体检（REVIEW P2-交易58 收口，2026-10-04）：兜底原来零调用、零体检，只在主源
+    # 熔断时才被逐标的批量打过去——那恰恰是它最可能也挂的时刻。故**交易时段内每 30 分钟**主动探一次
+    # （真实请求、10 根、5s 超时、绕过日缓存），结果进 GET /trading/market-data/health 的
+    # fallbackHealthy / fallbackLastProbeAt；非交易日 / 非交易时段不探（日 K 一天一变，盘后探没有增量）。
+    # ⚠️ 频率键 adai.trading.kline.fallback-probe-cron **不在本文件写死**：唯一真相源是代码常量
+    # `KlineService.CRON_FALLBACK_PROBE`（0 0/30 9-11,13-14 * * MON-FRI）——写在这里会压过代码默认值，
+    # 就是 2026-08-30 P1-交易63「改了代码却没生效」的形态（那次是 alert.poll-cron）。
+    # 临时调整用环境变量：ADAI_TRADING_KLINE_FALLBACK_PROBE_CRON="0 0/30 9-11,13-14 * * MON-FRI"
     # 除权因子本地缓存目录（前复权用）。2026-09-14 修复：代码读 adai.market.adj-path，但 yml 未声明
     # → .env 里的 ADAI_ADJ_PATH 不生效，静默落回相对默认值 ../../data/market/adj，按
     # WorkingDirectory=/opt/adaios/backend 解析成 /opt/data/...（不可写）→ 生产全部标的「除权因子读取失败」。

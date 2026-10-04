@@ -1023,6 +1023,108 @@ void importCashQuery_emptyContent_throws() {
 }
 
 @org.junit.jupiter.api.Test
+void soldImport_reportsUnparsedRowsWithLineNumber() {
+    // P2-交易83（2026-10-04）：清仓股解析原来对非 6 位代码行直接 continue，回执只有 imported 计数
+    // →「丢一行 = 静默少一只清仓股」。现在丢行明细必须带行号 + 原文 + 原因回到回执里。
+    PositionRepository repo = mock(PositionRepository.class);
+    SoldTradeRepository sold = mock(SoldTradeRepository.class);
+    when(sold.findAll(any())).thenReturn(new java.util.ArrayList<>());
+    TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
+            mock(TradingHistoryRepository.class), mock(WatchlistRepository.class), sold,
+            mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
+            mock(MarketDataSource.class), mock(TradingLotService.class),
+            TradingAppServiceTest.defaultRuleRepo());
+
+    String content = "代码\t名称\t介入日期\t清仓日期\t持仓天数\t买卖次数\t持仓期涨幅%\n"
+            + "600206\t有研新材\t20260731\t20260803\t3\t1+1\t-12.82\n"
+            + "60021\t截断代码\t20260731\t20260803\t3\t1+1\t-12.82\n";
+    TradingAppService.SoldImportResult r = service.soldImport("default", content);
+
+    assertEquals(1, r.imported(), "正常行照常导入");
+    assertEquals(1, r.unparsedRows().size(), "丢行必须可见（不能只回计数）");
+    String dropped = r.unparsedRows().get(0);
+    assertTrue(dropped.startsWith("第 3 行"), "行号 = 原文件行号（1 起算，含表头行）：" + dropped);
+    assertTrue(dropped.contains("60021"), "原文要带上（用户能对上文件）：" + dropped);
+    assertTrue(dropped.contains("6 位数字"), "原因要写清：" + dropped);
+    // 正常那笔仍按 symbol upsert 落库
+    verify(sold).saveAll(eq("default"), any());
+}
+
+@org.junit.jupiter.api.Test
+void soldImport_allRowsUnparsed_reportsWithoutWriting() {
+    // 一行都没解析出来时（整个文件格式漂移）——丢行明细同样要回，且不得写坏既有档案
+    PositionRepository repo = mock(PositionRepository.class);
+    SoldTradeRepository sold = mock(SoldTradeRepository.class);
+    TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
+            mock(TradingHistoryRepository.class), mock(WatchlistRepository.class), sold,
+            mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
+            mock(MarketDataSource.class), mock(TradingLotService.class),
+            TradingAppServiceTest.defaultRuleRepo());
+
+    String content = "代码\t名称\t介入日期\t清仓日期\t持仓天数\t买卖次数\t持仓期涨幅%\n"
+            + "60021\t截断代码\t20260731\t20260803\t3\t1+1\t-12.82\n";
+    TradingAppService.SoldImportResult r = service.soldImport("default", content);
+
+    assertEquals(0, r.imported());
+    assertEquals(1, r.unparsedRows().size(), "解析全失败也要能说清是哪一行");
+    assertTrue(r.unparsedRows().get(0).contains("60021"), r.unparsedRows().get(0));
+    verify(sold, never()).saveAll(any(), any());
+}
+
+@org.junit.jupiter.api.Test
+void soldImport_unrecognizedHeader_failsClosedInsteadOfSilentZero() {
+    // 2026-10-04 对抗审查 P1（追加 A）：把自选股导出喂进清仓导入——表头核心列（代码/介入日期/清仓日期）
+    // 一个没命中，原实现把每行 continue 掉 → 回 {"imported":0}、连 WARN 都没有，用户以为「导了 0 笔」。
+    // 自选/资金/历史成交三条链在同类情形都是 fail-closed 400 人话；清仓链对齐资金链 headerMatched 口径。
+    SoldTradeRepository sold = mock(SoldTradeRepository.class);
+    TradingAppService service = new TradingAppService(mock(PositionRepository.class),
+            mock(RecordRepository.class), mock(TradingHistoryRepository.class),
+            mock(WatchlistRepository.class), sold, mock(AccountSnapshotRepository.class),
+            mock(TransferRepository.class), mock(MarketDataSource.class), mock(TradingLotService.class),
+            TradingAppServiceTest.defaultRuleRepo());
+
+    String watchlistExport = "代码\t名称\t细分行业\t一二级行业\t长期形态\t中期形态\t短期形态\t近日指标提示\n"
+            + "000725\t京东方Ａ\t元器件\t信息产业-元器件\t6\t8\t1\tKDJ死叉\n";
+    TradingException e = assertThrows(TradingException.class,
+            () -> service.soldImport("default", watchlistExport));
+    assertTrue(e.getMessage().contains("无法识别清仓股导出"),
+            "选错文件要人话拒绝（与资金链文案同风格）：" + e.getMessage());
+    verify(sold, never()).saveAll(any(), any());
+
+    // 真正的空文件走同一条判据（资金链对空文件也是 headerMatched=false → 拒绝，不另做静默 no-op）
+    assertThrows(TradingException.class, () -> service.soldImport("default", ""),
+            "空文件同样 fail-closed");
+    verify(sold, never()).saveAll(any(), any());
+}
+
+@org.junit.jupiter.api.Test
+void importCashQuery_unparsedDetailRows_carryLineNumberAndReason() {
+    // P2-交易83（2026-10-04）：资金明细丢行原来只回 int 计数（前端只能显示「另有 N 行」）——
+    // 用户不知道是哪只的精确成本没更新。现在明细带行号 + 原文 + 原因，旧 int 计数语义不变。
+    PositionRepository repo = mock(PositionRepository.class);
+    when(repo.findAll(any())).thenReturn(new java.util.ArrayList<>());
+    AtomicReference<AccountSnapshot> saved = new AtomicReference<>();
+    TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
+            mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
+            mock(SoldTradeRepository.class), capturingAccountRepo(saved),
+            mock(TransferRepository.class), mock(MarketDataSource.class), mock(TradingLotService.class),
+            mock(TradingRuleSettingsRepository.class));
+
+    String content = "人民币: 余额:1381.93  可用:1381.93  可取:1381.93  参考市值:77850.00  资产:79231.93  盈亏:100.00\n"
+            + "证券代码 证券名称 证券数量 成本价 当前价 浮动盈亏\n"
+            + "600206 有研新材 900 46.012 50.0 100.0\n"
+            + "这不是明细行 xxx\n";
+    var r = service.importCashQuery("default", content);
+
+    assertEquals(1, r.unparsedRows(), "旧 int 计数（P2-交易45 响应字段）语义不变");
+    assertEquals(1, r.unparsed().size(), "新增：没看懂的行的明细");
+    String dropped = r.unparsed().get(0);
+    assertTrue(dropped.startsWith("第 4 行"), "行号 = 原文件行号（1 起算）：" + dropped);
+    assertTrue(dropped.contains("这不是明细行"), "原文要带上：" + dropped);
+    assertTrue(dropped.contains("6 位数字"), "原因要写清：" + dropped);
+}
+
+@org.junit.jupiter.api.Test
 void soldUpdatePsychology_marksTrade() {
     PositionRepository repo = mock(PositionRepository.class);
     SoldTradeRepository sold = mock(SoldTradeRepository.class);

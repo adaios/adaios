@@ -1102,13 +1102,15 @@ class ApiService {
   }
 
   /// 清仓股导入（POST /api/v1/trading/sold/import，通达信导出文本）。
-  Future<int> importSold(String content) async {
+  /// P2-交易83（2026-10-04，契约 v3.96）：返回值从「裸笔数 int」升级为 [SoldImportResult]——
+  /// 后端自本批起把**没看懂的行**（行号 + 原文 + 原因）如实回传，原先只取 `imported` 把它全丢了。
+  Future<SoldImportResult> importSold(String content) async {
     final resp = await _client.post(
       Uri.parse('$baseUrl/api/v1/trading/sold/import'),
       headers: _headers, body: jsonEncode({'content': content}));
     _check(resp);
-    final d = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
-    return (d['imported'] as num?)?.toInt() ?? 0;
+    final d = jsonDecode(utf8.decode(resp.bodyBytes));
+    return SoldImportResult.fromJson(d);
   }
 
   /// 清仓股心理标注（PUT /api/v1/trading/sold/{symbol}/psychology）。
@@ -2987,24 +2989,68 @@ class SoldScoreDto {
   }
 }
 
+/// 丢行明细（`unparsed`）统一解析（P2-交易83，2026-10-04）：非列表/缺字段 → 空列表；
+/// 元素安全转字符串（后端下发的是人话字符串，类型不符也不炸）。与历史成交导入同口径。
+List<String> _unparsedLines(dynamic json) {
+  if (json is! Map<String, dynamic>) return const [];
+  return ((json['unparsed'] as List?) ?? const []).map((e) => e.toString()).toList();
+}
+
+/// 丢行计数（`unparsedCount`）统一解析：缺字段/非法 → 退回明细条数
+/// （后端只在**有丢行时**才下发这两个字段，明细也空时结果自然是 0；
+/// 宁可少报也不虚报——与 HistoricalTradeImportResult 同口径）。
+int _unparsedCount(dynamic json, List<String> lines) {
+  if (json is! Map<String, dynamic>) return 0;
+  return (json['unparsedCount'] as num?)?.toInt() ?? lines.length;
+}
+
+/// 清仓股导入结果（POST /api/v1/trading/sold/import）。
+/// 契约 v3.96（P2-交易83，2026-10-04）：有丢行时额外带 `unparsed`（逐条 = 行号 + 原文 + 原因）
+/// 与 `unparsedCount`（= 明细条数），空则不带这两个字段 → 前端空列表 / 0。
+/// 丢一行 = 该只清仓档案本次没进库（本导入按 symbol upsert、不删档案，故不拦导入，但必须可见）。
+class SoldImportResult {
+  final int imported;
+  final List<String> unparsed;
+  final int unparsedCount;
+
+  SoldImportResult({required this.imported, this.unparsed = const [], this.unparsedCount = 0});
+
+  factory SoldImportResult.fromJson(dynamic j) {
+    final lines = _unparsedLines(j);
+    return SoldImportResult(
+      imported: j is Map<String, dynamic> ? (j['imported'] as num?)?.toInt() ?? 0 : 0,
+      unparsed: lines,
+      unparsedCount: _unparsedCount(j, lines),
+    );
+  }
+}
+
 /// 资金查询导入结果。
 class CashImportResult {
   final double cash, assets;
   final int updatedCost;
   // P2-交易43（2026-09-14）：没认出来的明细行数（前端只认得出表头列的那几行）——
   // 丢一行 = 该只精确成本本次不更新。旧后端无此字段 → 0（行为与现在完全一致）。
+  // ⚠️ 契约 v3.96 明确**这个字段保持 int 不变**（改类型会把导入打挂），升级走加字段式。
   final int unparsedRows;
+  // P2-交易83（2026-10-04，契约 v3.96）：同一批丢行的**人话明细**（逐条 = 行号 + 原文 + 原因）——
+  // 让用户知道「是**哪只票**的精确成本没更新」，不再只有一个数字。旧后端缺字段 → 空列表 / 0。
+  final List<String> unparsed;
+  final int unparsedCount;
 
   CashImportResult({required this.cash, required this.assets, required this.updatedCost,
-      this.unparsedRows = 0});
+      this.unparsedRows = 0, this.unparsed = const [], this.unparsedCount = 0});
 
   factory CashImportResult.fromJson(dynamic j) {
     final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    final lines = _unparsedLines(j);
     return CashImportResult(
       cash: (m['cash'] as num?)?.toDouble() ?? 0,
       assets: (m['assets'] as num?)?.toDouble() ?? 0,
       updatedCost: (m['updatedCost'] as num?)?.toInt() ?? 0,
       unparsedRows: (m['unparsedRows'] as num?)?.toInt() ?? 0,
+      unparsed: lines,
+      unparsedCount: _unparsedCount(j, lines),
     );
   }
 }
@@ -3143,7 +3189,10 @@ class HistoricalTradeImportResult {
   // 没看懂、**根本没导入**的行（人话逐条，如「第 3 行「2026080X …」：成交日期不是 yyyyMMdd 格式」）。
   // 旧后端无此字段 → 空列表/0（行为与现在完全一致，不报错、不显示）。
   final List<String> unparsed;
-  final int unparsedCount; // 后端计数（可能与 unparsed 条数不同：明细过长时后端只给前几条）
+  // 后端计数：与 unparsed 条数**恒等**（明细是全量给的，不截断、不分页）——TradingController
+  // 的 trades/import、sold/import、imports/cash 三段都是「非空才下发 unparsed + unparsedCount
+  // = size()」；两者都空时后端不带这两个字段 → 前端空列表 + 0（缺字段时退回明细条数）。
+  final int unparsedCount;
 
   HistoricalTradeImportResult({
     required this.imported,
@@ -3471,6 +3520,10 @@ class MarketDataHealthDto {
   final int consecutiveFailures; // 连续全失败次数（成功即清零）
   final String? lastFailedSymbol;
   final List<String> sources; // 当前启用的取数链（按序）
+  // P2-交易58 前端侧（2026-10-04）：本地数据包（tdx）最后一根日期 `yyyy-MM-dd`。
+  // 本地关掉 / 还没取过 → null（后端 record 里确实可空）；「本地止于哪天」决定资金曲线尾段
+  // 与案例历史窗口有没有缺口，页面据此如实说出来（滞后才说，今天/null 零噪音）。
+  final String? tdxLastDate;
 
   MarketDataHealthDto({
     required this.ok,
@@ -3481,6 +3534,7 @@ class MarketDataHealthDto {
     this.consecutiveFailures = 0,
     this.lastFailedSymbol,
     this.sources = const [],
+    this.tdxLastDate,
   });
 
   /// 要不要给用户看横幅：**只有明确 ok=false 才报警**（ok=true 或拿不到信息 → 页面零显示）。
@@ -3501,6 +3555,7 @@ class MarketDataHealthDto {
       consecutiveFailures: rawFailures is num ? rawFailures.toInt() : 0,
       lastFailedSymbol: m['lastFailedSymbol']?.toString(),
       sources: rawSources is List ? rawSources.map((e) => e.toString()).toList() : const [],
+      tdxLastDate: m['tdxLastDate']?.toString(),
     );
   }
 }

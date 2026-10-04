@@ -53,7 +53,7 @@ tags: [meta, index, feature, 功能主轴]
 |:---|:-----|:----:|:---------|:---------|:-----|
 | `feed` | 主页 Feed 流（双世界）| shipped | [20260722-dual-world](../../direction/rfc/20260722-dual-world.md) | feature-ref §1 | — |
 | `record` | 记录提交与意图分流（log/ask）| shipped | 2026-09-30 D4 路由口径批（change-log，无 RFC）| feature-ref §2 | — |
-| `ask` | 问答会话（对话模式）| shipped | [20260929-conversation-context-engineering](../../direction/rfc/20260929-conversation-context-engineering.md) | feature-ref §3 | P2-对话1 |
+| `ask` | 问答会话（对话模式）| shipped | [20260929-conversation-context-engineering](../../direction/rfc/20260929-conversation-context-engineering.md) | feature-ref §3 | — |
 | `card` | FeedCard 卡片组件 | shipped | — | feature-ref §4 | — |
 | `brief` | 简报 | shipped | [20260923-rhythm-and-memory-temporality](../../direction/rfc/20260923-rhythm-and-memory-temporality.md) | feature-ref §5 | — |
 | `timeline` | 时间线 | shipped | [20260722-features-memory-timeline-search](../../direction/rfc/20260722-features-memory-timeline-search.md) | feature-ref §6 | — |
@@ -73,11 +73,11 @@ tags: [meta, index, feature, 功能主轴]
 | ID | 功能 | 状态 | 需求出处 | 实现出处 | 欠着 |
 |:---|:-----|:----:|:---------|:---------|:-----|
 | `trade.ledger` | 账本：导入 / 流水 / 对账 | shipped | [20260912-trading-ledger-integrity](../../direction/rfc/20260912-trading-ledger-integrity.md) | trading-features §一 | P2-交易66、P2-交易73 |
-| `trade.holdings` | 持仓与账户卡 | shipped | — | trading-features §一 | P2-交易59 |
+| `trade.holdings` | 持仓与账户卡 | shipped | — | trading-features §一 | — |
 | `trade.decision` | 决策时点提醒 + 四要素铁证 | shipped | [20260922-trading-decision-copilot](../../direction/rfc/20260922-trading-decision-copilot.md) | trading-features §二 | — |
 | `trade.alert` | 行情异动推送 | shipped | [20260923-market-data-resilience](../../direction/rfc/20260923-market-data-resilience.md) · [20260928-market-source-consolidation](../../direction/rfc/20260928-market-source-consolidation.md) | trading-features §二 | — |
 | `trade.equity` | 资金曲线与周期盈亏 | shipped | —（2026-09-04 晚间自主批 IV 直接实施，无 RFC）| trading-features §一 | — |
-| `trade.case` | 案例库与三维打分 | shipped | [20260830-trading-perfect-case-library](../../direction/rfc/20260830-trading-perfect-case-library.md) | trading-features §十 | S7 |
+| `trade.case` | 案例库与三维打分 | shipped | [20260830-trading-perfect-case-library](../../direction/rfc/20260830-trading-perfect-case-library.md) | trading-features §十 | — |
 | `trade.cognition` | 认知 / 画像（第五层）| building | [20260905-trading-cognition-layer](../../direction/rfc/20260905-trading-cognition-layer.md) | trading-features §一（端点）· §三（**认知层整体待建**）| P2-认知2、P2-认知3 |
 | `trade.app-form` | App 端交易形态（重做中）| rfc | [20260924-trading-app-form](../../direction/rfc/20260924-trading-app-form.md)（draft）| trading-features §五 | — |
 

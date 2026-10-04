@@ -777,7 +777,15 @@ public class TradingController {
         String content = body == null ? null : body.get("content");
         TradingAppService.SoldImportResult r = tradingAppService.soldImport(
                 userId, content != null ? content : "");
-        return ResponseEntity.ok(Map.of("imported", r.imported()));
+        java.util.Map<String, Object> resp = new java.util.LinkedHashMap<>();
+        resp.put("imported", r.imported());
+        // P2-交易83（2026-10-04）：解析层「没看懂的行」带行号+原因透出——「导入 42 笔」不再掩盖被丢的行
+        // （字段名与 POST /trading/trades/import 的 unparsed/unparsedCount 完全一致，前端可复用同一解析）
+        if (r.unparsedRows() != null && !r.unparsedRows().isEmpty()) {
+            resp.put("unparsed", r.unparsedRows());
+            resp.put("unparsedCount", r.unparsedRows().size());
+        }
+        return ResponseEntity.ok(resp);
     }
 
     /** 清仓股心理标注（PUT /api/v1/trading/sold/{symbol}/psychology）。 */
@@ -1517,12 +1525,20 @@ public class TradingController {
                 userId, content != null ? content : "", snapshot);
         // RFC 20260922 B 批 B3：资金股份快照是一次账同步（同步完成 → 可出复盘）
         sessionPushService.afterDataSync(userId);
-        return ResponseEntity.ok(Map.of(
-                "cash", r.cash(),
-                "assets", r.assets(),
-                "updatedCost", r.updatedCost(),
-                // P2-交易45：明细里没看懂的行数（>0 时前端提示「这几只的精确成本本次没更新」）
-                "unparsedRows", r.unparsedRows()));
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("cash", r.cash());
+        out.put("assets", r.assets());
+        out.put("updatedCost", r.updatedCost());
+        // P2-交易45：明细里没看懂的行数（>0 时前端提示「这几只的精确成本本次没更新」）
+        // 保持 int 类型不变——旧客户端（web/app）按数字解析，改类型会把导入直接打挂
+        out.put("unparsedRows", r.unparsedRows());
+        // P2-交易83（2026-10-04）：同一批行现在带**行号 + 原文 + 原因**（对齐历史成交回执口径）——
+        // 在原有 int 之外**新增**字段（additive），前端可据此点名是哪只的精确成本没更新
+        if (!r.unparsed().isEmpty()) {
+            out.put("unparsed", r.unparsed());
+            out.put("unparsedCount", r.unparsed().size());
+        }
+        return ResponseEntity.ok(out);
     }
 
     /**

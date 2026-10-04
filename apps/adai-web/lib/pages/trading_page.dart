@@ -85,6 +85,32 @@ String? todayPnlSourceNote(String source, String snapshotDate, {DateTime? now}) 
   return '$label · $md${snapshotDate.substring(0, 10) == today ? '' : '（已过期）'}';
 }
 
+/// 「我手上的行情到哪天」轻提示（P2-交易58 前端侧，2026-10-04）：
+/// 后端 health 的 `tdxLastDate` = 本地行情最后一根日期（本地关掉/还没取过 → null）。
+/// **阈值与后端同一口径**：`KlineService#tdxStale` 是
+/// `ChronoUnit.DAYS.between(last, LocalDate.now()) > 3`——导入后第 1～3 天仍用本地
+/// （零网络请求），第 4 天起才去网上补；所以这里也只在 `lag > 3` 时才说。
+/// （原先 `lag >= 1` 就说，于是周五导完包、周末与周一（lag 1/2/3）也天天弹一句并不成立的话。）
+/// - null / 认不出（旧后端没这字段、格式不是 yyyy-MM-dd、日期不存在）→ null：**不显示**（拿不到 ≠ 滞后）；
+/// - 今天及未来日 → null：不制造噪音。
+/// [now] 仅测试注入用。
+String? tdxLagNote(String? tdxLastDate, {DateTime? now}) {
+  if (tdxLastDate == null || tdxLastDate.length < 10) return null;
+  final d = DateTime.tryParse(tdxLastDate.substring(0, 10));
+  if (d == null) return null;
+  // P3（2026-10-04）：日期必须真实存在——`DateTime` 会把 '2026-02-31' 规范化成 03-03、
+  // '2026-00-00' 变成上一年 11-30；照原样显示就等于说了一个不存在的日子。回读校验不过 → 不说。
+  final iso = '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  if (iso != tdxLastDate.substring(0, 10)) return null;
+  final t = now ?? DateTime.now();
+  final lag = DateTime(t.year, t.month, t.day)
+      .difference(DateTime(d.year, d.month, d.day))
+      .inDays;
+  if (lag <= 3) return null; // 与后端同口径：前 1～3 天用的就是本地，没有缺口、也没走网络
+  return '我手上的行情只到 ${iso.substring(5)}，后面几天的我去网上补上';
+}
+
 /// RFC 20260825：行为标注配色——亏损加仓/追高/破止损未走 = 红（纪律问题），
 /// 浮盈回吐/短线超期 = 橙（提醒），短线新开 = 蓝（中性信息）。
 Color _behaviorColor(String type) {
@@ -773,6 +799,12 @@ class _TradingPageState extends State<TradingPage> {
                         const SizedBox(height: 8),
                         _buildPositionRatioLine(),
                       ],
+                      // P2-交易58 前端侧（2026-10-04）：本地数据包止于哪天——滞后才说一句，
+                      // 今天 / 拿不到 → 零显示（与对账闸门同一「无异常不刷存在感」口径）
+                      if (_tdxLag != null) ...[
+                        const SizedBox(height: 6),
+                        _buildTdxLagLine(_tdxLag!),
+                      ],
                       if (_dailyNotes.isNotEmpty) ...[
                         const SizedBox(height: 6),
                         _buildDailyNotesLine(),
@@ -1007,6 +1039,32 @@ class _TradingPageState extends State<TradingPage> {
             '有几笔今天的盈亏还没算全——${_dailyNotes.join('；')}',
             style: const TextStyle(fontSize: 11, color: AppColors.darkGrey3, height: 1.5),
           ),
+        ),
+      ]),
+    );
+  }
+
+  /// P2-交易58 前端侧（2026-10-04）：本地行情滞后提示（null = 不显示，零噪音）。
+  String? get _tdxLag => tdxLagNote(_marketHealth?.tdxLastDate);
+
+  /// P2-交易58 前端侧（2026-10-04）：本地数据包滞后一行轻提示。
+  /// 用中性灰（不是警告橙）：它是**常态信息**（用户一周导一次数据包），不是故障；
+  /// 只有真滞后（>3 天，与后端 `KlineService#tdxStale` 同口径）才由 [_tdxLag] 放出来，
+  /// 今天 / 拿不到 / 前 1～3 天 → 零显示。
+  Widget _buildTdxLagLine(String note) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.6)),
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Icon(Icons.history_rounded, size: 14, color: AppColors.darkGrey4),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(note,
+              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey3, height: 1.5)),
         ),
       ]),
     );
@@ -1318,6 +1376,44 @@ class _TradingPageState extends State<TradingPage> {
       backgroundColor: AppColors.darkSurface2,
       duration: const Duration(seconds: 2),
     ));
+  }
+
+  /// 导入回执（P2-交易83，2026-10-04）：**有丢行 → 弹回执 + 可展开逐条明细**；无丢行 → 原样 toast。
+  /// 为什么不是 toast：丢行明细要能逐条看（行号 + 原文 + 原因），两秒就消失的 SnackBar 撑不住。
+  /// 形态**复用历史成交 Tab 的 [_UnparsedBlock]**（橙色警示 + 明细可收起/展开，默认展开）——
+  /// 同一产品内只该有一套「丢行警示」，不另造第二套。
+  Future<void> _showImportReceipt({
+    required String receipt,
+    required List<String> unparsed,
+    required int unparsedCount,
+    required String Function(int n) header,
+  }) async {
+    if (unparsed.isEmpty) {
+      _toast(receipt);
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.darkSurface2,
+        title: Text(receipt, style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+        content: SizedBox(
+          width: 520,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _UnparsedBlock(lines: unparsed, declaredCount: unparsedCount, header: header),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('知道了')),
+        ],
+      ),
+    );
   }
 
   /// Tab 工作区（E1）：持仓（默认）/ 自选 / 清仓 / 资金 / 历史成交 五分区。
@@ -1876,9 +1972,17 @@ class _TradingPageState extends State<TradingPage> {
           onPressed: () => _openImportDialog('清仓股',
               '粘贴通达信清仓导出（或选择文件）：代码/名称/介入日期/清仓日期/持仓天数/买卖次数/持仓期涨幅%',
               (c, _) async {
-                final n = await widget.api.importSold(c);
+                final r = await widget.api.importSold(c);
                 await _loadAll();
-                if (mounted) _toast('清仓股导入 $n 笔');
+                if (!mounted) return;
+                // P2-交易83（2026-10-04）：后端如实回传没看懂的行——有丢行时不能只说「导入 N 笔」，
+                // 必须说清「这几行对应的清仓股可能没进来」，并可逐条展开（复用历史成交的橙色警示块）。
+                await _showImportReceipt(
+                  receipt: '清仓股导入 ${r.imported} 笔',
+                  unparsed: r.unparsed,
+                  unparsedCount: r.unparsedCount,
+                  header: (n) => '有 $n 行没能识别（你的清仓股可能少了几只）',
+                );
               }),
           icon: const Icon(Icons.upload_file, size: 14),
           label: const Text('导入清仓', style: TextStyle(fontSize: 12)),
@@ -3260,7 +3364,22 @@ class _TradingPageState extends State<TradingPage> {
                 },
               ),
               const SizedBox(height: 8),
-              TextField(controller: dateCtrl, decoration: _caseInput('买点日期（yyyy-MM-dd，如 2026-08-03）')),
+              // P2-工程12④（2026-10-04）：改日期同样撤掉旧错误——与标的框一致，
+              // 「不拿过期提示挡新动作」（原先只有标的框两个回调会清，日期框校验失败后
+              // 改日期红字仍挂着，看着像「新输入也不对」）。
+              // P3 修正（2026-10-04 前端审查）：但 `formError` 是跨字段单一变量，标的为空时
+              // 它承载的是「请从下拉列表里选择标的」——敲日期不该把**仍成立**的错误抹掉，
+              // 故只在标的已非空（残留错误只可能来自日期相关校验）时才清。
+              // 彻底解需按字段分错（symbolError / dateError），属 P3 登记项。
+              TextField(
+                controller: dateCtrl,
+                onChanged: (_) {
+                  if (symbolCtrl.text.trim().isNotEmpty && formError != null) {
+                    setDlg(() => formError = null);
+                  }
+                },
+                decoration: _caseInput('买点日期（yyyy-MM-dd，如 2026-08-03）'),
+              ),
               const SizedBox(height: 8),
               // 2026-08-31 双轨方案：类型下拉（B1/B2/失败案例/其他），失败案例负样本入库
               DropdownButtonFormField<String>(
@@ -3659,11 +3778,22 @@ class _TradingPageState extends State<TradingPage> {
     await _loadAll();
     if (mounted) {
       var msg = '资金已更新：现金 ¥${r.cash.toStringAsFixed(2)} · 成本更新 ${r.updatedCost} 只';
-      // P2-交易43（2026-09-14）：有明细行没认出来 → 该只精确成本本次没更新（丢数据必须可见）
-      if (r.unparsedRows > 0) {
-        msg += ' · 另有 ${r.unparsedRows} 行明细没认出来，这些持仓的精确成本本次没更新';
+      // P2-交易83（2026-10-04）：有丢行明细 → 弹回执 + 逐条展开（「是哪只票的精确成本没更新」）；
+      // 只有计数没有明细（旧后端只回 unparsedRows）→ 退回原来那句人话，不假装有明细。
+      if (r.unparsed.isNotEmpty) {
+        await _showImportReceipt(
+          receipt: msg,
+          unparsed: r.unparsed,
+          unparsedCount: r.unparsedCount,
+          header: (n) => '有 $n 行没能识别（这些票的精确成本这次没更新）',
+        );
+      } else {
+        // P2-交易43（2026-09-14）：有明细行没认出来 → 该只精确成本本次没更新（丢数据必须可见）
+        if (r.unparsedRows > 0) {
+          msg += ' · 另有 ${r.unparsedRows} 行明细没认出来，这些持仓的精确成本本次没更新';
+        }
+        _toast(msg);
       }
-      _toast(msg);
     }
   }
 
@@ -3697,6 +3827,11 @@ class _TradingPageState extends State<TradingPage> {
                     setDlg(() {
                       controller.text = saved.content;
                       snapshotDate = parseSnapshotDateFromFilename(f.name);
+                      // P2-工程12④（2026-10-04）：选完文件即撤掉旧错误——与标注弹窗改日期同理，
+                      // 「不拿过期提示挡新动作」（原先选完文件红字仍挂着，看着像文件也不行）。
+                      // P3 修正（2026-10-04 前端审查）：只在**文件真有内容**时才清——空文件清掉
+                      // 「先粘贴内容，或选择通达信导出的文件」等于把仍成立的话藏起来。
+                      formError = saved.content.trim().isEmpty ? formError : null;
                     });
                   },
                   icon: const Icon(Icons.upload_file, size: 14),
@@ -5517,13 +5652,21 @@ class _ImportResultSummary extends StatelessWidget {
 /// 默认展开：丢数据必须第一眼可见。
 class _UnparsedBlock extends StatefulWidget {
   final List<String> lines;
-  final int declaredCount; // 后端计数（明细可能只给前几条）→ 取两者较大值显示
+  // 后端计数（与明细条数恒等；跨结果合并去重后 lines 可能更少）→ 取两者较大值显示
+  final int declaredCount;
+  // 标题（含丢行条数 n）——不同导入的后果不一样，必须各说各的：
+  // 历史成交是「这些成交没有导入」、清仓股是「这几位清仓档案没进库」、资金是「这些票的精确成本没更新」。
+  // 不传 → 历史成交默认文案（既有调用点行为不变）。
+  final String Function(int n)? header;
 
-  const _UnparsedBlock({required this.lines, this.declaredCount = 0});
+  const _UnparsedBlock({required this.lines, this.declaredCount = 0, this.header});
 
   @override
   State<_UnparsedBlock> createState() => _UnparsedBlockState();
 }
+
+/// 历史成交导入的默认标题（P2-交易43 原文案，不动）。
+String _defaultUnparsedHeader(int n) => '有 $n 行没能识别（这些成交没有导入）';
 
 class _UnparsedBlockState extends State<_UnparsedBlock> {
   bool _expanded = true;
@@ -5549,7 +5692,7 @@ class _UnparsedBlockState extends State<_UnparsedBlock> {
             const Icon(Icons.warning_amber_rounded, size: 14, color: AppColors.darkOrange),
             const SizedBox(width: 6),
             Expanded(
-              child: Text('有 $n 行没能识别（这些成交没有导入）',
+              child: Text((widget.header ?? _defaultUnparsedHeader)(n),
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.darkOrange)),
             ),
             Text(_expanded ? '收起' : '看明细',

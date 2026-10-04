@@ -1589,6 +1589,14 @@ public class TradingAppService {
         return rows.size() > head.size() ? joined + " 等 " + rows.size() + " 行" : joined;
     }
 
+    /** 丢行明细预览（P2-交易83）：条目已是「第 N 行「原文」：原因」人话，**不再二次截断**
+     *  （否则原因会被切掉，正是本批要修掉的「看不见」）。最多 5 条，超出报总数。 */
+    private static String previewDropped(List<String> described) {
+        List<String> head = described.stream().limit(5).toList();
+        String joined = String.join(" ／ ", head);
+        return described.size() > head.size() ? joined + " 等 " + described.size() + " 行" : joined;
+    }
+
     /** 删除自选股。 */
     public boolean watchlistRemove(String userId, String symbol) {
         synchronized (tradeLock(userId)) {
@@ -1606,13 +1614,35 @@ public class TradingAppService {
         return soldTradeRepository.findAll(userId);
     }
 
-    /** 导入清仓股（通达信导出文本；按 symbol upsert，保留已有 verdict/psychology）。 */
+    /** 导入清仓股（通达信导出文本；按 symbol upsert，保留已有 verdict/psychology）。
+     *  <p>P2-交易83（2026-10-04）：解析层没看懂的行带<b>行号 + 原文 + 原因</b>回执
+     *  （对齐 P2-交易43 历史成交口径）。本导入是 upsert（不删档案），故丢行不 fail-closed，
+     *  但必须可见——原来 `imported` 一个计数把丢的行全盖住了。</p>
+     *  <p>对抗审查 P1（2026-10-04 追加 A）：**表头未识别**（选错文件 / 空文件）是另一回事——
+     *  与自选/资金/历史成交三条链同口径 fail-closed 400 + 人话，不再静默回 {@code imported=0}。</p>
+     */
     public SoldImportResult soldImport(String userId, String content) {
-        List<SoldTrade> parsed = TradingImportParser.parseSold(content);
-        if (parsed.isEmpty()) return new SoldImportResult(0);
+        TradingImportParser.SoldParse parsed = TradingImportParser.parseSoldWithReport(content);
+        List<SoldTrade> trades = parsed.trades();
+        // 2026-10-04 对抗审查 P1（追加 A）：选错文件（表头核心列「代码/介入日期/清仓日期」一个没命中）
+        // 原来把每行 continue 掉 → 回 {"imported":0}、连 WARN 都没有，用户以为「导了 0 笔」。
+        // 与资金链 headerMatched 同一口径（含**空文件**：资金链也是这一条判据直接拒绝，不另做静默 no-op）：
+        // fail-closed 400 人话，未识别就不落笔（参数行都没有，也不会写任何档案）。
+        if (!parsed.headerMatched()) {
+            throw new TradingException("无法识别清仓股导出格式——请确认表头含「代码、介入日期、清仓日期」，"
+                    + "且是通达信清仓股（已了结交易）导出——是否选错了文件（如自选股/资金股份/历史成交导出）？");
+        }
+        if (trades.isEmpty()) {
+            // 一行都没解析出来时同样带回丢行明细（原来直接 `new SoldImportResult(0)`，连丢的行都没出口）
+            if (!parsed.unparsedRows().isEmpty()) {
+                log.warn("清仓股导入：{} 行没看懂，本次没有任何可导入的清仓记录 | userId={} | {}",
+                        parsed.unparsedRows().size(), userId, previewDropped(parsed.unparsedRows()));
+            }
+            return new SoldImportResult(0, parsed.unparsedRows());
+        }
         synchronized (tradeLock(userId)) {
             List<SoldTrade> current = new ArrayList<>(soldTradeRepository.findAll(userId));
-            for (SoldTrade t : parsed) {
+            for (SoldTrade t : trades) {
                 boolean found = false;
                 for (int i = 0; i < current.size(); i++) {
                     if (current.get(i).symbol().equals(t.symbol())) {
@@ -1654,8 +1684,14 @@ public class TradingAppService {
             }
             soldTradeRepository.saveAll(userId, current);
         }
-        log.info("清仓股导入 | userId={} | {} 笔（含规则对照 verdict）", userId, parsed.size());
-        return new SoldImportResult(parsed.size());
+        log.info("清仓股导入 | userId={} | {} 笔（含规则对照 verdict）| 没看懂的行 {}",
+                userId, trades.size(), parsed.unparsedRows().size());
+        if (!parsed.unparsedRows().isEmpty()) {
+            // P2-交易83：这些行的清仓档案本次没进库/没更新——用户必须能对上文件里的哪一行
+            log.warn("清仓股导入有 {} 行没看懂（这些清仓记录本次没进档案）| userId={} | {}",
+                    parsed.unparsedRows().size(), userId, previewDropped(parsed.unparsedRows()));
+        }
+        return new SoldImportResult(trades.size(), parsed.unparsedRows());
     }
 
     /** 补/改心理标注（用户复盘素材）。 */
@@ -1704,8 +1740,9 @@ public class TradingAppService {
         }
         if (!q.unparsedRows().isEmpty()) {
             // 明细丢一行 = 该只持仓的「精确成本」不更新（不覆盖既有数据，故不 fail-closed，但必须可见）
+            // P2-交易83（2026-10-04）：日志与回执都带上**行号 + 原文 + 原因**（原来只有原文，对不上文件）
             log.warn("资金明细有 {} 行没看懂（这些持仓的精确成本本次不更新）| userId={} | {}",
-                    q.unparsedRows().size(), userId, previewRows(q.unparsedRows()));
+                    q.unparsedRows().size(), userId, previewDropped(q.unparsedRows()));
         }
         // 账户总体快照（券商口径，顶层账户卡数据源）——当日盈亏 = 明细「当日盈亏」列和。
         // P2-交易37（2026-09-09）：明细**缺「当日盈亏」列**或**明细为空（当日清仓后导出无行，
@@ -1790,7 +1827,7 @@ public class TradingAppService {
             // 而不是靠读代码才知道。持仓侧由「持仓股」导入负责（见 importPositions 的 POSITIONS_ONLY）。
             log.info("资金查询导入 | side=CASH_ONLY（只改现金侧与成本，不动持仓数量）| userId={} | 现金={} 资产={} | 成本更新 {} 只 | 当日盈亏列={}",
                     userId, cash, q.assets(), updated, todayPnlFromFile);
-            return new CashImportResult(cash, q.assets(), updated, q.unparsedRows().size());
+            return new CashImportResult(cash, q.assets(), updated, q.unparsedRows());
         }
     }
 
@@ -3376,15 +3413,48 @@ public class TradingAppService {
     /** 自选导入结果。 */
     public record WatchlistImportResult(int imported) {}
 
-    /** 清仓导入结果。 */
-    public record SoldImportResult(int imported) {}
+    /** 清仓导入结果。
+     *  <p>P2-交易83（2026-10-04）：{@code unparsedRows} = 解析层没看懂的行（每条「第 N 行「原文」：原因」，
+     *  行号 = 原文件行号，1 起算）——对齐 P2-交易43 历史成交回执口径；丢一行 = 该只清仓档案本次没进库。</p>
+     */
+    public record SoldImportResult(int imported, List<String> unparsedRows) {
+        public SoldImportResult {
+            if (unparsedRows == null) unparsedRows = List.of();
+        }
 
-    /** 资金导入结果。 */
+        /** 兼容旧 1 参构造（无丢行明细）。
+         *  @deprecated 生产路径**必须**带明细（{@code SoldImportResult(int, List)}）——只给条数等于把
+         *              「哪几行被丢了」藏起来（P2-交易83 的根因）。此构造仅供既有测试/外部兼容调用，
+         *              新代码不要再走。 */
+        @Deprecated
+        public SoldImportResult(int imported) {
+            this(imported, List.of());
+        }
+    }
+
+    /** 资金导入结果。
+     *  <p>P2-交易83（2026-10-04）：{@code unparsed} = 明细里没看懂的行（每条「第 N 行「原文」：原因」，
+     *  行号 = 原文件行号，1 起算）——丢一行 = 该只持仓的精确成本本次不更新。
+     *  旧接口只给 int 计数，用户不知道是哪只。</p>
+     */
     public record CashImportResult(java.math.BigDecimal cash, java.math.BigDecimal assets,
-                                   int updatedCost, int unparsedRows) {
-        /** 兼容旧 3 参构造。 */
+                                   int updatedCost, List<String> unparsed) {
+        public CashImportResult {
+            if (unparsed == null) unparsed = List.of();
+        }
+
+        /** 丢行**条数**——沿用 P2-交易45 的 int 语义（旧响应字段 `unparsedRows` 与既有调用点/测试不变）。 */
+        public int unparsedRows() {
+            return unparsed.size();
+        }
+
+        /** 兼容旧 3 参构造（无丢行明细）。
+         *  @deprecated 生产路径**必须**带明细（{@code CashImportResult(BigDecimal, BigDecimal, int, List)}）
+         *              ——只给计数，用户不知道是哪只的精确成本没更新（P2-交易83）。此构造仅供既有测试/
+         *              外部兼容调用，新代码不要再走。 */
+        @Deprecated
         public CashImportResult(java.math.BigDecimal cash, java.math.BigDecimal assets, int updatedCost) {
-            this(cash, assets, updatedCost, 0);
+            this(cash, assets, updatedCost, List.of());
         }
     }
 

@@ -5,18 +5,23 @@ import com.adaiadai.core.domain.trading.market.KlineSource;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -427,5 +432,228 @@ class KlineServiceTest {
                 .filter(e -> e.getFormattedMessage().contains("tdx 缺口补齐失败"))
                 .count();
         assertEquals(1, gapLogs, "同一「本地止于」日期只应记一条（同型封堵回归）：实际 " + gapLogs);
+    }
+
+    // ── REVIEW P2-交易58 收口：兜底源（新浪）主动体检（2026-10-04）──
+    // 背景：兜底平时零调用、零体检，只在主源熔断时才被批量打过去——那恰是它最可能也挂的时刻。
+    // 这组用例钉三件事：① 探测真的打兜底源、结果如实进 health；② 失败/异常不抛、不影响主链路；
+    // ③ 非交易日 / 非交易时段不探（不白打网络），且时钟/日历判断用 spy 固定，**不吃真实日历**。
+
+    /** 探测窗口内的被测对象：isProbeWindow 固定 true（避免逢节假日/盘后测试变红）。 */
+    private KlineService probing(KlineSource tencent, KlineSource sina) {
+        KlineService svc = spy(new KlineService(true, true, tencent, tdxEmpty(), sina));
+        doReturn(true).when(svc).isProbeWindow();
+        return svc;
+    }
+
+    @Test
+    void probeFallback_sourceUp_healthSaysHealthy() {
+        KlineSource sina = mock(KlineSource.class);
+        when(sina.probe(anyString())).thenReturn(true);
+        KlineService svc = probing(mock(KlineSource.class), sina);
+
+        assertNull(svc.health().fallbackHealthy(), "还没探过 → null（不编一个健康）");
+        assertNull(svc.health().fallbackLastProbeAt());
+
+        svc.probeFallbackSource();
+
+        KlineService.Health h = svc.health();
+        assertEquals(Boolean.TRUE, h.fallbackHealthy(), "探到数据 → 健康");
+        assertNotNull(h.fallbackLastProbeAt(), "探测时刻要留痕（人能看到「最后一次体检是什么时候」）");
+        verify(sina).probe(anyString());
+    }
+
+    @Test
+    void probeFallback_sourceDown_reportsFalse_andDoesNotThrow() {
+        KlineSource sina = mock(KlineSource.class);
+        when(sina.probe(anyString())).thenReturn(false);
+        KlineService svc = probing(mock(KlineSource.class), sina);
+
+        assertDoesNotThrow(svc::probeFallbackSource, "探测失败不许抛（跑在调度线程上）");
+
+        KlineService.Health h = svc.health();
+        assertEquals(Boolean.FALSE, h.fallbackHealthy(), "探不到 → 如实报 false");
+        assertNotNull(h.fallbackLastProbeAt());
+    }
+
+    @Test
+    void probeFallback_probeThrows_isSwallowedAsUnhealthy() {
+        // KlineSource#probe 的约定是不抛；这里模拟「某个实现违约抛了」——KlineService 必须再兜一层
+        KlineSource sina = mock(KlineSource.class);
+        when(sina.probe(anyString())).thenThrow(new IllegalStateException("connection reset"));
+        KlineService svc = probing(mock(KlineSource.class), sina);
+
+        assertDoesNotThrow(svc::probeFallbackSource);
+        assertEquals(Boolean.FALSE, svc.health().fallbackHealthy());
+    }
+
+    @Test
+    void probeFallback_doesNotPolluteLinkHealth() {
+        // 探测只反映**兜底源自己**：主源正常时兜底挂了，链路仍是 ok（否则会误报「行情不可用」）
+        KlineSource tencent = mock(KlineSource.class);
+        when(tencent.kline(anyString(), anyInt())).thenReturn(List.of(c(1, 10.5)));
+        KlineSource sina = mock(KlineSource.class);
+        when(sina.probe(anyString())).thenReturn(false);
+        KlineService svc = probing(tencent, sina);
+
+        svc.kline("600519", 5);          // 主源正常
+        svc.probeFallbackSource();       // 兜底挂了
+
+        KlineService.Health h = svc.health();
+        assertTrue(h.ok(), "兜底体检不过 ≠ 链路不可用（不制造假警报）");
+        assertEquals("腾讯", h.lastSuccessSource());
+        assertNull(h.lastFailureAt(), "探测不得写链路失败时刻");
+        assertEquals(0, h.consecutiveFailures(), "探测不得动熔断计数");
+    }
+
+    @Test
+    void probeFallback_nonTradingDay_skipsWithoutTouchingSource() {
+        KlineSource sina = mock(KlineSource.class);
+        KlineService svc = spy(new KlineService(true, true, mock(KlineSource.class), tdxEmpty(), sina));
+        doReturn(false).when(svc).isTradingDayToday(); // 周末 / 法定节假日
+        doReturn(true).when(svc).inTradingSession(any());
+
+        svc.probeFallbackSource();
+
+        verify(sina, never()).probe(anyString());
+        assertNull(svc.health().fallbackHealthy(), "没探过就保持 null（不假装探过）");
+    }
+
+    @Test
+    void probeFallback_outsideTradingSession_skipsWithoutTouchingSource() {
+        KlineSource sina = mock(KlineSource.class);
+        KlineService svc = spy(new KlineService(true, true, mock(KlineSource.class), tdxEmpty(), sina));
+        doReturn(true).when(svc).isTradingDayToday();
+        doReturn(false).when(svc).inTradingSession(any()); // 盘前/午休/盘后
+
+        svc.probeFallbackSource();
+
+        verify(sina, never()).probe(anyString());
+        assertNull(svc.health().fallbackHealthy());
+    }
+
+    @Test
+    void probeFallback_fallbackDisabled_skipsAndStaysNull() {
+        KlineSource sina = mock(KlineSource.class);
+        KlineService svc = spy(new KlineService(true, false, mock(KlineSource.class), tdxEmpty(), sina));
+        doReturn(true).when(svc).isProbeWindow();
+
+        svc.probeFallbackSource();
+
+        verify(sina, never()).probe(anyString());
+        assertNull(svc.health().fallbackHealthy(), "兜底关闭 → 没有体检对象（启用与否看 sources）");
+        assertEquals(List.of("tdx", "腾讯"), svc.health().sources());
+    }
+
+    @Test
+    void probeFallback_failureAlert_isCooldowned_repeatedFailureIsWarn() {
+        KlineSource sina = mock(KlineSource.class);
+        when(sina.probe(anyString())).thenReturn(false);
+        KlineService svc = probing(mock(KlineSource.class), sina);
+
+        ch.qos.logback.classic.Logger logger =
+                (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(KlineService.class);
+        ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender =
+                new ch.qos.logback.core.read.ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            svc.probeFallbackSource();
+            svc.probeFallbackSource(); // 冷却期内（1 小时）
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        long probeErrors = appender.list.stream()
+                .filter(e -> e.getLevel() == ch.qos.logback.classic.Level.ERROR)
+                .filter(e -> e.getFormattedMessage().contains("兜底源主动探测未通过"))
+                .count();
+        long probeWarns = appender.list.stream()
+                .filter(e -> e.getLevel() == ch.qos.logback.classic.Level.WARN)
+                .filter(e -> e.getFormattedMessage().contains("兜底源主动探测未通过"))
+                .count();
+        assertEquals(1, probeErrors, "冷却期内同类失败只应记一条 ERROR：实际 " + probeErrors);
+        assertEquals(1, probeWarns, "冷却期内的失败降 WARN（不静默）：实际 " + probeWarns);
+    }
+
+    @Test
+    void probeFallback_failureAfterRecovery_alertsAgain() {
+        // 恢复即清零冷却：下一轮故障属于**新的**故障周期，不该被上一轮的 1 小时冷却吃掉
+        KlineSource sina = mock(KlineSource.class);
+        when(sina.probe(anyString())).thenReturn(false).thenReturn(true).thenReturn(false);
+        KlineService svc = probing(mock(KlineSource.class), sina);
+
+        ch.qos.logback.classic.Logger logger =
+                (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(KlineService.class);
+        ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender =
+                new ch.qos.logback.core.read.ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            svc.probeFallbackSource(); // 失败 → ERROR（冷却起）
+            svc.probeFallbackSource(); // 恢复 → 冷却清零
+            svc.probeFallbackSource(); // 再失败 → 新故障周期，仍应 ERROR
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        long probeErrors = appender.list.stream()
+                .filter(e -> e.getLevel() == ch.qos.logback.classic.Level.ERROR)
+                .filter(e -> e.getFormattedMessage().contains("兜底源主动探测未通过"))
+                .count();
+        assertEquals(2, probeErrors, "恢复后的再次失败应重新报 ERROR（不被旧冷却吞掉）：实际 " + probeErrors);
+    }
+
+    @Test
+    void probeFallback_recovers_logsInfoOnce() {
+        KlineSource sina = mock(KlineSource.class);
+        when(sina.probe(anyString())).thenReturn(false).thenReturn(true);
+        KlineService svc = probing(mock(KlineSource.class), sina);
+
+        ch.qos.logback.classic.Logger logger =
+                (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(KlineService.class);
+        ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender =
+                new ch.qos.logback.core.read.ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            svc.probeFallbackSource(); // 失败
+            svc.probeFallbackSource(); // 恢复
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        assertEquals(Boolean.TRUE, svc.health().fallbackHealthy());
+        long recovered = appender.list.stream()
+                .filter(e -> e.getFormattedMessage().contains("兜底源探测恢复"))
+                .count();
+        assertEquals(1, recovered, "从「不健康」回到「健康」要留一条 INFO（失败→恢复是人关心的转折）");
+    }
+
+    @Test
+    void inTradingSession_defaultImplementation_isHonest() {
+        // 真实时段判断（防「恒 true / 恒 false」变异）：09:30–11:30、13:00–15:00 含边界
+        KlineService svc = new KlineService(true, true, mock(KlineSource.class), tdxEmpty(),
+                mock(KlineSource.class));
+        assertFalse(svc.inTradingSession(LocalTime.of(9, 29)), "09:29 还没开盘");
+        assertTrue(svc.inTradingSession(LocalTime.of(9, 30)));
+        assertTrue(svc.inTradingSession(LocalTime.of(11, 30)), "11:30 是上午收盘那一刻");
+        assertFalse(svc.inTradingSession(LocalTime.of(11, 31)), "午休不探");
+        assertFalse(svc.inTradingSession(LocalTime.of(12, 59)));
+        assertTrue(svc.inTradingSession(LocalTime.of(13, 0)));
+        assertTrue(svc.inTradingSession(LocalTime.of(15, 0)), "15:00 收盘那一刻");
+        assertFalse(svc.inTradingSession(LocalTime.of(15, 1)), "盘后不探（日 K 一天一变，重复探没有信息增量）");
+    }
+
+    @Test
+    void isTradingDayToday_andIsProbeWindow_defaultImplementations_followCalendarAndClock() {
+        // 默认实现直调（不经 spy stub）：期望值取自同一份日历/时段，防硬编码 true 或 false
+        KlineService svc = new KlineService(true, true, mock(KlineSource.class), tdxEmpty(),
+                mock(KlineSource.class));
+
+        assertEquals(TradingSessionPushService.isTradingDayStrict(LocalDate.now()), svc.isTradingDayToday(),
+                "交易日判断必须与推送侧同一份日历（周末 + 法定节假日都不算）");
+        boolean expected = svc.isTradingDayToday() && svc.inTradingSession(LocalTime.now());
+        assertEquals(expected, svc.isProbeWindow(), "探测窗口 = 交易日 ∧ 交易时段");
     }
 }

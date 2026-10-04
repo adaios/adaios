@@ -6,10 +6,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -42,6 +44,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * **不做**「滞后即全局跳过本地读」：滞后是**逐标的**的（生产实测同时存在停在 09-04 与 09-18 的两批），
  * 全局跳过会误杀仍然新鲜的标的。
  *
+ * <p><b>兜底源主动体检（REVIEW P2-交易58 收口，2026-10-04）</b>：兜底（新浪）原来只在主源熔断时才被
+ * 逐标的批量打过去——零调用、零体检，等发现它也是挂的就已经没源可顶了。现在每 30 分钟（**仅交易时段**）
+ * 主动探一次，结果进 {@link Health#fallbackHealthy()} / {@link Health#fallbackLastProbeAt()}。
+ * 探测轻量（10 根、5s 超时）、失败只记日志（ERROR + 1 小时冷却），**不影响主链路**。
+ *
  * <p>历史：2026-08-16 以东财为主源、腾讯兜底；P2-1（2026-08-18 生产）东财连接层被限
  * （{@code header parser received no bytes}，单日 1154 次 WARN）→ 加熔断。2026-08-23 用户确认
  * 「优先以腾讯」：主源对调。2026-09-23 加新浪作最后一层（RFC 20260923 B 批）。
@@ -68,6 +75,29 @@ public class KlineService {
 
     private static final String PRIMARY_NAME = "腾讯";
     private static final String FALLBACK_NAME = "新浪";
+
+    /**
+     * 兜底源主动探测的默认频率：**交易时段内每 30 分钟**（2026-10-04，REVIEW P2-交易58 收口）。
+     * <p>
+     * 触发点 09:00/09:30/…/11:30、13:00/…/14:30，再由 {@link #inTradingSession(LocalTime)} 收口到
+     * 09:30–11:30 / 13:00–15:00（09:00 那次会被过滤——那时行情还是上一交易日的）。
+     * 非交易时段**不探**：日 K 一天一变，盘后重复探没有信息增量，只是白打网络。
+     * <p>
+     * 覆盖方式：{@code adai.trading.kline.fallback-probe-cron}（env {@code ADAI_TRADING_KLINE_FALLBACK_PROBE_CRON}）。
+     */
+    static final String CRON_FALLBACK_PROBE = "0 0/30 9-11,13-14 * * MON-FRI";
+
+    /** 探测标的：贵州茅台（流动性最好、常年有数据，不存在停牌误报）。 */
+    static final String PROBE_SYMBOL = "600519";
+
+    /**
+     * 探测失败的告警冷却（1 小时，比探测间隔 30 分钟长）。
+     * <p>
+     * 与链路侧 {@link #FALLBACK_ALERT_COOLDOWN_MS}（30 分钟）分开：那条讲「主源+兜底同时挂了、
+     * 这次取数拿的是空」，这条讲「兜底的常态化体检没过，主源一旦熔断将无源可顶」——不同事实，
+     * 不该互相吞掉告警名额。冷却期内的同类失败降 WARN。
+     */
+    private static final long FALLBACK_PROBE_ALERT_COOLDOWN_MS = 60 * 60_000L;
 
     /** 熔断状态（volatile 多线程读；买点扫描 8 线程 / 清仓打分 16 线程）。 */
     private volatile int consecutiveFailures;
@@ -107,6 +137,17 @@ public class KlineService {
      */
     private volatile long fallbackDownAlertedUntil;
     private static final long FALLBACK_ALERT_COOLDOWN_MS = 30 * 60_000L;
+
+    // ── 兜底源主动体检（REVIEW P2-交易58 收口，2026-10-04）──
+    // 链路侧那条告警只在「主源熔断 + 兜底也拿不到」时才响——那时兜底已经是被打挂的状态；
+    // 这里补的是**平时**的低频体检：每 30 分钟（仅交易时段）真发一次轻量请求，把「兜底是否活着」
+    // 变成 health() 里的一个字段，而不是等主源熔断那天才发现它也没了。
+    /** 兜底源最近一次主动探测是否通过（null = 尚未探测过 / 兜底已关闭）。 */
+    private volatile Boolean fallbackHealthy;
+    /** 最近一次主动探测的时刻（0 = 从未探测）。 */
+    private volatile long fallbackLastProbeAtMs;
+    /** 探测失败的告警冷却（见 {@link #FALLBACK_PROBE_ALERT_COOLDOWN_MS}）。 */
+    private volatile long fallbackProbeAlertedUntil;
 
     /**
      * @param tdxEnabled  本地数据包开关（{@code adai.market.tdx-enabled}，生产可经 {@code ADAI_TDX_ENABLED} 覆盖）
@@ -279,10 +320,99 @@ public class KlineService {
         return List.of();
     }
 
+    // ── 兜底源主动体检（REVIEW P2-交易58 收口，2026-10-04）──
+
+    /**
+     * 低频主动探测兜底源（新浪）：**交易时段内每 30 分钟一次**，结果进 {@link Health#fallbackHealthy()}。
+     * <p>
+     * <b>解决什么</b>：链路是 {@code TDX → 主源 → 兜底}，而兜底平时零调用、零体检——只在主源熔断时
+     * 才被逐标的批量打过去，那恰恰是它最可能也挂的时刻。原来只有走到那一步才知道兜底是否可用
+     * （{@link #alertFallbackAlsoDown} 是**事后**告警，且那时取数已经失败）。本方法把它变成**事前**的
+     * 常态化体检：探到了就写进 health，人在端点上一眼能看到「兜底还活着吗」。
+     * <p>
+     * <b>轻量与无害</b>：只拉 {@link KlineSource#PROBE_LIMIT} 根（新浪侧 5s 超时、真实请求、不走缓存）；
+     * 非交易日 / 非交易时段直接返回（日 K 一天一变，盘后重复探没有信息增量）；
+     * 异常一律吞掉只记日志——探测失败**绝不**影响 {@link #kline} 主链路，也不动熔断计数与
+     * {@code ok/lastSuccessSource}（那是链路级状态，探测只反映兜底源自己）。
+     * <p>
+     * 频率走 {@code adai.trading.kline.fallback-probe-cron}（env {@code ADAI_TRADING_KLINE_FALLBACK_PROBE_CRON}），
+     * 默认 {@link #CRON_FALLBACK_PROBE}。
+     */
+    @Scheduled(cron = "${adai.trading.kline.fallback-probe-cron:" + CRON_FALLBACK_PROBE + "}")
+    public void probeFallbackSource() {
+        if (fallback == null) return;   // 兜底关闭 → 没有体检对象（health 该字段恒 null）
+        if (!isProbeWindow()) return;   // 非交易日 / 非交易时段 → 不白打网络
+
+        boolean healthy;
+        try {
+            healthy = fallback.probe(PROBE_SYMBOL);
+        } catch (Exception e) {
+            // probe() 的约定是不抛；这里再兜一层，保证调度线程不会因一次探测炸掉
+            healthy = false;
+            log.warn("{}兜底探测抛异常（已吞掉，不影响主链路） | symbol={} | {}",
+                    FALLBACK_NAME, PROBE_SYMBOL, e.getMessage());
+        }
+
+        Boolean before = fallbackHealthy;
+        fallbackHealthy = healthy;
+        fallbackLastProbeAtMs = System.currentTimeMillis();
+
+        if (healthy) {
+            // 恢复即清零冷却：下一次失败属于**新的**故障周期，该重新给 ERROR（不被上一轮的冷却吃掉）
+            fallbackProbeAlertedUntil = 0;
+            if (Boolean.FALSE.equals(before)) {
+                log.info("{}兜底源探测恢复（此前未通过） | symbol={}", FALLBACK_NAME, PROBE_SYMBOL);
+            } else {
+                log.debug("{}兜底源探测通过 | symbol={}", FALLBACK_NAME, PROBE_SYMBOL); // 常态 → 不刷 INFO
+            }
+            return;
+        }
+        alertFallbackProbeFailed();
+    }
+
+    /** 现在是否该探兜底：交易日 且 在交易时段内（可覆写——测试固定它，免得吃真实日历）。 */
+    boolean isProbeWindow() {
+        return isTradingDayToday() && inTradingSession(LocalTime.now());
+    }
+
+    /** 今天是否交易日（自证版：周末 + 法定节假日都不算；与交易推送共用同一份日历）。 */
+    boolean isTradingDayToday() {
+        return TradingSessionPushService.isTradingDayStrict(LocalDate.now());
+    }
+
+    /** 交易时段：上午 09:30–11:30、下午 13:00–15:00（含边界）。 */
+    boolean inTradingSession(LocalTime time) {
+        return inRange(time, LocalTime.of(9, 30), LocalTime.of(11, 30))
+                || inRange(time, LocalTime.of(13, 0), LocalTime.of(15, 0));
+    }
+
+    private static boolean inRange(LocalTime t, LocalTime from, LocalTime to) {
+        return !t.isBefore(from) && !t.isAfter(to);
+    }
+
+    /**
+     * 兜底源探测没通过的告警：ERROR + 1 小时冷却（冷却期内降 WARN）。
+     * <p>
+     * 冷却独立于 {@link #alertFallbackAlsoDown}：同一次探测失败**不代表**主源也挂了，
+     * 两条告警讲的是不同事实，不共用冷却名额。
+     */
+    private void alertFallbackProbeFailed() {
+        long now = System.currentTimeMillis();
+        String detail = FALLBACK_NAME + "兜底源主动探测未通过 | symbol=" + PROBE_SYMBOL
+                + " | 它平时零调用、只在主源熔断时才被批量打过去，那时若它也是挂的 → 行情整段缺口";
+        if (now < fallbackProbeAlertedUntil) {
+            log.warn("{} | 冷却中（1 小时内同类只记一条 ERROR）", detail);
+            return;
+        }
+        fallbackProbeAlertedUntil = now + FALLBACK_PROBE_ALERT_COOLDOWN_MS;
+        log.error("{} | 请检查新浪 K 线接口；（探测每 30 分钟一次、仅交易时段）1 小时内同类只记这一条", detail);
+    }
+
     // ── 可用性可见 ──
 
     /**
-     * 行情可用性状态（RFC 20260923 D 批；RFC 20260928 批 2 增 {@code tdxLastDate}）。
+     * 行情可用性状态（RFC 20260923 D 批；RFC 20260928 批 2 增 {@code tdxLastDate}；
+     * REVIEW P2-交易58 收口增 {@code fallbackHealthy} / {@code fallbackLastProbeAt}）。
      *
      * @param ok                  当前是否可用（最近一次成功不早于最近一次失败）
      * @param note                人话说明（可直接进横幅/推送）
@@ -294,10 +424,15 @@ public class KlineService {
      * @param sources             当前启用的取数链（按序）
      * @param tdxLastDate         本地数据包最后一根日期（本地关掉 / 还没取过 → null）；
      *                            用户一周导入一次，此值长期停在旧日期即「该导数据包了」
+     * @param fallbackHealthy     兜底源（新浪）最近一次**主动探测**是否通过；
+     *                            {@code null} = 还没探过或兜底已关闭（是否启用看 {@code sources}）。
+     *                            它是**事前**体检，与 {@code ok} 不同源：主源正常时兜底也可能已经挂了
+     * @param fallbackLastProbeAt 最近一次主动探测的时刻（没探过 → null）
      */
     public record Health(boolean ok, String note, String lastSuccessAt, String lastSuccessSource,
                          String lastFailureAt, int consecutiveFailures, String lastFailedSymbol,
-                         List<String> sources, String tdxLastDate) {}
+                         List<String> sources, String tdxLastDate,
+                         Boolean fallbackHealthy, String fallbackLastProbeAt) {}
 
     /** 当前行情可用性（读侧只读快照，无锁）。 */
     public Health health() {
@@ -320,9 +455,12 @@ public class KlineService {
                     + "）——资金曲线、自选信号、案例匹配可能不全，我在自动重试";
         }
         LocalDate td = tdxLastDate;
+        Boolean fbHealthy = fallback == null ? null : fallbackHealthy;
+        long probeAt = fallbackLastProbeAtMs;
         return new Health(ok, note, okAt == 0 ? null : ts(okAt), lastSuccessSource,
                 failAt == 0 ? null : ts(failAt), consecutiveAllFailures, lastFailedSymbol,
-                List.copyOf(sources), td == null ? null : td.toString());
+                List.copyOf(sources), td == null ? null : td.toString(),
+                fbHealthy, probeAt == 0 ? null : ts(probeAt));
     }
 
     private void markSuccess(String source) {

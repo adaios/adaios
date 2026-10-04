@@ -345,9 +345,10 @@ public class LearnController {
     /**
      * 认回被抹掉的来源标记（REVIEW P2-learn21，2026-09-16）：{@code ?type=&title=} 定位。
      * <p>
-     * 只在**看得出来确实是本产品写的**卡上生效（判据见仓储 `restoreOrigin`：正文含 `## 卡片页`
-     * 或 frontmatter 带 `review_at`/`reminded_at`；**不认 `status`**——那是 Mac 技能卡模板也有的键）——别处整理的卡一律人话拒绝，
-     * 避免变成「一句话就能给只读卡盖章」。
+     * 只在**看得出来确实是本产品写的**卡上生效（判据见仓储 `restoreOrigin`/`looksLikeProductCard`：
+     * **行首整行** `## 卡片页`，或**前言块内**带 `review_at`/`reminded_at`——2026-10-04 起不再做全文子串匹配，
+     * 故正文散文里提一句 `review_at:` 不再算数；**不认 `status`**——那是 Mac 技能卡模板也有的键）——
+     * 别处整理的卡一律人话拒绝，避免变成「一句话就能给只读卡盖章」。
      */
     @PostMapping("/cards/restore-origin")
     public ResponseEntity<?> restoreOrigin(

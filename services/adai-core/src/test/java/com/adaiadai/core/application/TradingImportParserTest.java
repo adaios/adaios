@@ -103,6 +103,107 @@ class TradingImportParserTest {
                 000725\t京东方Ａ\t0.80\t0.00\t-0.85\t元器件\t信息产业-元器件\t6\t8\t1\tKDJ死叉
                 """;
         assertTrue(TradingImportParser.parseSold(content).isEmpty(), "自选表头 → 清仓解析必须拒绝");
+        assertTrue(TradingImportParser.parseSoldWithReport(content).unparsedRows().isEmpty(),
+                "表头认不出 = 选错文件（不是丢行），不得报成没看懂的行");
+        // 2026-10-04 追加 A：选错文件必须能被调用方识别出来（headerMatched=false → fail-closed 400），
+        // 不能再像原来那样 trades=0 + unparsed=0 一路静默回 imported=0。
+        assertFalse(TradingImportParser.parseSoldWithReport(content).headerMatched(),
+                "自选表头 → 清仓链 headerMatched 必须为 false");
+        assertFalse(TradingImportParser.parseSoldWithReport("").headerMatched(),
+                "空文件同样 headerMatched=false（与资金链对空文件的处理一致）");
+    }
+
+    // ── 2026-10-04 P2-交易83：清仓股丢行必须可见（行号 + 原文 + 原因），对齐 P2-交易43 ──
+
+    @Test
+    void parseSoldWithReport_reportsDroppedRowWithLineNumberRawAndReason() {
+        // 第 2 行正常；第 3 行代码被截断成 5 位（真实事故形态）；第 4 行是注释（结构性行，不算丢行）
+        String content = String.join("\n",
+                String.join("\t", "代码", "名称", "介入日期", "清仓日期", "持仓天数", "买卖次数", "持仓期涨幅%"),
+                String.join("\t", "600206", "有研新材", "20260731", "20260803", "3", "1+1", "-12.82"),
+                String.join("\t", "60021", "截断代码", "20260731", "20260803", "3", "1+1", "-12.82"),
+                "#数据来源:通达信");
+
+        TradingImportParser.SoldParse p = TradingImportParser.parseSoldWithReport(content);
+
+        assertEquals(1, p.trades().size(), "正常行不受影响");
+        assertEquals("600206", p.trades().get(0).symbol());
+        assertEquals(3, p.trades().get(0).holdDays());
+        assertEquals(1, p.unparsedRows().size(), "被 continue 掉的行走丢了必须如实上报（原来静默）");
+        String dropped = p.unparsedRows().get(0);
+        assertTrue(dropped.startsWith("第 3 行"), "行号 = 原文件行号（1 起算，含表头行）：" + dropped);
+        assertTrue(dropped.contains("60021"), "原文要带上，用户能对上文件：" + dropped);
+        assertTrue(dropped.contains("6 位数字"), "原因要写清（代码不是 6 位数字）：" + dropped);
+    }
+
+    @Test
+    void parseSoldWithReport_shortRow_reportsColumnShortageWithoutKillingOtherRows() {
+        // 表头带前置「序号」列 → 代码列在第 2 列：只有 1 列的行取不到代码 → 「列数不足」
+        String content = String.join("\n",
+                String.join("\t", "序号", "代码", "名称", "介入日期", "清仓日期", "持仓天数", "买卖次数", "持仓期涨幅%"),
+                String.join("\t", "1", "600584", "长电科技", "20260722", "20260803", "12", "5+1", "-29.22"),
+                "2");
+
+        TradingImportParser.SoldParse p = TradingImportParser.parseSoldWithReport(content);
+
+        assertEquals(1, p.trades().size());
+        assertEquals("600584", p.trades().get(0).symbol());
+        assertEquals(1, p.unparsedRows().size());
+        String dropped = p.unparsedRows().get(0);
+        assertTrue(dropped.startsWith("第 3 行"), dropped);
+        assertTrue(dropped.contains("列数不足"), dropped);
+        assertTrue(dropped.contains("第 2 列"), "要说清是哪一列取不到：" + dropped);
+    }
+
+    // ── 2026-10-04 P3：丢行判据与自选链口径统一（结构性行不误报 + 代码列先 trim） ──
+
+    @Test
+    void parseSoldWithReport_structuralLines_notCountedAsUnparsed() {
+        // 审查官实测：清仓链原先只判 `line.isEmpty() || line.startsWith("#")`，
+        // 于是 "   " / "=====" / 前导空格的 "  #数据来源:通达信" 全被误报成「没看懂的行」。
+        // 同文件自选链用结构性行判据（trim + ^[-=_~\s]+$）已正确排除 → 三链必须同口径。
+        String content = String.join("\n",
+                String.join("\t", "代码", "名称", "介入日期", "清仓日期", "持仓天数", "买卖次数", "持仓期涨幅%"),
+                String.join("\t", "600206", "有研新材", "20260731", "20260803", "3", "1+1", "-12.82"),
+                "   ",
+                "=====",
+                "  #数据来源:通达信");
+
+        TradingImportParser.SoldParse p = TradingImportParser.parseSoldWithReport(content);
+
+        assertEquals(1, p.trades().size(), "正常行照常解析");
+        assertTrue(p.unparsedRows().isEmpty(),
+                "结构性行（空白行 / 分隔线 / 缩进注释）不算丢行：" + p.unparsedRows());
+    }
+
+    @Test
+    void parseSoldWithReport_codeCellWithSpaces_parsesInsteadOfDropping() {
+        // 代码列带前导空格（真实导出对齐空格）：旧实现直接 matches("\d{6}") → 被丢，
+        // 且原因写成「代码「600207」不是 6 位数字」——trim 后明明合规，原因自相矛盾。
+        String content = String.join("\n",
+                String.join("\t", "代码", "名称", "介入日期", "清仓日期", "持仓天数", "买卖次数", "持仓期涨幅%"),
+                " 600207\t有研新材\t20260731\t20260803\t3\t1+1\t-12.82");
+
+        TradingImportParser.SoldParse p = TradingImportParser.parseSoldWithReport(content);
+
+        assertEquals(1, p.trades().size(), "代码列带空格的行必须能正常解析，不能丢");
+        assertEquals("600207", p.trades().get(0).symbol());
+        assertTrue(p.unparsedRows().isEmpty(), "trim 后合规 → 不得报丢行：" + p.unparsedRows());
+    }
+
+    @Test
+    void parseSold_wrapperStaysBackwardCompatible() {
+        // parseSold 是薄包装：结果必须与带报告版完全一致（既有调用点零影响）
+        String content = """
+                代码\t名称\t涨幅%\t现价\t介入日期\t清仓日期\t持仓天数\t买卖次数\t持仓期涨幅%\t清仓天数\t清仓后涨幅%
+                600206\t有研新材\t1.14\t50.78\t20260731\t20260803\t3\t1+1\t-12.82\t11\t53.32
+                600584\t长电科技\t1.14\t78.71\t20260722\t20260803\t12\t5+1\t-29.22\t11\t29.20
+                #数据来源:通达信
+                """;
+        TradingImportParser.SoldParse reported = TradingImportParser.parseSoldWithReport(content);
+        assertEquals(2, reported.trades().size());
+        assertTrue(reported.unparsedRows().isEmpty(), "正常清仓股文件不得报出丢行：" + reported.unparsedRows());
+        assertEquals(TradingImportParser.parseSold(content), reported.trades());
     }
 
     @Test
@@ -123,6 +224,8 @@ class TradingImportParserTest {
         assertEquals(3, first.holdDays());
         assertEquals("1+1", first.tradeCount());
         assertTrue(Math.abs(first.holdPnlPct() - (-12.82)) < 0.001);
+        assertTrue(TradingImportParser.parseSoldWithReport(content).headerMatched(),
+                "真正的清仓股表头 → headerMatched=true（不能被 fail-closed 误伤）");
     }
 
     @Test
@@ -256,6 +359,43 @@ class TradingImportParserTest {
         assertTrue(q.headerUnparsed().isEmpty());
         assertEquals(1, q.positions().size());
         assertEquals(1, q.unparsedRows().size(), "没看懂的明细行要上报（丢一行 = 该只精确成本不更新）");
+        // P2-交易83（2026-10-04）：不只给原文——带**行号 + 原因**，用户能对上文件里是哪一行
+        String dropped = q.unparsedRows().get(0);
+        assertTrue(dropped.startsWith("第 4 行"), "行号 = 原文件行号（1 起算）：" + dropped);
+        assertTrue(dropped.contains("这不是明细行"), "原文要带上：" + dropped);
+        assertTrue(dropped.contains("6 位数字"), "原因要写清：" + dropped);
+    }
+
+    @Test
+    void parseCash_normalRows_produceNoUnparsedEntries() {
+        // 防误伤：正常明细（含 no-6 位代码的股东代码等其他列）不得被算成丢行
+        String content = "人民币: 余额:292.88  可用:292.88  可取:292.88  参考市值:110212.00  资产:110504.88  盈亏:15235.55\n"
+                + "编号 证券代码 证券名称 证券数量 成本价 当前价 浮动盈亏\n"
+                + "1 600809 山西汾酒 100.00 122.3849 123.5200 113.44 A000000000\n"
+                + "2 000725 京东方Ａ 5300.00 6.0421 5.8100 -1229.57 A000000000\n";
+        TradingImportParser.CashQuery q = TradingImportParser.parseCash(content);
+        assertEquals(2, q.positions().size());
+        assertTrue(q.unparsedRows().isEmpty(), "正常文件不得报出丢行：" + q.unparsedRows());
+    }
+
+    @Test
+    void parseCash_structuralLines_notCountedAsUnparsed() {
+        // P3 补修：资金链原先只排除了空行 / 行首 `#` / `-` 开头，`"   "`、`"====="`、
+        // 前导空格的注释都会被误报成「某只持仓的精确成本没更新」——与自选/清仓链同口径排除。
+        String content = String.join("\n",
+                "人民币: 余额:292.88  可用:292.88  可取:292.88  参考市值:110212.00  资产:110504.88  盈亏:15235.55",
+                "---------------------------------------",
+                "编号 证券代码 证券名称 证券数量 成本价 当前价 浮动盈亏",
+                "1 600809 山西汾酒 100.00 122.3849 123.5200 113.44",
+                "   ",
+                "=====",
+                "  #数据来源:通达信");
+
+        TradingImportParser.CashQuery q = TradingImportParser.parseCash(content);
+
+        assertEquals(1, q.positions().size(), "正常明细照常解析");
+        assertTrue(q.unparsedRows().isEmpty(),
+                "结构性行（空白行 / 分隔线 / 缩进注释）不算丢行：" + q.unparsedRows());
     }
 
 

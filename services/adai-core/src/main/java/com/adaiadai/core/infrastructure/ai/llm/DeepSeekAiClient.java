@@ -122,8 +122,9 @@ public class DeepSeekAiClient implements AiClient, com.adaiadai.core.kernel.ai.S
     /**
      * 按调用来源路由模型（2026-08-26 模型分层，REVIEW S-10：scene() 全是 trading 不可用，
      * 用 AiTraceContext.source 区分）：复盘（trading_review）要推理质量走 pro，
-     * 其余高频交互（question/log/brief/intent/media/trading_advice/trading_parse/trading_session_系列、
-     * trading_case_insight）走 flash。
+     * 其余高频交互（brief / conversation / intent / media / question / record / retry /
+     * learn_digest / learn_image / learn_repages / trading_advice / trading_parse /
+     * trading_screenshot / trading_case_insight）走 flash。
      * <p>
      * 包级可见：供 DeepSeekAiClientTest 直接测路由。
      */

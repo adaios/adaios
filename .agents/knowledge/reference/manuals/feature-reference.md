@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-10-04
 status: active
-lines: 1390
+lines: 1400
 depends-on: []
 related: []
 tags: [fact, reference]
@@ -166,10 +166,10 @@ Feed 流本身**不调用 AI**。简报的 AI 调用见 [简报模块](#5-简报
 
 ### 功能描述
 
-- 用户输入文本 → 自动识别意图（log / question）
-- 陈述句（log）→ 保存记录 + AI 总结 + 记忆沉淀
-- 疑问句（question）→ 激活对话模式
-- 支持指定 intent（`log` / `question`）
+- 用户输入文本 → 自动识别意图（AI 分类器只返回裸词 `ask` / `log`）
+- `log`（陈述句）→ 保存记录 + AI 总结 + 记忆沉淀；对外 `intent` = `log`
+- `ask`（疑问句）→ 激活对话模式；对外 `intent` = `question`
+- 支持手动指定 intent（`log` / `question`；指定后不再调分类器）
 - 支持 `cardId` 续接已有对话
 - **对话模式的上下文装配**（RFC `20260929-conversation-context-engineering` 批 1，2026-09-30）：
   **按轮次分档**（≤3 轮只注入 身份/契约 + 对话前文 + 核心偏好，不注入相关记录 / 检索 / 未命中领域的知识）、
@@ -263,7 +263,7 @@ POST /api/v1/records
   ├── cardId != null → handleQuestion()     // 已有卡片，续接对话
   ├── intent = "question" → handleQuestion()
   ├── intent = "log" → handleStatem()
-  └── intent = null → IntentRecognizer.recognize()
+  └── intent = null → IntentRecognizer.recognizeWithAi()   // 文本入口 leanAsk=true
        ├── "ask" → handleQuestion()
        └── "log" → handleStatem()
 ```
@@ -283,25 +283,29 @@ POST /api/v1/records
 5. AI 回复追加到卡片轮次
 6. `MemoryService.persist()` 保存记忆
 
-**IntentRecognizer.recognize()（AI 意图识别）：**
-- 调 `AiClient.recognizeIntent(content)` 返回 `"ask"` 或 `"log"`
-- 失败直接抛异常（不降级）
+**IntentRecognizer.recognizeWithAi()（AI 意图识别）：**
+- **文本入口**调 `AiClient.recognizeIntentLeanAsk(content)`（判据偏向「需要回复」）、**媒体入口**调
+  `AiClient.recognizeIntent(content)`（旧口径，见上面「意图判据的倾向」），返回 `"ask"` 或 `"log"`
+- `"ask"` → `Intent.QUESTION`，其余 → `Intent.STATEMENT`
+- 失败直接抛异常（本方法不降级）；由 `RecordController` 兜住——记录保留、`intent` 落 `log`，留待 `RecordRetryService` 补完
 
 ### AI 提示词
 
-#### 意图识别 prompt（`DeepSeekAiClient.recognizeIntent`）
+#### 意图分类 prompt（`DeepSeekAiClient.classifyIntent`）
 
+两套 system 按入口择一：文本入口 `INTENT_SYSTEM_LEAN_ASK`、媒体入口 `INTENT_SYSTEM`。
+
+`INTENT_SYSTEM`（媒体入口）：
 ```
-判断以下用户输入是否需要 AI 回复。
-需要回复（提问、命令、要求等）→ 返回 ask
-不需要回复（纯记录、日记、随想）→ 返回 log
-只需返回一个词：ask 或 log。
-
-输入：{content}
-结果：
+你是意图分类器。判断用户这句话是在向助手提问（ask），还是在陈述一件要记下来的事（log）。
+只回答一个词：ask 或 log。不要输出 JSON、不要解释、不要标点。
 ```
 
-- `max_tokens: 50`, `temperature: 0.3`, 超时 15 秒
+`INTENT_SYSTEM_LEAN_ASK`（文本入口）在此之上给**可列举的 ask 信号**、保留「信号不足 → ask」兜底，并给正反例
+（「今天天气不错」→ log，「今天很开心」→ ask），把边界钉在「有没有让我记/答的索取」上。
+
+- `max_tokens: 512`（原 50 会被推理模型思维链吃满 → content 空）、`temperature: 0.3`（leanAsk 版 `0.1`）、
+  超时 15 秒；返回裸词 `ask` / `log`（非 JSON），不开 `json_mode`
 
 #### 陈述句分析 prompt（`ContextEngine.buildPrompt()` → STATEMENT 场景）
 
@@ -379,7 +383,7 @@ System prompt（CHAT 模式，`DeepSeekAiClient.java`）：
 | API | 前端方法 | 说明 |
 |:----|:---------|:------|
 | `POST /api/v1/records` | `createRecord(content, intent:"question", cardId)` | 发问/续接 |
-| `POST /api/v1/conversations/end` | `endConversation(turns, cardId)` | 结束对话 |
+| `POST /api/v1/conversations/end` | `endConversation(turns, cardId)` | 结束对话（带 `cardId` 时**同卡幂等**：幂等键 `conversationRecordId` + turns 指纹 `conversationTurnsHash`，命中即原样返回既有 `recordId`/`summary`/`tags`） |
 
 ### 前端逻辑
 
@@ -401,7 +405,7 @@ System prompt（CHAT 模式，`DeepSeekAiClient.java`）：
 2. 无新轮次 → 直接关闭（`activeCardId = null`）
 3. 有新轮次：
    - 关闭视图，卡片显示 `loading: true`
-   - `POST /api/v1/conversations/end`（传全部 turns 文本列表）
+   - `POST /api/v1/conversations/end`（传全部 turns 文本列表 + `cardId`；重复点击 / 超时重发由后端**同卡幂等**挡下）
    - 返回后更新卡片：`summary`, `tags`, `loading: false`, `mode: ended`
    - ended 态显示绿色边框 + summary banner + tags + `── ask ──`
 
@@ -415,12 +419,18 @@ System prompt（CHAT 模式，`DeepSeekAiClient.java`）：
 ### 后端处理
 
 **ConversationController.endConversation()：**
-1. 构建 AI 总结 prompt（含所有 turns）
-2. 调 `aiClient.understand()` → 返回总结
-3. 保存总结为 ContentRecord（无 domain，自动判定）
-4. cardId 存在时 → 更新卡片状态为 "ended" + 记录摘要
-5. `MemoryService.persist()` 沉淀记忆
-6. 返回 `{recordId, summary, tags}`
+1. `cardId` 非空 → 「幂等判定 + AI 总结 + 落盘 + 卡片回写」整段收进按 `(userId|cardId)` 的条带锁（固定 32 条）
+2. **同卡幂等（幂等键 + turns 指纹）**：卡片 frontmatter 的 `conversationRecordId` 是幂等键、`conversationTurnsHash`
+   是这一段 turns 的指纹；**两者同时成立**才命中 → 原样返回既有 `recordId`/`summary`/`tags`，不重复落盘、不重复沉淀记忆、不再调用模型
+   （旧卡缺指纹 → 退化为逐条比对卡片 turns 与本次请求的文本序列，避免 `null` 让幂等永不命中而重复花钱）
+3. **内容变了要新落一条**：指纹不一致（如在已结束的卡上继续聊几轮再 end）不算重试 → 走下面流程新落一条，
+   否则新轮次既不落 record 也不进记忆；`cardId` 为空时保持原语义（每次调用各落一条）
+4. 构建 AI 总结 prompt（含所有 turns）
+5. 调 `aiClient.understand()` → 返回总结（失败降级：用对话原文兜底，不 500）
+6. 保存总结为 ContentRecord（正文 = 对话原文，AI 转述进 `summary`；`source=user_input`）
+7. cardId 存在时 → 卡片置 "ended" + 摘要 + 幂等键/指纹（写回前**重读**卡片，只改状态/摘要/幂等键，防覆盖并发追加的轮次）
+8. `MemoryService.persist()` 沉淀记忆
+9. 返回 `{recordId, summary, tags}`
 
 ### AI 提示词
 

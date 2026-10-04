@@ -49,6 +49,12 @@ import java.util.Optional;
  *       列表/定位一律跳过</li>
  * </ul>
  * <p>
+ * REVIEW P2-learn23 修复（2026-10-04）：**写定位与读定位分家**。读路径（{@link #locate}）为「只读卡
+ * 也要看得见、读得全」保留只读兜底；写路径一律走 {@link #locateWritable}——只有唯一可写命中才返回，
+ * 只有同名外部只读卡时**人话拒绝、不落笔**，多张同名可写仍 400（P1-learn2 文案不变）。唯一例外是
+ * {@link #restoreOrigin}：它的使命正是给「看起来确实是本产品写的」只读卡认回 {@code origin} 标记，
+ * 所以仍按读定位取卡（改的也只有那一行标记）。
+ * <p>
  * V2 learn 审查修复（2026-09-07）：
  * <ul>
  *   <li><b>P1-learn2</b>：标题寻址歧义根治——save 拒绝「同 type+同 title」已存在
@@ -81,6 +87,12 @@ public class LearnCardFileRepository implements LearnCardRepository {
     /** V1 模板正文四段（编辑手术替换时受管段），其余「## 标题」段视为用户手工段保留。 */
     private static final List<String> MANAGED_SECTIONS =
             List.of("核心观点", "关键要点", "我的疑问", "复述");
+    /** 「看起来是本产品写的」判据：卡片页段标题——**行首整行**匹配（正文引用不算，P2 二审 2026-10-04）。 */
+    private static final java.util.regex.Pattern CARD_PAGE_HEADING =
+            java.util.regex.Pattern.compile("(?m)^##\\s*卡片页\\s*$");
+    /** 复习机制独有的前言块键（{@code review_at} / {@code reminded_at}）——只在 frontmatter 内算。 */
+    private static final java.util.regex.Pattern REVIEW_MARKER_KEYS =
+            java.util.regex.Pattern.compile("(?m)^(review_at|reminded_at)\\s*:");
 
     private final Object[] locks = new Object[LOCK_STRIPES];
     {
@@ -161,13 +173,21 @@ public class LearnCardFileRepository implements LearnCardRepository {
      * 进而被产品改写（正是本批要防的「把产品模板段注入别人的文件」）。正文一概不算。
      */
     private static boolean hasProductOrigin(String content) {
-        if (content == null) return false;
-        java.util.regex.Matcher fm = java.util.regex.Pattern.compile(
-                "^(---\\n)(.*?)(\\n---\\n)", java.util.regex.Pattern.DOTALL).matcher(content);
-        if (!fm.find()) return false;
+        String fm = frontmatterBlock(content);
+        if (fm.isEmpty()) return false;
         return java.util.regex.Pattern
                 .compile("(?m)^" + ORIGIN_KEY + ":\\s*" + ORIGIN_PRODUCT + "\\s*$")
-                .matcher(fm.group(2)).find();
+                .matcher(fm).find();
+    }
+
+    /** 前言块（frontmatter）正文——首尾 {@code ---} 行之间的内容；没有合法前言块 → 空串。
+     *  <p>写读共用的唯一入口（P2-learn23 附带修，2026-10-04）：判「是不是产品卡写下的键」一律只看这里，
+     *  正文里的同名字样一概不算（正文提到 {@code review_at:} 是人话，不是产品痕迹）。 */
+    private static String frontmatterBlock(String content) {
+        if (content == null) return "";
+        java.util.regex.Matcher fm = java.util.regex.Pattern.compile(
+                "^(---\\n)(.*?)(\\n---\\n)", java.util.regex.Pattern.DOTALL).matcher(content);
+        return fm.find() ? fm.group(2) : "";
     }
 
     /** 主题索引文件（README.md / index.md）不是卡片。 */
@@ -178,24 +198,20 @@ public class LearnCardFileRepository implements LearnCardRepository {
     }
 
     /**
-     * 按 type + 标题定位（**本产品卡优先**，P2-learn20 修复）。
+     * 按 type + 标题定位（**本产品卡优先**，P2-learn20 修复）——**读路径专用**。
      * <p>
      * 同名可能来自两处：本实现写的卡、Mac 上技能写的手工卡。产品侧的操作（编辑/流转/反哺）
      * 只应落在自己的卡上；全是手工卡时返回它（只读，供查看）。**多个本产品卡同名**仍 400
      * （P1-learn2：禁止静默改错卡）。
+     * <p>
+     * <b>写路径不要用这个方法</b>（REVIEW P2-learn23）：为了「只读卡也能读」，它在没有产品卡时
+     * 会把别处整理的只读卡交出去；写一律走 {@link #locateWritable}。
      */
     private Optional<Located> locate(String userId, String type, String title) {
-        List<Located> named = locateAll(userId, type).stream()
-                .filter(l -> title.equals(l.card().title()))
-                .toList();
+        List<Located> named = namedCards(userId, type, title);
         if (named.isEmpty()) return Optional.empty();
-        List<Located> own = named.stream().filter(l -> l.card().writable()).toList();
-        if (own.size() > 1) {
-            String dates = own.stream().map(l -> l.card().created().toString()).sorted()
-                    .reduce((a, b) -> a + " / " + b).orElse("");
-            throw new LearnException("《" + title + "》存在 " + own.size() + " 张同名卡片（创建于 "
-                    + dates + "），标题无法唯一寻址——请人工合并文件后再操作");
-        }
+        List<Located> own = ownCards(named);
+        rejectAmbiguousOwn(title, own);
         if (own.size() == 1) return Optional.of(own.get(0));
         if (named.size() > 1) {
             log.warn("learn 同名手工卡多张，取第一张（只读）| userId={} | type={} | title={} | 命中 {} 张",
@@ -205,19 +221,69 @@ public class LearnCardFileRepository implements LearnCardRepository {
     }
 
     /**
+     * **严格写定位**（REVIEW P2-learn23，2026-10-04）：只有**唯一可写命中**才返回。
+     * <p>
+     * 为什么与 {@link #locate} 分开：读路径必须让只读卡「看得见、读得全」，所以它保留只读兜底；
+     * 写路径若复用那份兜底，请求就会落到**别人的文件**（同名外部只读卡）上。写定位的语义窄一档：
+     * <ul>
+     *   <li><b>唯一可写命中</b> → 返回它（既有行为不变）</li>
+     *   <li><b>多张同名可写</b> → 人话 400（沿用 P1-learn2 的「请人工合并文件后再操作」，逐字未改）
+     *       ——标题无法唯一寻址时宁可不写，也不静默改错卡</li>
+     *   <li><b>没有可写卡、只有同名的外部只读卡</b> → 人话拒绝（这张是外部只读卡，不能改），
+     *       <b>绝不落笔</b>——写操作不会再来一次「改到另一张文件」</li>
+     * </ul>
+     * 已知残余（如实登记，不在本批）：同名「外部只读卡 + 产品卡」并存时，本方法仍返回那张唯一的
+     * 产品卡（P2-learn20 的显式取舍，前端已隐藏只读卡的写入口）；要彻底消歧需写端点接受
+     * {@code cardPath}，属跨端契约改造。
+     *
+     * @return 唯一可写命中；没有任何同名卡 → 空
+     * @throws LearnException 同名多张可写 / 只有外部只读卡（消息均为人话）
+     */
+    private Optional<Located> locateWritable(String userId, String type, String title) {
+        List<Located> named = namedCards(userId, type, title);
+        if (named.isEmpty()) return Optional.empty();
+        List<Located> own = ownCards(named);
+        rejectAmbiguousOwn(title, own);
+        if (own.size() == 1) return Optional.of(own.get(0));
+        log.warn("learn 写操作命中外部只读卡（无可写卡），已拒绝 | userId={} | type={} | title={} | 同名只读 {} 张",
+                userId, type, title, named.size());
+        throw new LearnException(readOnlyMessage(title));
+    }
+
+    /** 某 type 下标题精确命中的卡（含别处整理的只读卡）。 */
+    private List<Located> namedCards(String userId, String type, String title) {
+        return locateAll(userId, type).stream()
+                .filter(l -> title.equals(l.card().title()))
+                .toList();
+    }
+
+    /** 命中的卡里**本实现产出的**（可写）那些。 */
+    private static List<Located> ownCards(List<Located> named) {
+        return named.stream().filter(l -> l.card().writable()).toList();
+    }
+
+    /** 多张同名可写卡 → 人话 400（P1-learn2 既有文案，读写两路共用，逐字未改）。 */
+    private static void rejectAmbiguousOwn(String title, List<Located> own) {
+        if (own.size() <= 1) return;
+        String dates = own.stream().map(l -> l.card().created().toString()).sorted()
+                .reduce((a, b) -> a + " / " + b).orElse("");
+        throw new LearnException("《" + title + "》存在 " + own.size() + " 张同名卡片（创建于 "
+                + dates + "），标题无法唯一寻址——请人工合并文件后再操作");
+    }
+
+    /**
      * 可写路径守卫（2026-09-12 读侧对齐批 → 结构统一批改为 origin 判据）：只允许改
      * **本实现产出的卡片**。别处整理的卡一律只读——既避免把产品模板段注入别人的文件，
      * 也把原先那句莫名的「卡片不存在」换成说得通的人话。
+     * <p>
+     * 2026-10-04（REVIEW P2-learn23）：定位改走 {@link #locateWritable}——写路径**不再复用读路径
+     * 的只读兜底**；返回值必可写（后置条件由 locateWritable 保证，调用方不必再判 writable）。
      *
-     * @throws LearnException 卡不存在 / 不是本实现产出的卡（消息为人话）
+     * @throws LearnException 卡不存在 / 命中同名外部只读卡 / 同名多张可写（消息均为人话）
      */
-    private Located requireWritable(String userId, String type, LearnCard card) {
-        Located located = locate(userId, type, card.title())
-                .orElseThrow(() -> new LearnException("卡片不存在：" + safeLabel(type, card.title())));
-        if (!located.card().writable()) {
-            throw new LearnException(readOnlyMessage(located.card().title()));
-        }
-        return located;
+    private Located requireWritable(String userId, String type, String title) {
+        return locateWritable(userId, type, title)
+                .orElseThrow(() -> new LearnException("卡片不存在：" + safeLabel(type, title)));
     }
 
     /**
@@ -226,10 +292,15 @@ public class LearnCardFileRepository implements LearnCardRepository {
      * 对抗审查 P2-1（2026-09-12）：产品卡的判据是 frontmatter 的 {@code origin: product}，
      * 若该行被手工/别处工具改写掉，产品卡会退化成只读——所以话术要**如实**（不说死「一定是在
      * Mac 上整理的」）并给两条可行动路径。
+     * <p>
+     * REVIEW P2-learn23（2026-10-04）：写定位（{@link #locateWritable}）复用同一句——把「这张是
+     * 外部只读卡、我不能改它」说在前面，别让用户以为是写成功了。既有测试断言的用词
+     * （{@code 不改动它} / {@code Mac 上整理} / {@code 只当资料看} / {@code 另存}）一个不落。
      */
     private static String readOnlyMessage(String title) {
-        return "这张《" + title + "》不是我在产品里写的（一般是在 Mac 上整理的，也可能它的来源标记被改过），"
-                + "我只当资料看、不改动它；想改的话，我可以照它的内容另存一张能编辑的给你";
+        return "这张《" + title + "》是同名的外部只读卡，不是我写的，我不能改它；"
+                + "我只当资料看、不改动它——它一般是在 Mac 上整理的，也可能它的来源标记被改过；"
+                + "想改的话，我可以照它的内容另存一张能编辑的给你";
     }
 
     private Object lockFor(String key) {
@@ -253,11 +324,8 @@ public class LearnCardFileRepository implements LearnCardRepository {
     public LearnCard updatePages(String userId, String type, String title, List<LearnPage> pages) {
         if (pages == null || pages.isEmpty()) throw new LearnException("没有可写入的页");
         synchronized (lockFor(userId)) {
-            Located located = locate(userId, type, title)
-                    .orElseThrow(() -> new LearnException("卡片不存在：" + safeLabel(type, title)));
-            if (!located.card().writable()) {
-                throw new LearnException("这张是在 Mac 上整理的原始卡，我在这里只当资料看、不改动它");
-            }
+            // 严格写定位（P2-learn23）：只读卡在这里就被人话拒绝，绝不落笔
+            Located located = requireWritable(userId, type, title);
             String original = fileStorage.read(userId, located.path());
             if (original == null || original.isBlank()) {
                 throw new LearnException("卡片文件读不出来，先不写");
@@ -356,7 +424,7 @@ public class LearnCardFileRepository implements LearnCardRepository {
                 throw new LearnException("状态流转 " + from + "→" + toStatus + " 不被允许（new→review→done，"
                         + "可回退 review→new / done→review）");
             }
-            String path = requireWritable(userId, type, card).path();
+            String path = requireWritable(userId, type, title).path();
             String content = fileStorage.read(userId, path);
             if (content == null || content.isBlank()) {
                 throw new LearnException("卡片不存在：" + safeLabel(type, title));
@@ -394,7 +462,7 @@ public class LearnCardFileRepository implements LearnCardRepository {
             if (!LearnCard.STATUS_REVIEW.equals(card.status())) {
                 return card; // 非 review 卡不参与提醒节流
             }
-            String path = requireWritable(userId, type, card).path();
+            String path = requireWritable(userId, type, title).path();
             String content = fileStorage.read(userId, path);
             if (content == null || content.isBlank()) {
                 throw new LearnException("卡片不存在：" + safeLabel(type, title));
@@ -418,7 +486,7 @@ public class LearnCardFileRepository implements LearnCardRepository {
                     .orElseThrow(() -> new LearnException("卡片不存在：" + safeLabel(type, title)));
             // P2-learn6：锁内基于最新快照 merge，并发 PATCH 不再丢更新
             LearnCard updated = mergePatch(cur, patch);
-            String path = requireWritable(userId, type, cur).path();
+            String path = requireWritable(userId, type, title).path();
             String content = fileStorage.read(userId, path);
             if (content == null || content.isBlank()) {
                 throw new LearnException("卡片不存在：" + safeLabel(type, title));
@@ -441,7 +509,7 @@ public class LearnCardFileRepository implements LearnCardRepository {
             if (!card.created().equals(existing.created())) {
                 throw new LearnException("标题/类型/日期不可修改（会移动文件），如需改名请新建卡片");
             }
-            String path = requireWritable(userId, card.type(), existing).path();
+            String path = requireWritable(userId, card.type(), card.title()).path();
             String content = fileStorage.read(userId, path);
             if (content == null || content.isBlank()) {
                 throw new LearnException("卡片不存在：" + safeLabel(card.type(), card.title()));
@@ -699,6 +767,19 @@ public class LearnCardFileRepository implements LearnCardRepository {
         return locate(userId, type, title).map(Located::path).orElse(null);
     }
 
+    /**
+     * 恢复 {@code origin: product}（P2-learn21）。
+     * <p>
+     * <b>严格写定位的例外</b>（REVIEW P2-learn23 说明）：本方法**刻意**用读定位 {@link #locate}——
+     * 要认回标记的正是「已退化成只读」的卡；但写下去的只有 {@code origin} 一行，且前面有
+     * {@link #looksLikeProductCard} 判据兜底，不会把产品模板段注入别人的文件。
+     * <p>
+     * <b>判据边界（2026-10-04 二审补修，P2）</b>：兜底判据只认两处**范围受限**的产品痕迹——
+     * 行首整行的 {@code ## 卡片页} 段标题，或**前言块内**的 {@code review_at} / {@code reminded_at}
+     * 键。正文散文里提到这些字样（例如「我在笔记里解释了 review_at: 这个字段的含义」）<b>不算</b>，
+     * 否则外部只读卡能被一句话骗到 {@code origin: product}、恢复可写，绕过写定位收紧。
+     * 判据不满足 → 人话拒绝且**不落笔**（文件逐字节不动）。
+     */
     @Override
     public LearnCard restoreOrigin(String userId, String type, String title) {
         if (!LearnCard.isValidType(type) || title == null || title.isBlank()) {
@@ -716,7 +797,7 @@ public class LearnCardFileRepository implements LearnCardRepository {
             }
             if (!looksLikeProductCard(content)) {
                 throw new LearnException("这张《" + located.card().title()
-                        + "》看着不是我写的（正文里没有我用的段落），我不敢给它盖我的章；"
+                        + "》看着不是我写的（没看到我写的卡片页段，前言里也没有复习记号），我不敢给它盖我的章；"
                         + "想改的话，我可以照它的内容另存一张能编辑的给你");
             }
             String fixed = replaceFrontmatterKey(content, ORIGIN_KEY, ORIGIN_PRODUCT);
@@ -730,18 +811,29 @@ public class LearnCardFileRepository implements LearnCardRepository {
     /**
      * 「这张看起来确实是本产品写的」的客观判据（恢复 origin 时用，见 {@link #restoreOrigin}）。
      * <p>
-     * 只看**产品独有**的痕迹：{@code ## 卡片页} 段（2026-09-15 卡片流批起）或 {@code review_at} /
-     * {@code reminded_at}（复习机制独有）。
+     * 只看**产品独有**的痕迹，且各自限定在正确的范围内：
+     * <ul>
+     *   <li>{@code ## 卡片页}（2026-09-15 卡片流批起）——**行首整行匹配**（{@code (?m)^##\s*卡片页\s*$}）：
+     *       正文里引用/提到这个段落名不算（必须是独立成行的那一段标题）</li>
+     *   <li>{@code review_at} / {@code reminded_at}（复习机制独有）——**只在前言块（frontmatter）内**匹配
+     *       （复用 {@link #frontmatterBlock}，与 {@link #hasProductOrigin} 同一口径）</li>
+     * </ul>
      * <p>
      * <b>2026-09-17 深审修复（P1）</b>：原先还认 {@code status:}——但 A 形态（Mac 技能）卡模板
      * **本身就带 status**（`ai-engineering/skills/learn-digest.md`），于是**每一张只读外部卡都满足判据**，
      * 一句话就能给它盖上 {@code origin: product}，只读保护等于没有。宁可少认（老产品卡若既没页段、
      * 又没进过复习，就认不回来——那是可接受的代价），也不能错认。
+     * <p>
+     * <b>2026-10-04 二审补修（P2）</b>：上一版虽不再认 {@code status}，但仍是**全文子串**匹配
+     * （{@code content.contains("review_at:")}）——实测外部只读卡正文散文写一句「我在笔记里解释了
+     * review_at: 这个字段的含义」，就能骗过判据拿到 {@code origin: product} 并恢复可写
+     * （等于绕过 README 的写定位收紧）。现在把范围收进前言块 + 行首整行，正文散文一律不算。
      */
     private static boolean looksLikeProductCard(String content) {
-        return content.contains("## 卡片页")
-                || content.contains("review_at:")
-                || content.contains("reminded_at:");
+        if (content == null) return false;
+        if (CARD_PAGE_HEADING.matcher(content).find()) return true;
+        String fm = frontmatterBlock(content);
+        return !fm.isEmpty() && REVIEW_MARKER_KEYS.matcher(fm).find();
     }
 
     @Override
@@ -750,9 +842,8 @@ public class LearnCardFileRepository implements LearnCardRepository {
             throw new LearnException("卡片不存在：" + safeLabel(type, title));
         }
         synchronized (lockFor(userId)) {
-            LearnCard card = find(userId, type, title)
-                    .orElseThrow(() -> new LearnException("卡片不存在：" + safeLabel(type, title)));
-            Located located = requireWritable(userId, type, card);
+            // 写定位即存在性校验（严格定位：只读卡/不存在都在这里人话拒绝）
+            Located located = requireWritable(userId, type, title);
             String content = fileStorage.read(userId, located.path());
             if (content == null || content.isBlank()) {
                 throw new LearnException("卡片不存在：" + safeLabel(type, title));
@@ -777,7 +868,7 @@ public class LearnCardFileRepository implements LearnCardRepository {
         synchronized (lockFor(userId)) {
             LearnCard card = find(userId, type, title)
                     .orElseThrow(() -> new LearnException("卡片不存在：" + safeLabel(type, title)));
-            Located located = requireWritable(userId, type, card);
+            Located located = requireWritable(userId, type, title);
             String target = LearnCard.topicDir(newTopic);
             String oldTopic = located.card().topic();
             if (target.equals(oldTopic)) {
@@ -841,14 +932,47 @@ public class LearnCardFileRepository implements LearnCardRepository {
     }
 
     /**
+     * 老扁平文件「确实是本产品写的」判据（迁移前置条件，2026-10-04 追加加固）。
+     * <p>
+     * 两级，先看**归属声明**再看**模板记号**：
+     * <ol>
+     *   <li>前言块里已有 {@code origin} 键 → 以它为准：{@code product} 才迁；别人声明的归属
+     *       （{@code origin: external} 等）**一律不迁、绝不改写**——这是最硬的信号；</li>
+     *   <li>没有 {@code origin} 键（origin 机制上线前的老卡）→ 认产品模板记号
+     *       （{@link #looksLikeProductCard}：行首整行的 {@code ## 卡片页} 或前言块里的
+     *       {@code review_at}/{@code reminded_at}）。都没有 → 原地不动。</li>
+     * </ol>
+     * 坦白说：本实现自己写的扁平卡都带 {@code origin: product}（{@link #toMarkdown} 从结构统一批起
+     * 就写这个键），所以第 1 级覆盖正常的迁移对象；第 2 级只给「origin 被别处工具整文件重写抹掉」
+     * 的老卡留活路——没有记号就不认，宁可少迁一张（原地保留照常可读可改），也不替别人的文件盖章。
+     */
+    private static boolean looksLikeMigrationSource(String content) {
+        String claimed = frontmatterValue(content, ORIGIN_KEY);
+        if (claimed != null && !claimed.isBlank()) return ORIGIN_PRODUCT.equals(claimed);
+        return looksLikeProductCard(content);
+    }
+
+    /**
      * 迁移单张老扁平卡：补 origin/topic 键 → 落主题目录（续号）→ 维护 README → 删老文件。
      * 删不掉则回滚目标（不留两张同名可写卡）。内容不可解析（不是卡片）→ 原地不动（返回 null）。
+     * <p>
+     * <b>2026-10-04 追加加固（P2）</b>：迁移也是「写」，同样受写定位口径约束——
+     * 只有 {@link #looksLikeMigrationSource} 认定的**本产品写的**扁平文件才盖章 {@code origin: product}；
+     * 别人声明过归属（{@code origin: external} 等）或没有任何产品痕迹的扁平文件原地不动（File First）。
      */
     private MigrationItem migrateOne(String userId, String type, String sourcePath) {
         String content = fileStorage.read(userId, sourcePath);
         if (content == null || content.isBlank()) return null;
         LearnCard card = parse(content);
         if (card == null || !type.equals(card.type())) return null;
+        if (!looksLikeMigrationSource(content)) {
+            // 不盖章、不搬家：无 origin 且无任何产品模板记号的老扁平文件，可能只是「恰好放在扁平布局」
+            // 的别处文件（对抗审查：原实现会无条件 replaceFrontmatterKey(origin, product) 认成自家卡）。
+            // 原地保留不影响它照常读/改（扁平布局本身按 V1/V2 兼容算可写），只是不替它补归属。
+            log.warn("learn 扁平卡看着不是本产品写的，未迁移也未盖 origin（原地保留）| userId={} | path={} | 声明归属={}",
+                    userId, sourcePath, frontmatterValue(content, ORIGIN_KEY));
+            return null;
+        }
         try {
             String topic = LearnCard.topicDir(frontmatterValue(content, "topic"));
             String updated = replaceFrontmatterKey(content, ORIGIN_KEY, ORIGIN_PRODUCT);
@@ -883,9 +1007,7 @@ public class LearnCardFileRepository implements LearnCardRepository {
 
     /** frontmatter 单键取值（迁移用：老卡可能有手工写的 topic）。只在 frontmatter 区内找，不误取正文。 */
     private static String frontmatterValue(String content, String key) {
-        java.util.regex.Matcher fm = java.util.regex.Pattern.compile(
-                "^(---\\n)(.*?)(\\n---\\n)", java.util.regex.Pattern.DOTALL).matcher(content);
-        String block = fm.find() ? fm.group(2) : "";
+        String block = frontmatterBlock(content);
         java.util.regex.Matcher m = java.util.regex.Pattern.compile(
                 "(?m)^" + java.util.regex.Pattern.quote(key) + ":\\s*(.*)$").matcher(block);
         return m.find() ? m.group(1).strip() : null;

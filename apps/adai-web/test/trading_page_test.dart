@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -9,6 +11,51 @@ import 'package:adai_web/pages/trading_page.dart';
 import 'package:adai_web/services/api_service.dart';
 import 'package:adai_web/theme/app_colors.dart';
 import 'package:adai_web/utils/trade_import_parser.dart';
+
+/// 选文件替身（P2-工程12④ 导入弹窗「选完文件撤掉旧错误」用例）：
+/// 测试里不走真文件选择器（不弹系统窗口）。值复制自 media_batch_test 的同名替身。
+class _FakePicker extends FilePicker {
+  _FakePicker(this.names);
+  final List<String> names;
+
+  @override
+  Future<FilePickerResult?> pickFiles({
+    String? dialogTitle,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    Function(FilePickerStatus)? onFileLoading,
+    bool allowCompression = true,
+    int compressionQuality = 30,
+    bool allowMultiple = false,
+    bool withData = false,
+    bool withReadStream = false,
+    bool lockParentWindow = false,
+    bool readSequential = false,
+  }) async =>
+      FilePickerResult([
+        for (var i = 0; i < names.length; i++)
+          PlatformFile(
+            name: names[i],
+            size: 4,
+            bytes: Uint8List.fromList([65 + i, 66, 67, 68]),
+          ),
+      ]);
+}
+
+/// 注入选文件替身（跑完还原）。
+void _useFakePicker(List<String> names) {
+  FilePicker? original;
+  try {
+    original = FilePicker.platform;
+  } catch (_) {
+    original = null;
+  }
+  FilePicker.platform = _FakePicker(names);
+  addTearDown(() {
+    if (original != null) FilePicker.platform = original;
+  });
+}
 
 /// UTF-8 JSON 响应：MockClient 默认 Latin-1 编码 body，中文会炸，必须显式 charset=utf-8。
 http.Response _json(Object body) => http.Response(
@@ -2373,6 +2420,152 @@ void main() {
     expect(find.byType(AlertDialog), findsOneWidget, reason: '校验失败不该关窗');
   });
 
+  // ── P2-工程12④：过期红字残留（2026-10-04）──
+  // 作者在标的框刻意做了「用户重新输入即撤掉旧错误，不拿过期提示挡新动作」，
+  // 但日期框（标注弹窗）与选文件（导入弹窗）漏了同一件清理。
+
+  testWidgets('P2-工程12④ 标注弹窗：日期校验失败后一改日期 → 红字立刻撤掉', (tester) async {
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/v1/trading/cases' && request.method == 'GET') {
+        return _json(<Map<String, dynamic>>[]);
+      }
+      if (request.url.path == '/api/v1/trading/search') {
+        return _json([
+          {'symbol': '000831', 'name': '中国稀土'},
+        ]);
+      }
+      return _tradingHandler(request);
+    });
+    final api = ApiService(baseUrl: 'http://test', client: client);
+    await _pumpTrading(tester, api);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('案例'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('标注案例'));
+    await tester.pumpAndSettle();
+
+    final dialog = find.byType(AlertDialog);
+    final fields = find.descendant(of: dialog, matching: find.byType(TextField));
+    // 先选中标的（symbol 非空），日期留空 → 点「标注」触发的是**日期**校验
+    await tester.enterText(fields.at(0), '中国稀土');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('000831')); // 点候选 → symbolCtrl 才有值
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: dialog, matching: find.widgetWithText(TextButton, '标注')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('买点日期必填（yyyy-MM-dd，如 2026-08-03）'), findsOneWidget,
+        reason: '日期空要如实说明');
+
+    await tester.enterText(fields.at(1), '2026-09-17');
+    await tester.pumpAndSettle();
+    expect(find.text('买点日期必填（yyyy-MM-dd，如 2026-08-03）'), findsNothing,
+        reason: '改日期即撤掉旧错误（原先红字挂着，看着像新输入也不对）');
+  });
+
+  testWidgets('P3 标注弹窗：未选标的时敲日期 → 「请从下拉列表里选择标的」红字仍在', (tester) async {
+    // formError 是跨字段单一变量：标的为空时它承载的是标的错误，日期框 onChanged 不该清掉
+    // 仍然成立的提示（否则用户敲一下日期，红字消失、实际问题还在）。
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/v1/trading/cases' && request.method == 'GET') {
+        return _json(<Map<String, dynamic>>[]);
+      }
+      if (request.url.path == '/api/v1/trading/search') {
+        return _json([
+          {'symbol': '000831', 'name': '中国稀土'},
+        ]);
+      }
+      return _tradingHandler(request);
+    });
+    final api = ApiService(baseUrl: 'http://test', client: client);
+    await _pumpTrading(tester, api);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('案例'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('标注案例'));
+    await tester.pumpAndSettle();
+
+    final dialog = find.byType(AlertDialog);
+    final fields = find.descendant(of: dialog, matching: find.byType(TextField));
+    // 只打字、**不点候选** → symbolCtrl 仍空（后端要的 symbol 为空）
+    await tester.enterText(fields.at(0), '中国稀土');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    await tester.enterText(fields.at(1), '2026-09-17'); // 日期填好，确保错误只剩标的这一条
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: dialog, matching: find.widgetWithText(TextButton, '标注')));
+    await tester.pumpAndSettle();
+    expect(find.text('请从下拉列表里选择标的（只输入代码不算）'), findsOneWidget,
+        reason: '漏点候选要如实说、要能照做');
+
+    await tester.enterText(fields.at(1), '2026-09-18');
+    await tester.pumpAndSettle();
+    expect(find.text('请从下拉列表里选择标的（只输入代码不算）'), findsOneWidget,
+        reason: '标的还没选，这条错误仍成立——敲日期不能把它抹掉');
+  });
+
+  testWidgets('P3 导入弹窗：选到空文件 → 「先粘贴内容…」红字仍在（只在真有内容时才清）', (tester) async {
+    _useFakePicker(['空文件20261001.txt']);
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/v1/trading/imports/save') {
+        // 选到的文件是空的（只有空白）→ 内容仍为空，提示依旧成立
+        return _json({'path': 'imports/空文件20261001.txt', 'content': '  \n'});
+      }
+      return _tradingHandler(request);
+    });
+    final api = ApiService(baseUrl: 'http://test', client: client);
+    await _pumpTrading(tester, api);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('导入持仓'));
+    await tester.pumpAndSettle();
+    final dialog = find.byType(AlertDialog);
+
+    await tester.tap(find.descendant(of: dialog, matching: find.widgetWithText(FilledButton, '导入')));
+    await tester.pumpAndSettle();
+    expect(find.text('先粘贴内容，或选择通达信导出的文件'), findsOneWidget);
+
+    await tester.tap(find.text('选择文件（通达信导出）'));
+    await tester.pumpAndSettle();
+    expect(find.text('先粘贴内容，或选择通达信导出的文件'), findsOneWidget,
+        reason: '空文件清掉这句等于把仍成立的话藏起来（用户仍不知道该粘什么）');
+  });
+
+  testWidgets('P2-工程12④ 导入弹窗：选完文件 → 红字立刻撤掉', (tester) async {
+    _useFakePicker(['持仓20261001.txt']);
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/v1/trading/imports/save') {
+        return _json({
+          'path': 'imports/持仓20261001.txt',
+          'content': '代码\t名称\n600123\t立昂微\n',
+        });
+      }
+      return _tradingHandler(request);
+    });
+    final api = ApiService(baseUrl: 'http://test', client: client);
+    await _pumpTrading(tester, api);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('导入持仓'));
+    await tester.pumpAndSettle();
+    final dialog = find.byType(AlertDialog);
+
+    await tester.tap(find.descendant(of: dialog, matching: find.widgetWithText(FilledButton, '导入')));
+    await tester.pumpAndSettle();
+    expect(find.text('先粘贴内容，或选择通达信导出的文件'), findsOneWidget);
+
+    await tester.tap(find.text('选择文件（通达信导出）'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('先粘贴内容，或选择通达信导出的文件'), findsNothing,
+        reason: '选完文件即撤掉旧错误（原先红字挂着，看着像文件也不行）');
+    expect(find.descendant(of: dialog, matching: find.textContaining('立昂微')), findsOneWidget,
+        reason: '文件内容确实落进了输入框');
+  });
+
   testWidgets('案例 Tab：标注调用 POST /trading/cases（契约：symbol/buyDate/buyType）', (tester) async {
     var postCalled = false;
     var postBody = '';
@@ -3181,6 +3374,7 @@ void main() {
         'consecutiveFailures': 12,
         'lastFailedSymbol': '600487',
         'sources': ['tdx', '腾讯', '东财', '新浪'],
+        'tdxLastDate': '2026-09-04',
       });
       expect(h.ok, isFalse);
       expect(h.shouldWarn, isTrue);
@@ -3191,6 +3385,7 @@ void main() {
       expect(h.consecutiveFailures, 12);
       expect(h.lastFailedSymbol, '600487');
       expect(h.sources, ['tdx', '腾讯', '东财', '新浪']);
+      expect(h.tdxLastDate, '2026-09-04', reason: 'P2-交易58：本地数据包最后一根日期如实解析');
 
       // 行情正常：lastFailureAt 可为 null（后端确实没失败过）——不报警、不显示
       final fine = MarketDataHealthDto.fromJson({
@@ -3213,6 +3408,7 @@ void main() {
       expect(empty.consecutiveFailures, 0);
       expect(empty.sources, isEmpty);
       expect(empty.lastFailureAt, isNull);
+      expect(empty.tdxLastDate, isNull, reason: '旧后端没这字段 → null（拿不到 ≠ 滞后）');
 
       // ok 字段缺失但其它字段在（半残响应）→ 仍按正常处理
       final noOk = MarketDataHealthDto.fromJson({'note': '缺 ok', 'sources': <String>[]});
@@ -3322,6 +3518,75 @@ void main() {
       expect(find.text('阿呆最近拿不到行情'), findsNothing);
       expect(find.textContaining('加载失败'), findsNothing);
       expect(find.textContaining('持仓 1 只'), findsOneWidget);
+    });
+
+    test('P2-交易58 行情滞后提示（纯函数）：阈值与后端 tdxStale 同口径（>3 天才说）', () {
+      final now = DateTime(2026, 10, 4, 10, 30);
+      expect(tdxLagNote(null, now: now), isNull, reason: '本地关掉 / 旧后端 → 拿不到 ≠ 滞后');
+      expect(tdxLagNote('', now: now), isNull);
+      expect(tdxLagNote('20260930', now: now), isNull, reason: '格式认不出 → 不编造日期');
+      expect(tdxLagNote('abcd-09-30', now: now), isNull);
+      expect(tdxLagNote('2026-10-04', now: now), isNull, reason: '差距 0 → 不制造噪音');
+      // 阈值对齐后端 services/adai-core .../KlineService.java#tdxStale
+      // （`ChronoUnit.DAYS.between(last, today) > 3`）：1~3 天仍用本地、零网络请求 → 一个字都不说
+      expect(tdxLagNote('2026-10-03', now: now), isNull, reason: '滞后 1 天仍在「用本地」区间，没有缺口');
+      expect(tdxLagNote('2026-10-01', now: now), isNull, reason: '滞后 3 天是后端仍用本地的最后一天');
+      expect(tdxLagNote('2026-09-30', now: now), '我手上的行情只到 09-30，后面几天的我去网上补上',
+          reason: '滞后 4 天起后端确实改走网络源 → 如实说一句');
+      expect(tdxLagNote('2026-10-05', now: now), isNull, reason: '后端给了未来日 → 不报警');
+      // 不存在的日期不照抄（DateTime 会把 02-31 规范化成 03-03、00-00 变成上一年 11-30）
+      expect(tdxLagNote('2026-02-31', now: now), isNull, reason: '02-31 不存在 → 不编造日子');
+      expect(tdxLagNote('2026-00-00', now: now), isNull, reason: '00-00 不存在 → 不编造日子');
+    });
+
+    testWidgets('P2-交易58 滞后 >3 天才说「我手上的行情只到 X」；≤3 天 / 今天 / 没给 → 零显示', (tester) async {
+      Future<void> pumpWith(Object? tdxLastDate) async {
+        final client = MockClient((request) async {
+          if (request.url.path == '/api/v1/trading/market-data/health') {
+            return _json({
+              'ok': true, 'note': '行情正常（最近一次 10-04 15:00:00 · tdx）',
+              'lastSuccessAt': '10-04 15:00:00', 'lastSuccessSource': 'tdx',
+              'lastFailureAt': null, 'consecutiveFailures': 0, 'lastFailedSymbol': null,
+              'sources': ['tdx', '腾讯'], 'tdxLastDate': tdxLastDate,
+            });
+          }
+          return _tradingHandler(request);
+        });
+        // 先卸载：同类型 widget 直接重挂会**复用** TradingPage 的 State（旧 health 留着，
+        // initState 不再跑）→ 必须真正重建，才验得到「这一份 health 说了什么」
+        await tester.pumpWidget(const SizedBox.shrink());
+        await _pumpTrading(tester, ApiService(baseUrl: 'http://test', client: client));
+      }
+
+      // 滞后 4 天（= 后端 tdxStale 判 true 的第 1 天；相对真实的今天算，避免写死日期跨日失效）
+      final lag = _ymd(DateTime.now().subtract(const Duration(days: 4)));
+      final expected = '我手上的行情只到 ${lag.substring(5)}，后面几天的我去网上补上';
+      await pumpWith(lag);
+      final line = find.text(expected);
+      expect(line, findsOneWidget, reason: '第 4 天起后端确实去网上补 → 如实说一句');
+      expect(find.text('阿呆最近拿不到行情'), findsNothing, reason: '滞后 ≠ 行情坏了，不借横幅报警');
+      // 第一原则 B1：正面白名单——必须是这句「我」口吻的原话，且不含任何开发者术语
+      expect(tester.widget<Text>(line).data, contains(expected));
+      for (final banned in ['网络源', '本地行情', '本地数据包', '取数链', '系统', '接口']) {
+        expect(tester.widget<Text>(line).data, isNot(contains(banned)),
+            reason: '第一原则：不得出现「$banned」这类系统视角词');
+      }
+
+      // 滞后 ≤3 天：后端仍用本地（零网络请求）→ 一个字都不说（原先这里会误报，一年中大半时间常驻）
+      await pumpWith(_ymd(DateTime.now().subtract(const Duration(days: 3))));
+      expect(find.textContaining('我手上的行情只到'), findsNothing,
+          reason: '阈值与后端一致：前 1~3 天用本地，没有缺口也没走网络');
+      await pumpWith(_ymd(DateTime.now().subtract(const Duration(days: 1))));
+      expect(find.textContaining('我手上的行情只到'), findsNothing, reason: '隔天更不该报');
+
+      // 就是今天 → 零噪音（不刷存在感）
+      await pumpWith(_ymd(DateTime.now()));
+      expect(find.textContaining('我手上的行情只到'), findsNothing, reason: '差距 0 不制造噪音');
+
+      // 后端没给（本地关掉 / 旧后端）→ 也零显示，页面照常
+      await pumpWith(null);
+      expect(find.textContaining('我手上的行情只到'), findsNothing);
+      expect(find.textContaining('持仓 1 只'), findsOneWidget, reason: '不显示 ≠ 页面坏了');
     });
   });
 
@@ -3515,6 +3780,51 @@ void main() {
       final agg = aggregateImportResults([a, b]);
       expect(agg.unparsed.length, 2, reason: '相同文本去重合并');
       expect(agg.unparsedCount, 3, reason: '两份文件的没看懂行计数累加');
+    });
+  });
+
+  group('P2-交易83 清仓/资金导入丢行明细 DTO（契约 v3.96，缺字段不炸）', () {
+    test('SoldImportResult 解析 unparsed + unparsedCount；缺字段/类型不符安全兜底', () {
+      final r = SoldImportResult.fromJson({
+        'imported': 42,
+        'unparsed': ['第 3 行「60021\t截断代码\t20260731\t…」：代码「60021」不是 6 位数字', 42],
+        'unparsedCount': 3,
+      });
+      expect(r.imported, 42);
+      expect(r.unparsed.length, 2);
+      expect(r.unparsed.first, contains('不是 6 位数字'));
+      expect(r.unparsed[1], '42', reason: '非字符串元素安全转字符串');
+      expect(r.unparsedCount, 3, reason: '计数以字段为准');
+
+      final old = SoldImportResult.fromJson({'imported': 5});
+      expect(old.imported, 5, reason: '旧后端只回 imported，笔数照旧可用');
+      expect(old.unparsed, isEmpty, reason: '缺字段 → 空列表');
+      expect(old.unparsedCount, 0, reason: '缺字段 → 0');
+      expect(SoldImportResult.fromJson('boom').imported, 0, reason: '响应形状不符不崩');
+      expect(SoldImportResult.fromJson('boom').unparsed, isEmpty);
+    });
+
+    test('SoldImportResult 计数缺省 → 退回明细条数（与历史成交同口径）', () {
+      final r = SoldImportResult.fromJson({'imported': 0, 'unparsed': ['第 1 行：清仓日期认不出']});
+      expect(r.unparsedCount, 1);
+    });
+
+    test('CashImportResult 解析 unparsed + unparsedCount；unparsedRows 仍按 int（缺字段 → 0）', () {
+      final r = CashImportResult.fromJson({
+        'cash': 1381.93, 'assets': 79231.93, 'updatedCost': 3, 'unparsedRows': 1,
+        'unparsed': ['第 4 行「这不是明细行 xxx」：证券代码「这不是明细行」不是 6 位数字'],
+        'unparsedCount': 1,
+      });
+      expect(r.unparsedRows, 1, reason: '契约明确该字段保持 int，改类型会把导入打挂');
+      expect(r.unparsed.single, contains('不是 6 位数字'));
+      expect(r.unparsedCount, 1);
+
+      final old = CashImportResult.fromJson({'cash': 1.0, 'updatedCost': 2});
+      expect(old.unparsed, isEmpty);
+      expect(old.unparsedCount, 0);
+      expect(old.unparsedRows, 0, reason: '既有行为不回归');
+      expect(CashImportResult.fromJson('boom').unparsed, isEmpty);
+      expect(CashImportResult.fromJson('boom').unparsedCount, 0);
     });
   });
 
@@ -3741,6 +4051,107 @@ void main() {
 
       expect(find.textContaining('资金已更新：现金 ¥1381.93 · 成本更新 2 只'), findsOneWidget);
       expect(find.textContaining('没认出来'), findsNothing);
+    });
+  });
+
+  group('P2-交易83 清仓股导入丢行明细（widget：用户可见面）', () {
+    const soldUnparsedLine = '第 3 行「60021\t截断代码\t20260731\t…」：代码「60021」不是 6 位数字';
+
+    MockClient mock(Map<String, dynamic> soldImport) => MockClient((request) async {
+          if (request.url.path == '/api/v1/trading/sold/import') return _json(soldImport);
+          return _tradingHandler(request);
+        });
+
+    Future<void> runSoldImport(WidgetTester tester, Map<String, dynamic> soldImport) async {
+      await _pumpTrading(tester,
+          ApiService(baseUrl: 'http://test', client: mock(soldImport)));
+      await tester.tap(find.text('清仓'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('导入清仓'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, '清仓导出文本');
+      await tester.tap(find.text('导入'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('有丢行 → 回执说清「可能少了几只」+ 逐条明细（行号/原文/原因）可收起/展开', (tester) async {
+      await runSoldImport(tester,
+          {'imported': 3, 'unparsed': [soldUnparsedLine], 'unparsedCount': 1});
+
+      expect(find.text('清仓股导入 3 笔'), findsOneWidget);
+      expect(find.text('有 1 行没能识别（你的清仓股可能少了几只）'), findsOneWidget);
+      expect(find.text('· $soldUnparsedLine'), findsOneWidget, reason: '逐条明细含行号 + 原文 + 原因');
+
+      await tester.tap(find.text('收起'));
+      await tester.pumpAndSettle();
+      expect(find.text('· $soldUnparsedLine'), findsNothing);
+      expect(find.text('有 1 行没能识别（你的清仓股可能少了几只）'), findsOneWidget,
+          reason: '收起只藏明细，警示还在');
+
+      await tester.tap(find.text('看明细'));
+      await tester.pumpAndSettle();
+      expect(find.text('· $soldUnparsedLine'), findsOneWidget);
+    });
+
+    testWidgets('无丢行 / 旧后端缺字段 → 只回原话，不显示任何警示', (tester) async {
+      await runSoldImport(tester, {'imported': 3});
+      expect(find.text('清仓股导入 3 笔'), findsOneWidget);
+      expect(find.textContaining('没能识别'), findsNothing);
+      expect(find.textContaining('少了几只'), findsNothing);
+    });
+  });
+
+  group('P2-交易83 资金股份导入丢行明细（widget：是哪只票的成本没更新）', () {
+    const cashUnparsedLine = '第 4 行「这不是明细行 xxx」：证券代码「这不是明细行」不是 6 位数字';
+
+    Future<void> runCashImport(WidgetTester tester, Map<String, dynamic> cashResp) async {
+      final client = MockClient((request) async {
+        if (request.url.path == '/api/v1/trading/imports/cash') return _json(cashResp);
+        return _tradingHandler(request);
+      });
+      await _pumpTrading(tester, ApiService(baseUrl: 'http://test', client: client));
+      await tester.tap(find.text('资金'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('导入资金'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, '资金导出文本');
+      await tester.tap(find.text('导入'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('有明细 → 回执 + 逐条明细、可收起/展开（不再只说「另有 N 行」）', (tester) async {
+      await runCashImport(tester, {
+        'cash': 1381.93, 'assets': 77850.0, 'updatedCost': 2, 'unparsedRows': 1,
+        'unparsed': [cashUnparsedLine], 'unparsedCount': 1,
+      });
+      expect(find.text('资金已更新：现金 ¥1381.93 · 成本更新 2 只'), findsOneWidget);
+      expect(find.text('有 1 行没能识别（这些票的精确成本这次没更新）'), findsOneWidget);
+      expect(find.text('· $cashUnparsedLine'), findsOneWidget, reason: '回答「是哪只票的精确成本没更新」');
+      expect(find.textContaining('另有 1 行明细没认出来'), findsNothing,
+          reason: '有明细就不再退回那句笼统的话');
+
+      await tester.tap(find.text('收起'));
+      await tester.pumpAndSettle();
+      expect(find.text('· $cashUnparsedLine'), findsNothing);
+      expect(find.text('有 1 行没能识别（这些票的精确成本这次没更新）'), findsOneWidget);
+    });
+
+    testWidgets('unparsedRows 缺失但明细在（只加字段的新后端）→ 仍显示明细', (tester) async {
+      await runCashImport(tester, {
+        'cash': 1381.93, 'assets': 77850.0, 'updatedCost': 2,
+        'unparsed': [cashUnparsedLine], 'unparsedCount': 1,
+      });
+      expect(find.text('· $cashUnparsedLine'), findsOneWidget);
+      expect(find.text('有 1 行没能识别（这些票的精确成本这次没更新）'), findsOneWidget);
+    });
+
+    testWidgets('明细为空数组、只有 unparsedRows → 维持原笼统提示（不编造明细、不弹空框）', (tester) async {
+      await runCashImport(tester, {
+        'cash': 1381.93, 'assets': 77850.0, 'updatedCost': 2,
+        'unparsedRows': 3, 'unparsed': <String>[],
+      });
+      expect(find.textContaining('另有 3 行明细没认出来，这些持仓的精确成本本次没更新'), findsOneWidget);
+      expect(find.textContaining('没能识别'), findsNothing);
     });
   });
 }

@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-10-04
 status: active
-lines: 3130
+lines: 3150
 depends-on: []
 related: []
 tags: [fact, reference]
@@ -15,7 +15,7 @@ tags: [fact, reference]
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.93 | 最后更新：2026-09-28**
+**文档版本：v3.96 | 最后更新：2026-10-04**
 
 ---
 
@@ -23,6 +23,7 @@ tags: [fact, reference]
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-10-04 | v3.96 | **C 档「丢行可见」收口（REVIEW P2-交易83 / P2-交易58）+ 契约文档对齐（P2-文档1 / P2-文档3）**——三处**响应扩字段**（全部 **additive**，旧客户端零破坏）：① `GET /trading/market-data/health` 新增 **`fallbackHealthy`**（兜底源新浪**最近一次主动体检**的结果；`false` 时 `ok` **仍可能为 `true`**——主源正常而兜底已挂，属「事前可见」而非链路故障）与 **`fallbackLastProbeAt`**（体检时刻；`null` = 还没探过或兜底已关闭，启用与否看 `sources`）；② `POST /trading/sold/import` 新增 **`unparsed`**（字符串数组，逐条 = 行号 + 原文 + 原因）与 **`unparsedCount`**（= 数组长度），解析层没看懂的行不再静默丢弃，**空则不带**这两个字段（按 symbol upsert，丢行不删档案，故不 fail-closed 但必须可见）；③ `POST /trading/imports/cash` 同样新增 **`unparsed`** / **`unparsedCount`**（回答「是**哪只票**的精确成本没更新」），**`unparsedRows` 保持 int 不变**——web 按数字解析该字段，改类型会把导入直接打挂，故升级一律走**加字段**式。**同批文档对齐（代码自 v3.65 / 2026-09-26 起即如此，本批只是补登，无行为变化）**：`POST /trading/trades/import` 响应段补上 v3.65 就已存在的 `unparsed`/`unparsedCount`（原文漏列，却以「与它同口径」为对齐依据）；`POST /conversations/end` 段把幂等口径补全为「幂等键 `conversationRecordId` **+** turns 指纹 `conversationTurnsHash` **两者同时成立**才命中；**内容变了要新落一条**、返回新的 `recordId`/`summary`；旧卡缺指纹退化为逐条比对 turns 文本序列」（与 `feature-reference.md` §3 逐字一致）。**端点 170 不变**（仅响应扩字段 + 文档对齐） |
 | 2026-09-28 | v3.93 | **行情渠道收敛与稳定（RFC `20260928-market-source-consolidation` 批 2；用户「几个行情渠道，目前什么情况，有稳定的吗」→「东财可删」「整理个稳定的方案，包括腾讯第二域名」）**——先说实测（2026-09-28 生产逐源直连）：**腾讯实时行情 200 · 腾讯 K 线新域名 200 · 老域名 200（09-22 那次 501 已恢复）· 新浪 200 · 东财 `push2his` 000（连接层，连 HTTP 码都拿不到）· tdx 数据止于 09-04**，而四层链路（tdx → 腾讯 → 东财 → 新浪）**名义冗余、实测只有一层在干活**（东财 7 天 1711 失败/182 成功；新浪从未被记录过一次成功或失败）→ 稳定全靠**腾讯单点**。① **批 1（配置级，已上生产）**：`ADAI_MARKET_TENCENT_KLINE_BASES` 配**两条**（新域名 + `web.ifzq.gtimg.cn`，按序尝试、第一个成功即停）；**真链演练**把主域名打成不可达 → 23 次失败**全部由第二域名顶上**且 `health` 报 `ok=true`。② **批 2（本批代码）**：**东财 K 线源出链路并删除该类**（`EastMoneyKlineDataSource`；东财的除权因子 `datacenter-web` 与名称解析 `searchapi` 实测可达，**不动**），**新浪由「最后一层」升为兜底** → 链路收敛为 `tdx → 腾讯（双域名）→ 新浪`；**新浪补可观测**（成功 INFO / 空 WARN，原先两者全静默）；**`tdx-enabled` 补环境变量挂钩** `${ADAI_TDX_ENABLED:true}`（原硬编码 → `.env` 配了静默不生效，2026-09-14 adj-path 事故同型），**`kline-primary` 随东财一并移除**（无第二主源可选，留着就是假开关）；③ **tdx 按用户真实节奏（一周导入一次）降噪**：滞后日志由每天 1300～2100 条 `WARN` 改为**同一滞后日期只记一条 `INFO`**，`tdxStale` 阈值仍 3 天（导入后第 4 天起自动走网络源，安全优先）；**不做「滞后即全局跳过本地读」**——滞后是**逐标的**的（实测同时存在停 09-04 与 09-18 两批），全局跳过会误杀仍然新鲜的标的。④ **`GET /trading/market-data/health` 响应增 `tdxLastDate`**（本地数据包最后一根 K 线日期，`null` = 本地关掉/还没取过）——周导入节奏下「该导数据包了」有了机器可读判据，不再只靠日志。**端点 160 不变**（仅响应扩字段）；后端 **2227 → 2228** |
 | 2026-09-26 | v3.92 | **截图候选自动带成交日期（竖排解析补 `tradeDate`）+ `summary` 出口与正文共用剥离**——① `POST /trading/screenshots` 的候选在「VLM 把表格拆成一列一行」的**竖排**版式下也会抽出**成交日期**：日期行从数据行序列中摘出（避免打断「数量 → 成交额 → 时间」的向下取链）作游标推给其后的成交；**判据保守**——日期行必须排在成交**之前**（列序不可信时整批返回 null，绝不猜）。此前竖排候选恒缺日期，而 v3.32 起「无日期禁止落库」→ 每笔都要用户手点「补日期」；**契约形状不变**（`tradeDate` 字段早已存在）。② `POST /conversations/end` 的 `summary` 与正文**共用同一个后台提示剥离出口**（此前只剥正文，「JSON 如下？」会作为**持久脏数据**落进 summary → 卡片与记忆）。后端 **2220 → 2225** |
 | 2026-10-03 | v3.95 | **锚定日归一化的「有据 / 无据」收窄——不再为正常语义打扰用户（用户反馈驱动）**——用户原话：「我 10-01 导入就是为了修正数据；我没导入，你不知道我是否操作了」，并指出 web 横幅「3 笔成交没进持仓 / 先导一次快照我就能重新对上了」是**不该有的提示**。根因：`GET /trading/integrity` 的 `degraded[].inferred` 原先等于「锚定日是否被归一化过」，于是**休市日导出的正常归一化**（2026-10-01 国庆休市 → 数据基准日 09-30）也会让当天成交被标可疑、催用户重导；而那份快照的 600206 = **800 股正好含**当天买的 200 股（**数据本来就是对的**）。现在 `inferred` 收窄为「**无据的归一化**」：文件日期当天**休市**（周末/法定节假日，节假日表可自证）→ 归一化有据 → `inferred=false` → **note 与前端横幅完全静默**；文件日期**是交易日却被归一化**（2026-09-18 真事故同型：应为 09-17 却写成 09-18，当天 6 笔全降级、持仓少 2 只，且该场景 `drift` 结构上假绿）→ 无据 → **照旧 ⚠️ 报警并指路**。同批：`degraded[].reason` 去掉指令语气、自检日志 warn → debug（正常语义不污染生产日志）。**端点不变（`degraded[]` 字段语义收窄）** |
@@ -523,11 +524,16 @@ tags: [fact, reference]
 
 ### `POST /api/v1/conversations/end` — 结束对话
 
-> **同卡幂等（2026-09-26 夜间批，REVIEW P1-对话1）**：带 `cardId` 时，**同一张卡只允许落一条 conversation**——
+> **同卡幂等（2026-09-26 夜间批，REVIEW P1-对话1；v3.96 补 turns 指纹口径）**：带 `cardId` 时，**同一张卡只允许落一条 conversation**——
 > 服务端把「幂等判定 + AI 总结 + 落盘 + 卡片回写」整段收进按 `(userId|cardId)` 的锁内，卡片的
-> `conversationRecordId`（落卡片 frontmatter）即幂等键：**超时重发 / 双端并发再次 end 会原样返回既有
-> 结果（同一个 `recordId`），不重复落盘、不重复沉淀记忆、不再调用模型**。`cardId` 为空/缺省时保持
-> 原语义（每次调用各落一条，供无卡片上下文的调用方使用）。
+> `conversationRecordId`（落卡片 frontmatter）是**幂等键**、`conversationTurnsHash` 是这一段 turns 的**指纹**；
+> **两者同时成立**才命中 → **超时重发 / 双端并发再次 end 会原样返回既有结果（同一个 `recordId`），
+> 不重复落盘、不重复沉淀记忆、不再调用模型**。**内容变了要新落一条**：指纹不一致（如在已结束的卡上
+> 继续聊几轮再 end）不算重试 → 走正常流程新落一条并回写新键，调用方会拿到**新的 `recordId`/`summary`**
+> （否则新轮次既不落 record 也不进记忆，用户会说「我刚说的你没记住」）。旧卡缺指纹（或被
+> `CardMigrationService` / `RecordRetryService` 重写时抹掉键的卡）→ **退化为逐条比对卡片 turns 与本次请求的
+> 文本序列**，避免 `null` 让幂等永不命中而重复花钱。`cardId` 为空/缺省时保持原语义（每次调用各落一条，
+> 供无卡片上下文的调用方使用）。口径与 `feature-reference.md` §3（后端处理 2/3 步）逐字一致。
 
 **Request Body**
 
@@ -851,6 +857,7 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 - `syncMode` = `sync`（本次有回放行）或 `append`（全部只补流水）
 - `summary` = **每日操作总结**（RFC 20260825 §6，仅 sync 模式存在；不耗 AI 秒出）：买卖笔数/金额 + 批次 diff（`newLots` 新增批次、`deductedLots` 被扣减批次）+ `behaviors` 行为标注（`type`：loss-avg-down 亏损加仓 / chase-high 追高 / short-new 短线新开 / stop-loss-ignored 破止损未走 / giveback 浮盈回吐 / short-overdue 短线超期）
 - `lines` = 对账提示：每标的 流水净增减 vs 当前持仓快照，指出基线缺口/已清仓（只报告不改数据）
+- `unparsed`（字符串数组）/ `unparsedCount`（int，= `unparsed.size()`）——**v3.65 起即有，2026-10-04 补登**：解析层**没看懂的行**不再静默丢弃（原实现 5 类 `continue` 静默丢行、响应无任何出口，用户只看到「识别出 N 笔」）；有丢行时每条 = **行号 + 原文 + 原因**（行号 = **原文件行号，1 起算**，如「第 3 行「…」：成交日期「2026080X」不是 yyyyMMdd 格式」），**空则不带这两个字段**（响应形状对旧客户端零破坏）。与 `POST /trading/sold/import` / `POST /trading/imports/cash` 完全同口径。
 
 **错误**：锚定 fail-closed 拒绝 → **400** 人话（含两条逃生路径）；`content` 缺失 → 400。
 
@@ -908,7 +915,7 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 
 **Response（200）**：`{"written": 2}`（本次真正写入的条数；请求体为空，用户取自 `X-User-Id`）
 
-### `GET /api/v1/trading/market-data/health` — 行情（K 线）链路可用性（v3.84，RFC 20260923 D 批，2026-09-23；v3.93 增 `tdxLastDate`，RFC 20260928 批 2）
+### `GET /api/v1/trading/market-data/health` — 行情（K 线）链路可用性（v3.84，RFC 20260923 D 批，2026-09-23；v3.93 增 `tdxLastDate`，RFC 20260928 批 2；2026-10-04 REVIEW P2-交易58 收口增 `fallbackHealthy`/`fallbackLastProbeAt`）
 
 把「K 线链路整段拿不到数据」从日志搬到用户面前。**为什么需要**：2026-09-22 深夜生产实测三条来源同时失效（腾讯 K 线域名被 WAF 拦 501 · 东财长期被限 · tdx 数据包滞后），资金曲线/周期盈亏/买点扫描/案例库整段退化，而后端只在日志里知道——用户侧看到的是曲线平了、信号没了，**没有任何提示**（与 P1-交易60 同族：「不知道」没有被渲染成「不知道」）。
 
@@ -918,13 +925,15 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
  "note":"行情取数连续 12 次都没拿到（最近一次失败 09-22 23:38:00 · 600487）——资金曲线、自选信号、案例匹配可能不全，我在自动重试",
  "lastSuccessAt":"09-22 15:00:00","lastSuccessSource":"tdx",
  "lastFailureAt":"09-22 23:38:00","consecutiveFailures":12,"lastFailedSymbol":"600487",
- "sources":["tdx","腾讯","新浪"],"tdxLastDate":"2026-09-04"}
+ "sources":["tdx","腾讯","新浪"],"tdxLastDate":"2026-09-04",
+ "fallbackHealthy":false,"fallbackLastProbeAt":"10-04 10:00:00"}
 ```
 - `ok`：最近一次成功不早于最近一次失败。**从没查过时 `ok=true`**（不制造假警报），此时 `note` 为「还没查过行情」。
 - `note`：**可直接展示的人话**（双端交易页横幅直接用它，不在前端重新拼口径）。
 - `lastSuccessSource`：那一根来自哪个源（`tdx` / `腾讯` / `新浪`）——**新浪是不复权数据**，这一字段让「当前用的是哪个源」可见（口径差异不藏起来）。
 - `sources`：当前启用的取数链（按序）。**2026-09-28 起东财出链路**（`push2his.eastmoney.com` 长期 000 不可达，RFC `20260928` 批 2）→ 默认 `["tdx","腾讯","新浪"]`；`tdx-enabled=false` 时不出现「tdx」，`sina-kline-enabled=false` 时不出现「新浪」。
 - `tdxLastDate`（v3.93）：本地数据包**最后一根 K 线的日期**（本地源关掉 / 还没取过 → `null`）。用户一周导入一次数据包，此值长期停在旧日期即「该导数据包了」——滞后事实不再只靠日志。
+- `fallbackHealthy` / `fallbackLastProbeAt`（2026-10-04，REVIEW P2-交易58 收口）：兜底源（新浪）**主动体检**的结果与时刻——兜底平时零取数，只在主源熔断时被批量打过去（那正是它最可能也挂的时刻），故交易时段内每 30 分钟真探一次（10 根、5s 超时、绕过日缓存）。`fallbackHealthy=false` = 最近一次探不通（**此时 `ok` 仍可能是 `true`**：主源正常、兜底已挂，属「事前可见」而非链路故障）；`null` = 还没探过或兜底已关闭（启用与否看 `sources`）。`note` 不含这两项（横幅文案保持链路级口径不漂移）。
 - 双端**只在 `ok=false` 时**出横幅（无异常零显示）；需 trading 插件（403）。
 
 ### `GET /api/v1/trading/integrity` — 账实一致性自检（对账闸门，v3.61，2026-09-12）
@@ -1130,6 +1139,12 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 
 **body**：`{"content":"..."}`。表头定位列（代码/名称/介入日期/清仓日期/持仓天数/买卖次数/持仓期涨幅%），按 symbol upsert（保留已有 verdict/psychology）。**响应**：`{"imported":42}`。
 
+**`unparsed` / `unparsedCount`（P2-交易83，2026-10-04）**：解析层**没看懂的行**不再静默丢弃——有丢行时响应额外带
+`{"imported":42,"unparsed":["第 3 行「60021\t截断代码\t20260731\t…」：代码「60021」不是 6 位数字"],"unparsedCount":1}`。
+每条 = **行号 + 原文 + 原因**（行号 = **原文件行号，1 起算，含表头行**，与 `POST /trading/trades/import` 同口径）；
+字段名与历史成交导入完全一致（P2-交易43 已确立的回执口径），空则**不带**这两个字段。丢一行 = 该只清仓档案本次没进库
+（本导入是**按 symbol upsert**、不删档案，故不 fail-closed，但必须可见——原实现只回 `imported` 计数，把丢的行全盖住了）。
+
 ### `PUT /api/v1/trading/sold/{symbol}/psychology` — 清仓股心理标注
 
 **body**：`{"psychology":"追高后恐慌割肉"}`（用户复盘素材，个人数据隐私保护）。
@@ -1315,6 +1330,11 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 **body（v3.61）**：`{"content":"…转码后文本…","snapshotDate":"2026-09-09"}`——`snapshotDate` 可选（`yyyy-MM-dd`，兼容 `yyyyMMdd`），语义 = **快照自身日期**（通达信「资金股份查询」文件名里的日期）：该日期同时作为**账户快照日期**与**现金锚定日**（`trading/snapshot-anchor.json` 的 `cashImport`）；不传则退回导入日（今天）。补导几天前的资金文件必须传它，否则现金锚定日偏晚会把快照日之后、锚定日之前的现金变动误判为已包含。格式错 → 400 人话。
 
 **响应（v3.65）**：`{"cash":1381.93,"assets":79231.93,"updatedCost":3,"unparsedRows":0}`——`unparsedRows`（P2-交易45）= 明细里**没看懂的行数**（>0 → 这些持仓的「精确成本」本次没更新；不阻塞导入，但不静默）。**同时收紧首行校验**：正则命中首行但「余额/可用/可取/参考市值/资产/盈亏」任一项读不成数字（如 `余额:1.2.3`）→ **400 人话拒绝导入**（原来 `null` 会一路写进账户快照，资产/现金变空且无提示）。
+
+**`unparsed` / `unparsedCount`（P2-交易83，2026-10-04）**：`unparsedRows`（int）只说了「有几行没看懂」，用户不知道**是哪只**的精确成本没更新——>0 时同一份响应用于额外返回人话明细
+`{"cash":1381.93,"assets":79231.93,"updatedCost":3,"unparsedRows":1,"unparsed":["第 4 行「这不是明细行 xxx」：证券代码「这不是明细行」不是 6 位数字"],"unparsedCount":1}`。
+每条 = **行号 + 原文 + 原因**（行号 = **原文件行号，1 起算**），与 `POST /trading/trades/import` / `POST /trading/sold/import` 同口径；空则**不带**这两个字段。
+**`unparsedRows` 保持 int 不变**（旧客户端 web/app 按数字解析，改类型会把导入直接打挂）——升级是**加字段**式的：int 计数 + 明细数组各就各位。
 
 **对账模式（v3.94，2026-10-03，RFC 20261003 C4）**：body 加 `"dryRun":"true"` → **只对账、不落盘**，返回
 `{"dryRun":true,"brokerCash":900.00,"systemCash":500.00,"diff":400.00,"cashAnchorDate":"2026-09-30",

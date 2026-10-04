@@ -180,7 +180,15 @@ out.append("")
 feature_idx = ROOT/'.agents/knowledge/features/_index.md'
 if feature_idx.exists():
     ftext = feature_idx.read_text(encoding='utf-8', errors='ignore')
-    frows = [l for l in ftext.splitlines() if re.match(r'^\|\s*`[\w.\-]+`\s*\|', l)]
+    # 2026-10-04 修：此前**扫全文**，`_index.md` 顶部的「## 文件清单」段（首列也是反引号文件名，
+    # 3 行 kernel.md/learn.md/trading.md）被误当功能行 → 功能数报成 40（实际 37）。目录清单与
+    # 功能主轴是**两个段**，必须分段解析（与 ai-guard-feature.sh:81-96 同日收窄同款）。
+    _m = re.search(r'^## 二、功能清单\s*$\n', ftext, re.M)
+    _scope = ftext[_m.end():] if _m else ftext
+    _e = re.search(r'^## ', _scope, re.M)
+    if _e:
+        _scope = _scope[:_e.start()]
+    frows = [l for l in _scope.splitlines() if re.match(r'^\|\s*`[\w.\-]+`\s*\|', l)]
     fdir = ROOT/'.agents/knowledge/features'
     fcards = len([p for p in fdir.glob('*.md') if p.name not in ('_index.md', '_directory.md')]) if fdir.exists() else 0
     fline = f"- 全项目 **{len(frows)} 个功能**一行一个 → `.agents/knowledge/features/_index.md`（ID/插件/状态/需求出处/实现出处/欠着）"

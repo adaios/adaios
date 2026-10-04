@@ -13,6 +13,9 @@ import java.util.List;
  */
 public interface KlineSource {
 
+    /** 探测取几根（够判断「有没有数据」即可，越小越轻）。 */
+    int PROBE_LIMIT = 10;
+
     /**
      * 查询日 K 线。
      *
@@ -21,6 +24,32 @@ public interface KlineSource {
      * @return 日 K 序列（旧→新）
      */
     List<Candle> kline(String symbol, int limit);
+
+    /**
+     * 轻量健康探测（2026-10-04，REVIEW P2-交易58 收口）。
+     * <p>
+     * <b>为什么在接口上</b>：兜底源（新浪）平时零调用，只在主源熔断时才被批量打过去——而那时
+     * 恰恰是它最可能也挂的时刻，事后才知道「兜底形同虚设」太晚。{@code KlineService} 用它做
+     * 低频主动体检（交易时段每 30 分钟一次，结果经 {@code GET /trading/market-data/health} 可见）。
+     * <p>
+     * <b>默认实现</b>：复用 {@link #kline(String, int)} 取 {@link #PROBE_LIMIT} 根，非空即算活。
+     * 带按日缓存、或需要比 kline 更短超时的源**应当覆写**（如 {@code SinaKlineDataSource}：
+     * 真实网络请求、5s 超时、**绕过缓存**——缓存命中只证明「今天成功过」，证不了「此刻还活着」）。
+     * <p>
+     * <b>约定</b>：与 {@link #kline} 同——异常一律吞掉返回 {@code false}，绝不抛给调用方
+     * （探测跑在调度线程上，抛出去就是定时任务报错）。
+     *
+     * @param symbol 6 位股票代码（探测用固定标的）
+     * @return true = 这一次真的拿到了数据
+     */
+    default boolean probe(String symbol) {
+        try {
+            List<Candle> c = kline(symbol, PROBE_LIMIT);
+            return c != null && !c.isEmpty();
+        } catch (Exception e) {
+            return false;
+        }
+    }
 
     /**
      * 按日期范围查询日 K 线（2026-08-30：完美买点案例库——标注历史日期案例需取

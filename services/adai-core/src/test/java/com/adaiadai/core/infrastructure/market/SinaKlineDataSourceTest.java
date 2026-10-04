@@ -9,9 +9,12 @@ import java.net.http.HttpResponse;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -95,5 +98,62 @@ class SinaKlineDataSourceTest {
                 .thenThrow(new java.io.IOException("network down"));
         assertTrue(new SinaKlineDataSource(http).kline("600519", 120).isEmpty(),
                 "安全约定：异常返回空列表，不抛给调用方");
+    }
+
+    // ── REVIEW P2-交易58 收口：主动探测（2026-10-04）──
+
+    /** 造 n 行合法 K 线 JSON（够触发 kline 的「缓存够用」判断，用于验证 probe 没写缓存）。 */
+    private static String manyRows(int n) {
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < n; i++) {
+            if (i > 0) sb.append(',');
+            sb.append("{\"day\":\"2026-08-%02d\",\"open\":\"1\",\"high\":\"2\",\"low\":\"0.5\",\"close\":\"1.5\",\"volume\":\"100\"}"
+                    .formatted(10 + i));
+        }
+        return sb.append(']').toString();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void probe_realRequest_true_andBypassesCache() throws Exception {
+        // 探测必须**真发请求**：若复用按日缓存，则「当天早些时候成功过、现在挂了」会被探成健康
+        // （缓存只在成功时写入）——那正是本次要消灭的假健康。
+        HttpClient http = mock(HttpClient.class);
+        HttpResponse<String> resp = mock(HttpResponse.class);
+        when(resp.body()).thenReturn(manyRows(10));
+        when(http.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(resp);
+        SinaKlineDataSource source = new SinaKlineDataSource(http);
+
+        assertTrue(source.probe("600519"), "拿到数据 = 探测通过");
+        assertTrue(source.probe("600519"), "第二次仍要真发请求（不读自己的缓存）");
+        // 关键：探测**不写缓存** —— 否则紧接着的 kline 会命中缓存、不再发请求（times(2) 会变成 2 而非 3）
+        assertEquals(10, source.kline("600519", 10).size());
+        verify(http, times(3)).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void probe_emptyBody_false_notThrow() throws Exception {
+        HttpClient http = mock(HttpClient.class);
+        HttpResponse<String> resp = mock(HttpResponse.class);
+        when(resp.body()).thenReturn("null"); // 新浪风控/异常时可能给非数组
+        when(http.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(resp);
+
+        assertFalse(new SinaKlineDataSource(http).probe("600519"), "认不出数据 = 探测不通过");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void probe_httpFailure_false_notThrow() throws Exception {
+        HttpClient http = mock(HttpClient.class);
+        when(http.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenThrow(new java.io.IOException("network down"));
+
+        assertFalse(new SinaKlineDataSource(http).probe("600519"),
+                "安全约定：探测失败返回 false，绝不抛给调度线程");
+
+        HttpClient untouched = mock(HttpClient.class);
+        assertFalse(new SinaKlineDataSource(untouched).probe(" "), "空标的 → 不通过");
+        org.mockito.Mockito.verifyNoInteractions(untouched);
     }
 }

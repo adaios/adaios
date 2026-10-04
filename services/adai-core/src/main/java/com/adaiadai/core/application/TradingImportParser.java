@@ -67,14 +67,14 @@ public final class TradingImportParser {
         List<String> lines = split(content);
         int[] col = null;
         for (String line : lines) {
-            if (isSkippableLine(line)) continue;
+            if (isStructuralLine(line)) continue;
             String[] cells = splitCells(line);
             if (col == null) {
                 int[] idx = locate(cells, "代码", "名称", "细分行业", "一二级行业", "长期形态", "中期形态", "短期形态", "近日指标提示");
                 if (idx[0] >= 0 && (idx[4] >= 0 || idx[5] >= 0 || idx[6] >= 0)) col = idx;
                 continue;
             }
-            if (cells.length <= col[0] || !cells[col[0]].matches("\\d{6}")) {
+            if (cells.length <= col[0] || !cells[col[0]].trim().matches("\\d{6}")) {
                 unparsed.add(line.trim());
                 continue;
             }
@@ -95,8 +95,15 @@ public final class TradingImportParser {
     /** 自选股解析结果（2026-09-13）：条目 + 没看懂的行（fail-closed 判据）。 */
     public record WatchlistParse(List<WatchlistItem> items, List<String> unparsed) {}
 
-    /** 结构性行（空行 / `#` 注释 / 纯分隔线）——不算「没看懂的行」（2026-09-13 fail-closed 判据）。 */
-    private static boolean isSkippableLine(String line) {
+    /**
+     * 结构性行（空行 / 前导空白后的 {@code #} 注释 / 纯分隔线 `-` `=` `_` `~` `*`）——不算「没看懂的行」。
+     * <p>
+     * <b>三条导入链共用同一口径</b>（自选 / 清仓 / 资金明细；P3 补修 2026-10-04）：判据抽到这一处，
+     * 免得各链各写一套。此前清仓链只判 {@code line.isEmpty() || line.startsWith("#")}，于是
+     * {@code "   "}、{@code "====="}、前导空格的 {@code "  #数据来源:通达信"} 都被当成「没看懂的行」误报；
+     * 资金链还漏了 {@code =} 分隔线。**前导空白必须先 trim**——通达信导出常有对齐空格。
+     */
+    private static boolean isStructuralLine(String line) {
         if (line == null) return true;
         String t = line.trim();
         return t.isEmpty() || t.startsWith("#") || t.matches("^[-=_~*\\s]+$");
@@ -106,20 +113,61 @@ public final class TradingImportParser {
     /** 解析清仓股导出 → 已了结交易。
      *  <p>核心列校验（2026-08-27 与自选导入对称）：必须命中「代码」+「介入日期」+「清仓日期」——
      *  三者是清仓股导出专有列，自选/资金/成交表头均缺 → 选错文件返回空列表。</p>
+     *  <p>向后兼容薄包装：只取解析成功的交易，丢行明细见 {@link #parseSoldWithReport(String)}
+     *  （P2-交易83：调用方要能看到被丢的行就不要再走这里）。</p>
      */
     public static List<SoldTrade> parseSold(String content) {
+        return parseSoldWithReport(content).trades();
+    }
+
+    /**
+     * 清仓股解析（带「没看懂的行」）——2026-10-04 P2-交易83：对齐 P2-交易43 已确立的回执口径。
+     * <p>
+     * 原实现 `if (cells.length <= col[0] || !cells[col[0]].matches("\\d{6}")) continue;`
+     * 静默丢行、方法只返回 {@code List<SoldTrade>}，调用方无从上报——<b>丢一行 = 静默少一只清仓股档案，
+     * 用户只看到「导入 42 笔」</b>（与同文件自选/历史成交两条链的口径不一致）。
+     * 现在每个被丢弃的行都带<b>行号 + 原文 + 原因</b>上报，由调用方透出到导入回执。
+     * <p>
+     * <b>行号口径：原文件行号，1 起算（含表头行）</b>——与 {@link #parseHistoricalTradesDetailed(String)}
+     * 完全一致（同一条导入链，用户对照导出文件时行号可直接对上）。
+     * <p>
+     * 判据边界：结构性行（空行 / 前导空白后的 `#` 注释 / 纯分隔线）不算「没看懂的行」——判据与自选、
+     * 资金明细两链**共用** {@link #isStructuralLine}（2026-10-04 P3 补修：此前本链只判空行与行首 `#`，
+     * 纯分隔线与缩进注释会误报；代码列取值前先 trim，否则 `" 600207"` 会被丢且原因自相矛盾）。
+     * <b>不改判定本身</b>——清仓股导入是「按 symbol upsert」而非全量覆盖，丢一行不会删档案，
+     * 故不 fail-closed，只如实上报（同资金明细丢行的既有取舍，见 P2-交易45/83）。
+     * <p>
+     * 但「<b>表头就没认出来</b>」（选错文件 / 空文件，核心列 代码+介入日期+清仓日期 未命中）不是丢行，
+     * 而是整份文件不适用——由 {@code headerMatched=false} 如实上报，调用方 fail-closed（2026-10-04 追加 A）。
+     *
+     * @return trades = 解析成功的清仓记录；unparsedRows = 被丢弃的行（人话一行：第 N 行「原文」：原因）；
+     *         headerMatched = 表头是否识别（false → 调用方须拒绝导入）
+     */
+    public static SoldParse parseSoldWithReport(String content) {
         List<SoldTrade> trades = new ArrayList<>();
+        List<String> unparsedRows = new ArrayList<>();
         List<String> lines = split(content);
         int[] col = null;
-        for (String line : lines) {
-            if (line.isEmpty() || line.startsWith("#")) continue;
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i);
+            int lineNo = i + 1;
+            if (isStructuralLine(line)) continue;
             String[] cells = line.split("\\t");
             if (col == null) {
                 int[] idx = locate(cells, "代码", "名称", "介入日期", "清仓日期", "持仓天数", "买卖次数", "持仓期涨幅%");
                 if (idx[0] >= 0 && idx[2] >= 0 && idx[3] >= 0) col = idx;
                 continue;
             }
-            if (cells.length <= col[0] || !cells[col[0]].matches("\\d{6}")) continue;
+            if (cells.length <= col[0]) {
+                unparsedRows.add(droppedLine(lineNo, line,
+                        "列数不足（代码列第 " + (col[0] + 1) + " 列取不到）"));
+                continue;
+            }
+            if (!cells[col[0]].trim().matches("\\d{6}")) {
+                unparsedRows.add(droppedLine(lineNo, line,
+                        "代码「" + cells[col[0]].trim() + "」不是 6 位数字"));
+                continue;
+            }
             trades.add(new SoldTrade(
                     cells[col[0]].trim(),
                     col[1] >= 0 && col[1] < cells.length ? cells[col[1]].trim() : "",
@@ -130,7 +178,24 @@ public final class TradingImportParser {
                     parseDoubleSafe(col[6], cells),
                     "", ""));
         }
-        return trades;
+        return new SoldParse(trades, unparsedRows, col != null);
+    }
+
+    /** 清仓股解析结果（2026-10-04 P2-交易83）：成功记录 + 没看懂的行（行号/原文/原因，人话一行）。
+     *  @param headerMatched 表头是否识别（核心列 代码/介入日期/清仓日期 命中）。
+     *         {@code false} = 选错文件或空文件——调用方须 fail-closed（对齐资金链
+     *         {@code CashQuery.headerMatched()} 口径，2026-10-04 对抗审查 P1：原来静默回 imported=0）
+     */
+    public record SoldParse(List<SoldTrade> trades, List<String> unparsedRows, boolean headerMatched) {
+        public SoldParse {
+            if (trades == null) trades = List.of();
+            if (unparsedRows == null) unparsedRows = List.of();
+        }
+    }
+
+    /** 丢行明细人话一行（行号 + 原文 + 原因）——与 {@link UnparsedLine#describe()} 同格式（P2-交易43 口径）。 */
+    private static String droppedLine(int lineNo, String raw, String reason) {
+        return new UnparsedLine(lineNo, raw == null ? "" : raw.trim(), reason).describe();
     }
 
     /** 资金股份查询：首行余额/资产 + 明细成本价。 */
@@ -166,8 +231,10 @@ public final class TradingImportParser {
         }
         int[] col = null;
         boolean todayPnlColumn = false;
-        for (String line : lines) {
-            if (line.isEmpty() || line.startsWith("#") || line.startsWith("-")) continue;
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i);
+            int lineNo = i + 1;
+            if (isStructuralLine(line)) continue;
             String[] cells = line.split("\\s+"); // 资金明细空格对齐
             if (col == null) {
                 int[] idx = locate(cells, "证券代码", "证券名称", "证券数量", "成本价", "当前价", "浮动盈亏", "当日盈亏");
@@ -177,10 +244,14 @@ public final class TradingImportParser {
                 if (col != null && idx[6] >= 0) todayPnlColumn = true;
                 continue;
             }
-            if (cells.length <= col[0] || !cells[col[0]].matches("\\d{6}")) {
-                // P2-交易45 附带：明细丢一行 = 某只持仓的「精确成本」不更新（不覆盖数据，故不 fail-closed，
-                // 但要如实上报——原来静默 continue，用户以为全部更新了）
-                unparsedRows.add(line.trim());
+            if (cells.length <= col[0] || !cells[col[0]].trim().matches("\\d{6}")) {
+                // P2-交易45 附带 + P2-交易83（2026-10-04）：明细丢一行 = 某只持仓的「精确成本」不更新
+                // （不覆盖数据，故不 fail-closed，但要如实上报）。**原来只丢原文、没有行号，
+                // 用户拿着文件对不上是哪一行**——现在与历史成交同口径：行号（原文件行号，1 起算）+ 原文 + 原因。
+                String reason = cells.length <= col[0]
+                        ? "列数不足（证券代码列第 " + (col[0] + 1) + " 列取不到）"
+                        : "证券代码「" + cells[col[0]].trim() + "」不是 6 位数字";
+                unparsedRows.add(droppedLine(lineNo, line, reason));
                 continue;
             }
             positions.add(new CashPosition(
@@ -427,7 +498,8 @@ public final class TradingImportParser {
     /** 资金查询结果：首行账户全字段 + 明细。
      *  @param todayPnlColumn 明细表头是否含「当日盈亏」列（缺列 → 调用方不得把当日盈亏清零，P2-交易37）
      *  @param headerUnparsed 首行命中了正则、但这些项没读成数字（P2-交易45：非空 → 调用方必须拒绝导入）
-     *  @param unparsedRows   明细里没看懂的行（P2-交易45：不阻塞，但如实上报） */
+     *  @param unparsedRows   明细里没看懂的行（P2-交易45：不阻塞，但如实上报；
+     *                        P2-交易83：每条为「第 N 行「原文」：原因」人话一行，行号 = 原文件行号，1 起算） */
     public record CashQuery(java.math.BigDecimal cash, java.math.BigDecimal available,
                             java.math.BigDecimal withdrawable, java.math.BigDecimal marketValue,
                             java.math.BigDecimal assets, java.math.BigDecimal pnl,

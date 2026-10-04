@@ -1803,6 +1803,70 @@ class TradingControllerTest {
                 .andExpect(jsonPath("$.imported").value(42));
     }
 
+    // ── 2026-10-04 P2-交易83 二审：丢行明细的 service→JSON 这一跳必须有人守 ──
+    // 审查官变异实测：同时删掉控制器两处 resp.put("unparsed"/"unparsedCount") 时 128/128 全绿
+    //（服务层有单测，http 层零覆盖）。以下两条断言直接盯响应体，删掉 put 立刻变红。
+
+    @Test
+    void soldImport_reportsUnparsedRowsWithLineNumberRawAndReason() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.soldImport(any(), any())).thenReturn(new TradingAppService.SoldImportResult(
+                41, List.of("第 3 行「60021\t截断代码」：代码「60021」不是 6 位数字",
+                        "第 5 行「600206\t缺列」：列数不足（代码列第 1 列取不到）")));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(post("/api/v1/trading/sold/import")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"hello\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.imported").value(41))
+                .andExpect(jsonPath("$.unparsed").isArray())
+                .andExpect(jsonPath("$.unparsed.length()").value(2))
+                .andExpect(jsonPath("$.unparsed[0]").value(containsString("第 3 行")))
+                .andExpect(jsonPath("$.unparsed[0]").value(containsString("不是 6 位数字")))
+                .andExpect(jsonPath("$.unparsed[1]").value(containsString("列数不足")))
+                .andExpect(jsonPath("$.unparsedCount").value(2));
+    }
+
+    @Test
+    void soldImport_allRowsDropped_stillCarriesUnparsedDetail() throws Exception {
+        // 「一行都没解析出来」的分支（imported=0）：不能因为计数是 0 就把明细吞掉——
+        // 用户需要看到「第 3 行没看懂」才知道文件该怎么改。
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.soldImport(any(), any())).thenReturn(new TradingAppService.SoldImportResult(
+                0, List.of("第 3 行「=====」：代码「=====」不是 6 位数字")));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(post("/api/v1/trading/sold/import")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"hello\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.imported").value(0))
+                .andExpect(jsonPath("$.unparsed").isArray())
+                .andExpect(jsonPath("$.unparsed.length()").value(1))
+                .andExpect(jsonPath("$.unparsed[0]").value(containsString("第 3 行")))
+                .andExpect(jsonPath("$.unparsedCount").value(1));
+    }
+
+    @Test
+    void soldImport_unrecognizedFileHeader_400WithHumanMessage() throws Exception {
+        // 2026-10-04 追加 A：选错文件（表头核心列未命中）必须 fail-closed 400 人话，不能静默回 imported=0。
+        // 行为断言在 TradingAppServiceTest；这里守的是「服务抛 TradingException → HTTP 400 + error 人话」这一跳。
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.soldImport(any(), any())).thenThrow(new com.adaiadai.core.domain.trading.TradingException(
+                "无法识别清仓股导出格式——请确认表头含「代码、介入日期、清仓日期」，且是通达信清仓股（已了结交易）导出"));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(post("/api/v1/trading/sold/import")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"hello\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(containsString("无法识别清仓股导出")));
+    }
+
     @Test
     void soldPsychology_updates() throws Exception {
         TradingAppService trading = mock(TradingAppService.class);
@@ -1911,6 +1975,30 @@ class TradingControllerTest {
                         .content("{\"content\":\"余额:292.88  资产:110504.88\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.cash").value(292.88));
+    }
+
+    @Test
+    void importCash_reportsUnparsedDetailRowsAlongsideLegacyCount() throws Exception {
+        // P2-交易83 二审：资金侧同病——旧的 int 计数 `unparsedRows` 必须保持数字不变（旧客户端兼容），
+        // 新增的 `unparsed`/`unparsedCount` 要如实带出行号+原文+原因。
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.importCashQuery(any(), any(), any())).thenReturn(
+                new TradingAppService.CashImportResult(new BigDecimal("292.88"), new BigDecimal("110504.88"), 5,
+                        List.of("第 6 行「1 60080 山西汾酒」：证券代码「60080」不是 6 位数字")));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(post("/api/v1/trading/imports/cash")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"余额:292.88  资产:110504.88\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.cash").value(292.88))
+                .andExpect(jsonPath("$.unparsedRows").value(1))
+                .andExpect(jsonPath("$.unparsed").isArray())
+                .andExpect(jsonPath("$.unparsed.length()").value(1))
+                .andExpect(jsonPath("$.unparsed[0]").value(containsString("第 6 行")))
+                .andExpect(jsonPath("$.unparsed[0]").value(containsString("不是 6 位数字")))
+                .andExpect(jsonPath("$.unparsedCount").value(1));
     }
 
     // ── RFC 20260825：批次视图 + 导入同步模式响应 ──
@@ -2517,7 +2605,9 @@ class TradingControllerTest {
                 false,
                 "行情取数连续 12 次都没拿到（最近一次失败 09-22 23:38:00 · 600487）——资金曲线、自选信号、案例匹配可能不全，我在自动重试",
                 "09-22 15:00:00", "tdx", "09-22 23:38:00", 12, "600487",
-                java.util.List.of("tdx", "腾讯", "新浪"), "2026-09-04"));
+                java.util.List.of("tdx", "腾讯", "新浪"), "2026-09-04",
+                // REVIEW P2-交易58 收口：兜底源主动体检结果（这条是「探了、没通过」）
+                false, "10-04 10:00:00"));
         MockMvc mvc = buildMvcWithKline(kline);
 
         mvc.perform(get("/api/v1/trading/market-data/health").header("X-User-Id", "adai"))
@@ -2527,6 +2617,8 @@ class TradingControllerTest {
                 .andExpect(jsonPath("$.lastSuccessSource").value("tdx"))
                 .andExpect(jsonPath("$.sources[2]").value("新浪"))
                 .andExpect(jsonPath("$.tdxLastDate").value("2026-09-04"))
+                .andExpect(jsonPath("$.fallbackHealthy").value(false))
+                .andExpect(jsonPath("$.fallbackLastProbeAt").value("10-04 10:00:00"))
                 .andExpect(jsonPath("$.note").value(containsString("没拿到")));
     }
 
@@ -2537,13 +2629,17 @@ class TradingControllerTest {
         when(kline.health()).thenReturn(new com.adaiadai.core.application.KlineService.Health(
                 true, "行情正常（最近一次 09-23 00:15:00 · 新浪）",
                 "09-23 00:15:00", "新浪", null, 0, null,
-                java.util.List.of("tdx", "腾讯", "新浪"), null));
+                java.util.List.of("tdx", "腾讯", "新浪"), null,
+                // 尚未探测过 → null（不编一个健康，也不编一个时刻）
+                null, null));
         MockMvc mvc = buildMvcWithKline(kline);
 
         mvc.perform(get("/api/v1/trading/market-data/health").header("X-User-Id", "adai"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.ok").value(true))
                 .andExpect(jsonPath("$.consecutiveFailures").value(0))
+                .andExpect(jsonPath("$.fallbackHealthy").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.fallbackLastProbeAt").value(org.hamcrest.Matchers.nullValue()))
                 .andExpect(jsonPath("$.note").value(containsString("行情正常")));
     }
 }

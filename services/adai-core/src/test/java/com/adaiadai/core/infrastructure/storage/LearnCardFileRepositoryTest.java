@@ -1,7 +1,9 @@
 package com.adaiadai.core.infrastructure.storage;
 
 import com.adaiadai.core.domain.learn.LearnCard;
+import com.adaiadai.core.domain.learn.LearnCardPatch;
 import com.adaiadai.core.domain.learn.LearnException;
+import com.adaiadai.core.domain.learn.LearnPage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -612,6 +614,114 @@ class LearnCardFileRepositoryTest {
         assertEquals(2, repository.list("adai", LearnCard.TYPE_AI).size(), "两张卡都在（别处的只读但看得见）");
     }
 
+    // ── REVIEW P2-learn23（2026-10-04）：写定位与读定位分家 ──
+
+    /** 别处整理的只读卡（无 origin: product）；P2-learn23 的现场是它与写请求同名。 */
+    private static final String FOREIGN_SAME_NAME_CARD = """
+            ---
+            title: 同名卡
+            type: ai
+            topic: 外部主题
+            created: 2026-09-06
+            status: new
+            ---
+
+            ## 核心观点
+            这是别处整理的卡，产品一个字都不该动。
+            """;
+
+    private String writeForeignSameNameCard() {
+        String path = "learn/ai/外部主题/01-同名卡.md";
+        storage.write("adai", path, FOREIGN_SAME_NAME_CARD);
+        return path;
+    }
+
+    /**
+     * 本条核心断言：**只读卡唯一命中时，任何写路径都不得落笔**（REVIEW P2-learn23）。
+     * <p>
+     * 反向验证方式（把修复短路）：让 {@code locateWritable} 退回 {@code locate} 的语义
+     * （写路径复用读路径的只读兜底）——本测试立刻变红：异常不再抛，且最后两条内容比对会出现
+     * 「只读卡被改写」。
+     */
+    @Test
+    void foreignOnlySameName_writePathsAreRefused_andFileUntouched() {
+        String path = writeForeignSameNameCard();
+        List<String> filesBefore = storage.listFiles("adai", "learn/ai");
+
+        // ① 编辑（PATCH /learn/cards）
+        LearnException edit = assertThrows(LearnException.class, () -> repository.applyEdit(
+                "adai", LearnCard.TYPE_AI, "同名卡",
+                new LearnCardPatch("被改掉的观点", null, null, null, null, null, null)));
+        assertTrue(edit.getMessage().contains("外部只读卡"), "要说清这是只读卡：" + edit.getMessage());
+        assertTrue(edit.getMessage().contains("我不能改它"), "要说明不能改：" + edit.getMessage());
+        assertTrue(edit.getMessage().contains("另存"), "要给可行路径");
+        // ② 复习流转（PATCH /learn/cards/status）
+        assertThrows(LearnException.class, () -> repository.updateStatus(
+                "adai", LearnCard.TYPE_AI, "同名卡", LearnCard.STATUS_REVIEW, LocalDate.of(2026, 10, 4)));
+        // ③ 删卡（DELETE /learn/cards）
+        assertThrows(LearnException.class,
+                () -> repository.deleteCard("adai", LearnCard.TYPE_AI, "同名卡"));
+        // ④ 改主题（PATCH /learn/cards/topic）
+        assertThrows(LearnException.class,
+                () -> repository.moveToTopic("adai", LearnCard.TYPE_AI, "同名卡", "我的主题"));
+        // ⑤ 重排页（POST /learn/cards/repages）
+        assertThrows(LearnException.class, () -> repository.updatePages(
+                "adai", LearnCard.TYPE_AI, "同名卡",
+                List.of(new LearnPage(LearnPage.KIND_POINTS, "第 1 页", "一句话", List.of("要点"),
+                        null, List.of(), null, null, List.of()))));
+
+        assertEquals(FOREIGN_SAME_NAME_CARD, storage.read("adai", path),
+                "只读卡文件一个字都不能动（本条核心断言）");
+        assertEquals(filesBefore, storage.listFiles("adai", "learn/ai"),
+                "也不许另写一份到产品路径/别处（没有新文件、没有进 _trash）");
+        assertFalse(repository.find("adai", LearnCard.TYPE_AI, "同名卡").orElseThrow().writable(),
+                "读路径保持现状：只读卡照旧读得到（看得见、读得全）");
+    }
+
+    /**
+     * 不回归：同名「外部只读卡 + 产品卡」并存时，唯一可写命中照常成功，且只改产品卡。
+     * <p>
+     * 同时这是 P2-learn23 的**残余面**（P2-learn20 的显式取舍 + 前端已隐藏只读卡的写入口）：
+     * 用户若在只读卡上发起写请求，仍会落到同名的产品卡；彻底消歧要写端点接受 {@code cardPath}，
+     * 属跨端契约改造，不在本批。
+     */
+    @Test
+    void sameNameForeignAndProductCard_uniqueWritableHit_writesProductCardOnly() {
+        String foreign = writeForeignSameNameCard();
+        repository.save("adai", new LearnCard(LearnCard.TYPE_AI, "同名卡", "web", null, null, null,
+                LocalDate.of(2026, 10, 1), LearnCard.STATUS_NEW, false, null, List.of(), "产品观点",
+                List.of(), List.of(), "", "我的主题"));
+
+        LearnCard updated = repository.applyEdit("adai", LearnCard.TYPE_AI, "同名卡",
+                new LearnCardPatch("改过的产品观点", null, null, null, null, null, null));
+
+        assertTrue(updated.writable(), "写的是产品卡");
+        assertEquals("改过的产品观点", updated.coreView(), "唯一可写命中照常成功（不回归）");
+        assertEquals(FOREIGN_SAME_NAME_CARD, storage.read("adai", foreign), "同名只读卡仍一个字不动");
+    }
+
+    /** 不回归：多张同名可写 → 写路径仍是同一句「请人工合并文件后再操作」，且谁也不许改。 */
+    @Test
+    void multipleWritableSameTitle_writeRefusedWithMergeHint() {
+        String p1 = "learn/ai/2026-08-01_" + LearnCard.fileStem("同名残留") + ".md";
+        String p2 = "learn/ai/2026-08-05_" + LearnCard.fileStem("同名残留") + ".md";
+        storage.write("adai", p1, LearnCardFileRepository.toMarkdown(
+                sample(LearnCard.TYPE_AI, "同名残留", LocalDate.of(2026, 8, 1))));
+        storage.write("adai", p2, LearnCardFileRepository.toMarkdown(
+                sample(LearnCard.TYPE_AI, "同名残留", LocalDate.of(2026, 8, 5))));
+        String before1 = storage.read("adai", p1);
+        String before2 = storage.read("adai", p2);
+
+        LearnException e = assertThrows(LearnException.class, () -> repository.applyEdit(
+                "adai", LearnCard.TYPE_AI, "同名残留",
+                new LearnCardPatch("改一下", null, null, null, null, null, null)));
+
+        assertTrue(e.getMessage().contains("2 张同名卡片"), "P1-learn2：歧义显式 400");
+        assertTrue(e.getMessage().contains("请人工合并文件后再操作"), "既有文案不回归：" + e.getMessage());
+        assertEquals(before1, storage.read("adai", p1), "歧义时谁都不许改");
+        assertEquals(before2, storage.read("adai", p2), "歧义时谁都不许改");
+    }
+
     @Test
     void duplicateOwnTitle_stillRejected() {
         LearnCard card = sample(LearnCard.TYPE_AI, "重复卡", LocalDate.of(2026, 9, 12));
@@ -764,6 +874,50 @@ class LearnCardFileRepositoryTest {
 
         assertTrue(repository.migrateLegacy("adai").isEmpty());
         assertTrue(storage.exists("adai", "learn/ai/2026-09-12_不是卡.md"), "认不出是卡就不动它");
+    }
+
+    // ── 2026-10-04 追加 B（对抗审查 P2）：迁移的写穿路径也要守（不得替别人的扁平文件盖 origin） ──
+
+    @Test
+    void migrateLegacy_flatFileWithoutProductMarkers_leftAloneAndNotStamped() {
+        // 原实现完全不看 origin/writable——对 type 目录下任何 YYYY-MM-DD_*.md 都无条件
+        // replaceFrontmatterKey(origin, product) 后搬家，会把「恰好放在扁平布局」的别处文件认成产品卡。
+        String path = "learn/ai/2026-09-12_别人的扁平卡.md";
+        String original = """
+                ---
+                title: 别人的扁平卡
+                type: ai
+                created: 2026-09-12
+                ---
+
+                ## 核心观点
+                别处整理的，只是恰好放在扁平布局里。
+                """;
+        storage.write("adai", path, original);
+
+        assertTrue(repository.migrateLegacy("adai").isEmpty(), "不带产品记号的扁平文件不得被迁移");
+        assertEquals(original, storage.read("adai", path), "原文件逐字节未改（不得盖上 origin: product）");
+    }
+
+    @Test
+    void migrateLegacy_flatFileClaimingForeignOrigin_leftAlone() {
+        // 更硬的一种：文件自己声明了归属 origin: external——写定位收紧同样覆盖迁移，绝不得改写它。
+        String path = "learn/ai/2026-09-13_外部来源卡.md";
+        String original = """
+                ---
+                title: 外部来源卡
+                type: ai
+                origin: external
+                created: 2026-09-13
+                ---
+
+                ## 核心观点
+                别处整理的，而且明确声明了来源。
+                """;
+        storage.write("adai", path, original);
+
+        assertTrue(repository.migrateLegacy("adai").isEmpty(), "声明了别人归属的扁平文件不得被迁移");
+        assertEquals(original, storage.read("adai", path), "origin: external 必须原样保留（一字不改）");
     }
 
     // ── 对抗审查修复批（2026-09-12）：P1-A / P2-2 / P3 的回归 ──
@@ -1088,5 +1242,71 @@ class LearnCardFileRepositoryTest {
                 () -> repository.restoreOrigin("adai", LearnCard.TYPE_AI, "别人的卡"));
 
         assertTrue(e.getMessage().contains("看着不是我写的"), "要人话拒绝：" + e.getMessage());
+    }
+
+    // ── 2026-10-04 二审 P2：restoreOrigin 判据收紧（前言块 + 行首整行），封住「一句话骗到可写」的后门 ──
+
+    @Test
+    void restoreOrigin_refusesForeignCard_whenOnlyProseMentionsReviewAtAndCardPage() {
+        // 审查官 /tmp 探针实测的现场：外部只读卡无 origin，正文散文写「我在笔记里解释了 review_at:
+        // 这个字段的含义」——旧判据 `content.contains("review_at:")` 是**全文子串**匹配 → 成功盖章
+        // origin: product，writable 由 false→true，此后所有写方法都会落到这张别人的文件上
+        //（正好绕过本批 P2-learn23 的写定位收紧）。`## 卡片页` 同理必须是行首整行才算。
+        String path = "learn/ai/未归类/03-讲复习字段的笔记.md";
+        String original = """
+                ---
+                title: 讲复习字段的笔记
+                type: ai
+                topic: 未归类
+                created: 2026-09-12
+                status: new
+                ---
+
+                ## 核心观点
+                我在笔记里解释了 review_at: 这个字段的含义——它是复习提醒的日期。
+                也顺手引用了「## 卡片页」这个段落名（行内引用，不是独立成行的标题）。
+                """;
+        storage.write("adai", path, original);
+
+        assertFalse(repository.find("adai", LearnCard.TYPE_AI, "讲复习字段的笔记").orElseThrow().writable(),
+                "没有 origin 的外部卡是只读的");
+
+        LearnException e = assertThrows(LearnException.class,
+                () -> repository.restoreOrigin("adai", LearnCard.TYPE_AI, "讲复习字段的笔记"));
+
+        assertTrue(e.getMessage().contains("看着不是我写的"),
+                "正文散文里提到字段名/段落名不得算产品痕迹：" + e.getMessage());
+        assertEquals(original, storage.read("adai", path), "拒绝时文件必须逐字节未改（不落笔）");
+        assertFalse(repository.find("adai", LearnCard.TYPE_AI, "讲复习字段的笔记").orElseThrow().writable(),
+                "拒绝后仍是只读——不得偷偷盖上 origin");
+    }
+
+    @Test
+    void restoreOrigin_recoversMarker_whenFrontmatterCarriesReviewMarker() {
+        // 反向验证的另一半：真正的产品卡（前言块里有复习记号 review_at，无卡片页段）必须能认回来
+        // ——判据收进前言块后不能把自家人也拒了。
+        String path = "learn/ai/未归类/04-前言带复习记号的卡.md";
+        storage.write("adai", path, """
+                ---
+                title: 前言带复习记号的卡
+                type: ai
+                topic: 未归类
+                created: 2026-09-11
+                review_at: 2026-09-20
+                ---
+
+                ## 核心观点
+                自己写的卡，别处工具整文件重写时把 origin 行抹掉了。
+                """);
+
+        assertFalse(repository.find("adai", LearnCard.TYPE_AI, "前言带复习记号的卡").orElseThrow().writable(),
+                "origin 被抹掉 → 暂时只读");
+
+        LearnCard fixed = repository.restoreOrigin("adai", LearnCard.TYPE_AI, "前言带复习记号的卡");
+
+        assertTrue(fixed.writable(), "前言块有 review_at → 判据命中，认回可写");
+        String after = storage.read("adai", path);
+        assertTrue(after.contains("origin: product"), "标记真的写回了文件");
+        assertTrue(after.contains("review_at: 2026-09-20"), "认回只加 origin 一行，未知键原样保留（File First）");
     }
 }

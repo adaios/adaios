@@ -121,4 +121,61 @@ void main() {
     expect(find.text('今天还没听你说点什么，随便问我一句——点下面的也行。'), findsNothing,
         reason: '有了第一条记录后欢迎卡应让位');
   });
+
+  // ── P2-工程12⑤：发送按钮常亮但点击无反应（2026-10-04）──
+  // _send() 首行 `if (images.isEmpty && text.isEmpty) return;`，而按钮原先无条件 onPressed，
+  // 空内容点下去毫无反应（正是本批在交易导入弹窗修掉的同一形态：「全库扫 isEmpty」没扫干净）。
+
+  testWidgets('P2-工程12⑤ 空内容发送按钮禁用；有文字后可点、发完又禁用', (tester) async {
+    final records = <String>[];
+    await pump(tester, emptyApi(records));
+
+    final sendBtn = find.ancestor(
+        of: find.byIcon(Icons.arrow_upward), matching: find.byType(IconButton));
+    IconButton btn() => tester.widget<IconButton>(sendBtn);
+
+    expect(btn().onPressed, isNull,
+        reason: '空内容禁用——原先常亮，点下去 _send 静默 return，用户只以为按钮坏了');
+    await tester.tap(sendBtn); // 禁用态点击：必须什么都不发生（不崩、不发请求）
+    await tester.pumpAndSettle();
+    expect(records, isEmpty);
+
+    // 纯空白不算内容（与 _send 的 text.trim() 判据一致）
+    final input = find.byType(TextField);
+    await tester.enterText(input, '   ');
+    await tester.pumpAndSettle();
+    expect(btn().onPressed, isNull, reason: '只有空白不算内容');
+
+    // 有文字 → 可点，且点了必须真的发出去
+    await tester.enterText(input, '早');
+    await tester.pumpAndSettle();
+    expect(btn().onPressed, isNotNull, reason: '有文字即可点');
+    await tester.tap(sendBtn);
+    await tester.pumpAndSettle();
+    expect(records, isNotEmpty, reason: '可点就必须真能发（不能再出现「亮了还是没反应」）');
+
+    // 发完输入框已清空 → 回到禁用态（按钮状态始终与内容一致）
+    expect(btn().onPressed, isNull);
+  });
+
+  // ── P3：_send() 与按钮共用同一判据（2026-10-04 前端审查）──
+  // 原先 _send() 首行是手工复制的同一表达式，按钮禁用而回车能绕过（将来改一处漏一处）。
+  testWidgets('P3 回车与按钮同一判据：纯空白回车不发送，有文字回车照常发', (tester) async {
+    final records = <String>[];
+    await pump(tester, emptyApi(records));
+    final input = find.byType(TextField);
+
+    await tester.enterText(input, '   ');
+    await tester.pumpAndSettle();
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(records, isEmpty, reason: '按钮禁用时回车也不能绕过去（同一个 _canSend）');
+
+    await tester.enterText(input, '早');
+    await tester.pumpAndSettle();
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(records, isNotEmpty, reason: '有文字回车照常发——重构不改行为');
+    expect(jsonDecode(records.last)['content'], '早');
+  });
 }

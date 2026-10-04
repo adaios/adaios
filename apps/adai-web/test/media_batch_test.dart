@@ -427,6 +427,36 @@ void main() {
     });
   });
 
+  // ── P2-工程12⑤：发送按钮的可点判据（有图无字也该可点）──
+  // _send() 的判据是「图或文字任一非空」，按钮的禁用判据必须与它一致，
+  // 否则要么「亮着点不动」（原状），要么「有图却点不了」（修过头）。
+  group('P2-工程12⑤ 发送按钮随图片状态可点/禁用', () {
+    testWidgets('空内容禁用 → 选图后可点 → 移除图片回禁用', (tester) async {
+      _useFakePicker(['a.png']);
+      final api = ApiService(
+        baseUrl: 'http://test',
+        client: _feedPageMock((req) async => _json(_batchJson())),
+      );
+      await tester.pumpWidget(MaterialApp(home: Scaffold(body: FeedPage(api: api))));
+      await tester.pumpAndSettle();
+
+      final sendBtn = find.ancestor(
+          of: find.byIcon(Icons.arrow_upward), matching: find.byType(IconButton));
+      IconButton btn() => tester.widget<IconButton>(sendBtn);
+
+      expect(btn().onPressed, isNull, reason: '无图无字 → 禁用（与 _send 首行判据一致）');
+
+      await tester.tap(find.byTooltip('选择图片'));
+      await tester.pumpAndSettle();
+      expect(btn().onPressed, isNotNull, reason: '有图（即便没打字）即可点——图片本身就是一个回合');
+
+      // 移除这张图 → 又回到「无图无字」→ 必须回禁用
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pumpAndSettle();
+      expect(btn().onPressed, isNull, reason: '图被移除且没文字 → 不留「亮着点不动」的按钮');
+    });
+  });
+
   group('批次锁 + 上传进度（P1-多图2）', () {
     testWidgets('在途再投递 → 人话拒绝 + 只发一次请求；进度条显示本批张数', (tester) async {
       _useFakePicker(['a.png', 'b.png', 'c.png']);
@@ -544,6 +574,9 @@ void main() {
       await tester.tap(find.text('提问'));
       await tester.pump();
       await tester.enterText(find.byType(TextField), '这三张放一起说明什么？');
+      // P2-工程12⑤：发送按钮改为「有内容才可点」——文字要过一帧才反映到按钮的 enabled 上
+      // （enterText 只改 controller、不 pump；原先按钮常亮所以这里不需要这一步）
+      await tester.pump();
       await tester.tap(find.byIcon(Icons.arrow_upward));
       await tester.pumpAndSettle();
 

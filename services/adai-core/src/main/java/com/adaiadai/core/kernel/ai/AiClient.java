@@ -35,10 +35,12 @@ public interface AiClient {
      * 轻量意图识别兜底。
      * <p>
      * 当 {@link com.adaiadai.core.kernel.context.IntentRecognizer} 规则无法确定意图时，
-     * 交给 AI 做一次轻量判断。只需返回 log / question / decision 之一。
+     * 交给 AI 做一次轻量判断。只返回 {@code ask}（需要回复）或 {@code log}（纯记录）之一；
+     * 调用方 {@link com.adaiadai.core.kernel.context.IntentRecognizer} 把 {@code ask} 映射为
+     * {@code Intent.QUESTION}、其余映射为 {@code Intent.STATEMENT}。
      *
      * @param content 用户输入原文
-     * @return log / question / decision
+     * @return {@code ask} / {@code log}
      */
     String recognizeIntent(String content);
 

@@ -1781,10 +1781,15 @@ class _DesktopInputBarState extends State<_DesktopInputBar> {
     super.dispose();
   }
 
+  /// P2-工程12⑤（2026-10-04）：发送按钮的**唯一可点判据**——[_send] 首行也走它
+  /// （有图或有文字，任一非空即可发；纯空白不算内容）。单一真相源：改一处即两处同时改，
+  /// 不会再出现「按钮禁用了、回车却能绕过」（P3，2026-10-04 前端审查）。
+  bool get _canSend => _pendingImages.isNotEmpty || _controller.text.trim().isNotEmpty;
+
   void _send() {
+    if (!_canSend) return; // 与发送按钮同一判据，回车（onSubmitted）同样受它约束
     final text = _controller.text.trim();
     final images = List<PickedImage>.of(_pendingImages);
-    if (images.isEmpty && text.isEmpty) return;
     _controller.clear();
     setState(() => _pendingImages.clear());
     if (images.isNotEmpty) {
@@ -1938,6 +1943,8 @@ class _DesktopInputBarState extends State<_DesktopInputBar> {
               focusNode: _focusNode,
               maxLines: 1,
               onSubmitted: (_) => _send(),
+              // P2-工程12⑤（2026-10-04）：文字进出要即时反映到发送按钮的可点态
+              onChanged: (_) => setState(() {}),
               style: const TextStyle(fontSize: 14, color: AppColors.darkGrey1),
               decoration: InputDecoration(
                 hintText: _pendingImages.isNotEmpty
@@ -1964,11 +1971,18 @@ class _DesktopInputBarState extends State<_DesktopInputBar> {
           ),
           const SizedBox(width: 2),
           IconButton(
-            onPressed: _send,
+            // P2-工程12⑤（2026-10-04）：空内容（无图、无文字）**禁用**，与 _send() 首行判据一致。
+            // 原先是无条件 onPressed: _send —— 空内容点下去 _send 里静默 return，
+            // 按钮亮着却毫无反应（用户只会以为按钮坏了）。
+            onPressed: _canSend ? _send : null,
             icon: const Icon(Icons.arrow_upward, size: 18),
-            color: AppColors.darkBg,
+            tooltip: _canSend ? '发送' : '写点什么，或加张图',
             style: IconButton.styleFrom(
+              foregroundColor: AppColors.darkBg,
+              disabledForegroundColor: AppColors.darkBg.withValues(alpha: 0.45),
               backgroundColor: _pendingImages.isNotEmpty ? AppColors.darkGreen : AppColors.darkGreen.withValues(alpha: 0.6),
+              // 禁用态只降一档不透明度（不引入新颜色）
+              disabledBackgroundColor: AppColors.darkGreen.withValues(alpha: 0.22),
               minimumSize: const Size(34, 34),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
             ),

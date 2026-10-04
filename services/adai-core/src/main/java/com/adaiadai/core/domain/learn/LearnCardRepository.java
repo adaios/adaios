@@ -35,6 +35,7 @@ public interface LearnCardRepository {
     /**
      * 只替换/追加 {@code ## 卡片页} 段（2026-09-15 卡片流批的「历史卡回填」用）。
      * <p>
+     * 同样走**严格写定位**（REVIEW P2-learn23）：只认唯一可写命中，同名外部只读卡人话拒绝。
      * frontmatter、原有四段、手工追加的段**一字不动**——回填只补呈现层，不重写用户看过的内容。
      * 默认实现不支持（测试桩无需实现）。
      */
@@ -64,7 +65,9 @@ public interface LearnCardRepository {
     /**
      * 复习状态流转（V2 new→review→done + 回退 review→new / done→review）。
      * 按 type + 标题定位并原地更新 frontmatter status（File First：md 即真相源，正文/复述段
-     * 原样保留）。{@code today} 由调用方（application 层）传入，用于：
+     * 原样保留）。**写路径用严格写定位**（REVIEW P2-learn23）：只有唯一可写命中才写；命中同名
+     * 外部只读卡 → 人话拒绝、卡片文件不动；多张同名可写 → 400 提示人工合并。
+     * {@code today} 由调用方（application 层）传入，用于：
      * <ul>
      *   <li>进入 review（toStatus=review 且当前非 review，含 done→review 重进）→ 写
      *       {@code review_at=today} 并清 {@code reminded_at}（S-learn1：复习提醒按进入复习之日
@@ -84,7 +87,8 @@ public interface LearnCardRepository {
     LearnCard markReminded(String userId, String type, String title, LocalDate today);
 
     /**
-     * 编辑卡片正文（V2 编辑）。定位 = type + title（多张同名 → LearnException）。
+     * 编辑卡片正文（V2 编辑）。定位 = type + title（**严格写定位**，REVIEW P2-learn23：只有唯一
+     * 可写命中才写；同名外部只读卡 → 人话拒绝且文件不动；多张同名可写 → LearnException 400）。
      * 补丁字段 null = 保留原值。**在仓储锁内读-改-写原子完成**（P2-learn6：并发 PATCH 不丢
      * 更新）；写盘基于原文件做受管键/正文段手术替换，**手工未知 frontmatter 键与未知正文段
      * 原样保留**（P2-learn7：File First 不抹手工内容）。type/title/created 不可改。
@@ -94,7 +98,8 @@ public interface LearnCardRepository {
     LearnCard applyEdit(String userId, String type, String title, LearnCardPatch patch);
 
     /**
-     * 覆盖更新卡片正文（V2 编辑全量语义，兼容旧调用/测试）。定位 = type + title；
+     * 覆盖更新卡片正文（V2 编辑全量语义，兼容旧调用/测试）。定位 = type + title（同样走**严格写
+     * 定位**：只读同名卡不动笔）；
      * 已存在才可更新，type/title/created 不得变更（路径守卫）。写盘同样保留未知段。
      *
      * @return 更新后的卡片
@@ -147,7 +152,8 @@ public interface LearnCardRepository {
     /**
      * 删除卡片（**软删除**：文件移入 {@code learn/_trash/}，不是真删——知识是资产，误删要能捡回来）。
      * <p>
-     * 只允许删**本产品产出**的卡（{@code writable}）；别处整理的卡人话拒绝。同时从主题 README
+     * 只允许删**本产品产出**的卡（{@code writable}）；别处整理的卡人话拒绝（严格写定位，
+     * 只读同名卡绝不动笔）。同时从主题 README
      * 索引里摘掉该行。
      *
      * @return 被删除卡片的**原始相对路径**（供调用方级联处理跨域回链，如 trading 候选）
@@ -160,7 +166,8 @@ public interface LearnCardRepository {
      * → {@code {type}/{新主题}/MM-x.md}（新主题内续号），frontmatter 的 {@code topic} 同步，
      * 两个主题的 README 索引一起维护（老主题摘行、新主题追加）。
      * <p>
-     * 只允许移动**本产品产出**的卡；新旧主题相同 → 原样返回（幂等）。
+     * 只允许移动**本产品产出**的卡（严格写定位：同名外部只读卡人话拒绝、文件不动）；
+     * 新旧主题相同 → 原样返回（幂等）。
      *
      * @return 移动后的卡片（topic 已是新值）
      * @throws LearnException 卡片不存在 / 只读卡 / 写失败（失败时原文件保持不动）

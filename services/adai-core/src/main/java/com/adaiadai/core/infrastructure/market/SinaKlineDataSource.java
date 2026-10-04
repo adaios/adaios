@@ -28,8 +28,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * 「两个网络源同时挂」不是小概率（东财+腾讯本来就同属被风控对象），
  * 所以补一条**独立域名体系**的源（新浪），把「同时挂」的概率压下去。
  *
- * <p><b>定位：最后一层</b>（KlineService 的调用链末位：tdx → 腾讯 → 东财 → **新浪**）。
- * 正常日子里它一次都不会被调用，只在前面几层都失败时顶上。
+ * <p><b>定位：兜底</b>（KlineService 的调用链末位：tdx → 腾讯 → **新浪**；东财 K 线源 2026-09-28 已删）。
+ * 正常日子取数不会用到它，只在前面几层都失败时顶上；另有 {@link #probe(String)} 的主动体检
+ * （交易时段每 30 分钟一次），免得「只在主源熔断那天才发现兜底也挂了」（REVIEW P2-交易58）。
  *
  * <p><b>两处口径差异，如实标注（不假装与腾讯/东财一致）</b>：
  * <ul>
@@ -50,6 +51,8 @@ public class SinaKlineDataSource implements KlineSource {
             "https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData"
                     + "?symbol=%s%s&scale=240&ma=no&datalen=%d";
     private static final Duration TIMEOUT = Duration.ofSeconds(10);
+    /** 主动探测的超时：比常规取数更短——它跑在调度线程上，不能让一次探测占住 10 秒（REVIEW P2-交易58，2026-10-04）。 */
+    private static final Duration PROBE_TIMEOUT = Duration.ofSeconds(5);
 
     private final HttpClient httpClient;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -79,8 +82,7 @@ public class SinaKlineDataSource implements KlineSource {
             List<Candle> sub = cached.candles.subList(cached.candles.size() - n, cached.candles.size());
             return new ArrayList<>(sub);
         }
-        String prefix = symbol.startsWith("6") || symbol.startsWith("9") ? "sh" : "sz";
-        String url = String.format(KLINE_URL, prefix, symbol, n);
+        String url = buildUrl(symbol, n);
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url)).timeout(TIMEOUT).GET().build();
@@ -97,6 +99,42 @@ public class SinaKlineDataSource implements KlineSource {
         } catch (Exception e) {
             log.warn("新浪 K线失败 | symbol={} | {}", symbol, e.getMessage());
             return List.of();
+        }
+    }
+
+    /** K 线 URL（symbol 前缀推断：6/9 开头沪市，其余深市）。 */
+    private static String buildUrl(String symbol, int n) {
+        String prefix = symbol.startsWith("6") || symbol.startsWith("9") ? "sh" : "sz";
+        return String.format(KLINE_URL, prefix, symbol, n);
+    }
+
+    /**
+     * 轻量主动探测（REVIEW P2-交易58 收口，2026-10-04）：**真实发一次网络请求、5s 超时、绕过缓存**。
+     * <p>
+     * 为什么不能复用 {@link #kline(String, int)}：它按日缓存，而缓存**只在成功时写入**——当天缓存
+     * 有数据只能证明「今天早些时候成功过」，证不了「此刻还活着」。若拿缓存命中当探测通过，
+     * 恰好会把「兜底悄悄挂掉」探成健康，与本次要解决的痛点同型。
+     * 本方法只取 {@link KlineSource#PROBE_LIMIT} 根、**不读也不写缓存**、异常只记 WARN 不抛。
+     */
+    @Override
+    public boolean probe(String symbol) {
+        if (symbol == null || symbol.isBlank()) return false;
+        String url = buildUrl(symbol, PROBE_LIMIT);
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url)).timeout(PROBE_TIMEOUT).GET().build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            List<Candle> candles = parse(response.body());
+            if (candles.isEmpty()) {
+                log.warn("新浪探测未通过（返回空） | symbol={}", symbol);
+                return false;
+            }
+            // 探测通过是常态（每 30 分钟一次）→ DEBUG，不刷 INFO
+            log.debug("新浪探测通过 | symbol={} | {} 根", symbol, candles.size());
+            return true;
+        } catch (Exception e) {
+            log.warn("新浪探测失败 | symbol={} | {}", symbol, e.getMessage());
+            return false;
         }
     }
 
