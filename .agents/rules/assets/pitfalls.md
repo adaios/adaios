@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-10-04
 status: active
-lines: 275
+lines: 277
 depends-on:
   - ../../toolkit/checklists/ai-guard-checklist.md
 related:
@@ -269,6 +269,8 @@ tags: [ai, assets, pitfalls]
 | **pathlib 拼接逃过字符串替换** | `ai-guard-skills.sh` 的 `AI / 'assets' / 'skills-spec.md'` 没被 「.agents/assets」 的替换命中 → 守卫报"缺 skills-spec"、技能包计数掉到 **0** | 脚本里有**两种路径写法**：字符串 `'.agents/assets/x'` 与 **pathlib 拼接** `AI / 'assets' / 'x'`。替换只覆盖了前者 | 扫描 `AI / 'xxx'` 形式单独替换；**新增路径常量时只用一种写法**（推荐 pathlib 拼接 + 单一 `AI` 根变量） | ✅ 已修（2026-10-04） | 守卫报"文件不存在"但文件确实在新位置；替换后**只有脚本类文件**漏改（文档都对了） |
 | **给命令替换内部插注释 → 语法错误** | ROOT 加固时把 `cd "$(dirname "$0")/../.."` 换成 `cd "$(git rev-parse …)"   # 注释` —— 但有两处原写法是 **`$(cd … && pwd)`**（在命令替换里），注释插进去直接 **`bad substitution`** | 批量替换是**纯文本操作**，不区分"语句位置的 `cd`"与"命令替换里的 `cd`"；而**注释在命令替换内是语法错误**（`#` 会吃掉后面的 `)`） | 修 4 处（去掉命令替换内的注释）；**加固/替换后必须跑 `bash -n` 全量语法检查**（本次 `bash -n` 竟未报出这两处，是**运行时**才暴露的——所以还要**真跑一次**） | ✅ 已修（2026-10-04） | 批量替换后脚本报 `bad substitution` / `unbound variable`；`bash -n` 通过但运行即错 |
 | **目录深度一变，三种相对路径全要重算** | 移动后 meta 报 **22 处 M1 断链** + structure 报 **104 处 S3/S4**；且修完还有第三轮 | 相对路径有**三种载体**：① frontmatter 的 `depends-on`/`related` ② 正文 markdown 链接 `](path)` ③ **`_directory.md` 正文里的裸路径**（含反引号包裹）。且**深度变化**让"指向仓库根"的路径（`docs/` `AGENTS.md`）也要加层 | 三轮分别扫：basename 索引重算 → `_directory.md` 专项重算 → **仓库根目标固定前缀**（`'../' * (depth+1)`）；**多候选 basename**（`README.md` 有多个）要按目录深度算而非按名字 | ✅ 已修（2026-10-04：共 ~430 处） | 移动**跨层级**的目录后；同一批里"部分引用对、部分断"；断链集中在**指向仓库根**与**多候选同名文件**上 |
+
+| **`git mv` 不搬「未跟踪」文件 —— 与 gitignore 改动叠加即隐私泄露** | 本次隐私事故的**完整链条**：① `git mv .agents/state .agents/records/state` 只移动了**已跟踪**的 `_index.md`/`_directory.md`，**未跟踪**的本机状态（成本账 cost-log.jsonl · cost-cache.json）**留在旧位置**；② 同日把 gitignore 的旧规则改成了新规则 → **旧路径不再被忽略**；③ 同批的 `git add .agents` 把残留文件**加进了仓库**（已提交，事后自查才发现） | `git mv` 的语义是「移动**已跟踪**文件」——对未跟踪内容**静默无操作**（不报错、不提示）；而 gitignore 规则一改，原本「看不见」的残留就**突然可见**。**两个操作各自都合理，叠加起来造成泄露** | ① 移动含本机状态的目录后，**必须 `ls` 旧位置**确认无残留（本次留了 5 个文件）；② **改 gitignore 规则时新旧路径都保留忽略**（过渡期），确认无残留后再删旧规则；③ 事后清理：`git rm --cached` → 未 push 时用 `filter-branch`/`filter-repo` 重写历史 → 删 `refs/original/` + reflog expire + gc（本次：811 commit 重写，仓库 65M→22M） | ✅ 已修（2026-10-04：索引移除 + 历史重写 + 旧规则保留） | 移动**含 gitignore 内容**的目录后；`git status` 里出现本该忽略的文件；**敏感文件出现在待提交列表** |
 
 ---
 
