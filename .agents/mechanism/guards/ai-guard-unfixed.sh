@@ -45,68 +45,30 @@ def topic_ok(*texts):
     return any(TOPIC.lower() in t.lower() for t in texts)
 
 # ── 已修标记判定（REVIEW 行级启发式：✅/已修/出表/已确认/已移除 = 闭环）──
-DONE_MARKS = ('✅', '已修', '出表', '已确认', '已移除', '已闭环', '不成立', '误报', '清零')
-def done_line(row):
-    return any(m in row for m in DONE_MARKS)
-
-def status_class(row):
-    """返回 未修 / 搁置 / 复核 分类（done 由调用方先滤掉）。"""
-    if '⏸' in row or '搁置' in row:
-        return '搁置'
-    if '⚠️' in row or '复核' in row:
-        return '复核'
-    return '未修'
-
 def cell0(row):
     c = [x.strip() for x in row.strip('|').split('|')]
     return c[0] if c else ''
 
-# ══════════════ ① REVIEW.md：未修复主清单 ══════════════
+# ══════════════ ① REVIEW.md：未修复主清单（**统一解析**）══════════════
+# 2026-10-04 根治：本脚本原先自带一套解析（DONE_MARKS 含**裸 `✅`**）→ 把 `✅ 部分修`
+# 也判成已修，于是同一份 REVIEW 与 ai-domain-view.py 给出 **17 vs 40** 两个数。
+# 现在**唯一解析**在 ai-domain-view.py 的 review_items()；本脚本只做主题过滤与展示。
+import json as _json
+import subprocess as _sp
 review_unfixed = []   # (section, id, text, status)
-review_ids = set()    # 未修编号集合（含搁置/复核，用于游离与对账）
-if REVIEW.exists():
-    lines = REVIEW.read_text(encoding='utf-8', errors='ignore').splitlines()
-    in_unfixed_zone = False
-    section = ''
-    for l in lines:
-        if l.startswith('## 🔴'):
-            in_unfixed_zone = True
-            section = l.strip(' #').replace('（未修复）', '').strip()
+review_ids = set()
+_DV = pathlib.Path('.agents/mechanism/scripts/ai-domain-view.py')
+try:
+    _r = _sp.run(['python3', str(_DV), '--review-items'],
+                 capture_output=True, text=True, timeout=30)
+    for _it in _json.loads(_r.stdout or '[]'):
+        if not topic_ok(_it.get('text', ''), _it.get('id', '')):
             continue
-        if l.startswith('## ') and not l.startswith('## 🔴'):
-            if in_unfixed_zone:
-                break  # 到已修复区
-        if not in_unfixed_zone:
-            continue
-        # P0/P3 列表项（- **P0-交易A（未修…）** / - **P3 打磨项…**）
-        if l.startswith('- **P0') or l.startswith('- P0') or l.startswith('- **P3') or l.startswith('- P3'):
-            if '清零' in l:
-                continue  # 「P0 其余当前清零」说明行
-            if done_line(l):
-                continue
-            txt = l.strip('- *').strip().replace('**', '')
-            st = status_class(l)
-            if topic_ok(l):
-                review_unfixed.append((section, 'P0/P3', txt, st))
-                review_ids.add('P0/P3')
-            continue
-        if not (l.startswith('|') and '|' in l[1:]):
-            continue
-        if re.match(r'^\|?\s*:?-', l):
-            continue  # 分隔行
-        cid = cell0(l)
-        if not cid or cid == '#' or not re.match(r'^[A-Za-z0-9#]+', cid):
-            continue  # 表头/非编号行
-        if done_line(l):
-            continue
-        st = status_class(l)
-        desc = l.strip('|').split('|')[1].strip() if '|' in l.strip('|') else ''
-        # 截断：问题列通常很长，保留前 120 字 + 状态尾巴
-        desc_short = desc[:120] + ('…' if len(desc) > 120 else '')
-        row_txt = f"**{cid}** {desc_short}  [{st}]"
-        if topic_ok(l):
-            review_unfixed.append((section, cid, row_txt, st))
-            review_ids.add(cid)
+        review_unfixed.append((_it['section'], _it['id'],
+                               f"**{_it['id']}** {_it['text']}  [{_it['status']}]", _it['status']))
+        review_ids.add(_it['id'])
+except Exception as _e:
+    print(f"⚠️  统一解析失败（{_e}）——按空处理，**不做假绿**", file=sys.stderr)
 
 # ══════════════ ② （2026-10-04 撤）原聚合 task-log.md 的可排期/观察待办 ══════════════
 # task-log.md 已退役为**历史任务档案**（待办职能归口 REVIEW.md）→ 不再作为聚合来源。
@@ -240,14 +202,6 @@ if not DRIFT_ONLY:
             out.append(f"- {txt}")
     out.append("")
 
-if not DRIFT_ONLY:
-    out.append(f"## ② task-log.md 可排期/观察待办（{len(task_todos)}）")
-    if not task_todos:
-        out.append("- （无）")
-    for t in task_todos:
-        out.append(f"- {t}")
-    out.append("")
-
 out.append(f"## ③ audits 游离未修（未归口 REVIEW，{len(drift)}）← 需归口")
 if not drift:
     out.append("- （无游离项，全部已归口 REVIEW）")
@@ -276,15 +230,12 @@ snap = ROOT / 'AGENTS.local.md'
 stale = []
 if snap.exists() and REVIEW.exists() and snap.stat().st_mtime < REVIEW.stat().st_mtime:
     stale.append("AGENTS.local.md 快照早于 REVIEW.md——跑 `bash .agents/mechanism/guards/ai-guard-context.sh --write-local` 刷新")
-if snap.exists() and TASKLOG.exists() and snap.stat().st_mtime < TASKLOG.stat().st_mtime:
-    stale.append("AGENTS.local.md 快照早于 task-log.md——跑 `bash .agents/mechanism/guards/ai-guard-context.sh --write-local` 刷新")
 
 out.append("## 统计")
 if stale:
     for s in stale:
         out.append(f"- ⚠️ {s}")
 out.append(f"- REVIEW 未修/搁置/复核：**{total}** 条（未修 {sum(1 for *_, st in review_unfixed if st=='未修')} · 搁置 {sum(1 for *_, st in review_unfixed if st=='搁置')} · 复核 {sum(1 for *_, st in review_unfixed if st=='复核')}）")
-out.append(f"- task-log 可排期/观察：{len(task_todos)} 条")
 out.append(f"- audits 游离未归口：{len(drift)} 条（建议归口 REVIEW 或补状态）")
 if gated:
     out.append(f"- audits 已归口（unfixed-gate）：{len(set(g[0] for g in gated))} 份报告豁免")

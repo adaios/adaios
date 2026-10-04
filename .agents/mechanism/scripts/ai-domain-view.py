@@ -61,7 +61,34 @@ TITLE = {
     'kernel': '内核（记录 · 记忆 · 问答 · Feed · 简报 …）',
 }
 # 「已完成」的判据——注意 `✅ 部分修` / `⏳ 部分落地` **不算完成**（半修 = 还没修完）
-DONE_PAT = re.compile(r'✅\s*\*{0,2}\s*(?:已修|已解|已收口|已闭环|已对齐|已处置|已完成|已补|已出表|已落地|已核实|已实测|已确认|已归档)')
+# ── 已修判据（**反向**，不枚举写法）──────────────────────────────
+# 教训：先用"枚举已完成写法"（已修/已解/已收口/…）→ 每遇到新写法就漏一个
+#   （`✅ **已修` 漏过 → 补加粗；`✅ 全落地` 又漏 → 说明枚举法本身错）。
+# 反向判据：**含 ✅ 且 ✅ 后不是「部分/半/待/未」= 已修**。
+#   ✅ 已修 / ✅ 已实测 / ✅ 全落地 / ✅ **已修  → 已修
+#   ✅ 部分修 / ✅ 部分已修 / ✅ 待验证        → **未修**（没修完）
+TICK_PAT = re.compile(r'✅')
+PARTIAL_PAT = re.compile(r'✅\s*\*{0,2}\s*(?:部分|半|待|未)')
+
+
+# 「结案」的第二种形态：不修也不算问题（误报/不成立/无需修）——留在未修段没有意义
+CLOSED_PAT = re.compile(r'(误报|不成立|无需修|非问题|已撤销)')
+
+
+def is_fixed(line):
+    if TICK_PAT.search(line) and not PARTIAL_PAT.search(line):
+        return True
+    return bool(CLOSED_PAT.search(line))
+
+
+# 兼容旧引用名（本文件内多处用 DONE_PAT.search）
+class _DoneCompat:
+    @staticmethod
+    def search(s):
+        return True if is_fixed(s) else None
+
+
+DONE_PAT = _DoneCompat()
 # 注：REVIEW 的「是否已修」是**行内自由文本**（没有状态列）→ 任何计数都是**近似**；
 #     根治办法是给表格加 `状态` 列（open/fixed/partial），但那是 622 行的大改，待用户拍板。
 
@@ -306,23 +333,42 @@ def overview(as_json=False):
     return None
 
 
-def open_review_ids():
-    """全部未修项的编号集合（不分域）——用于算「未归类」。"""
-    txt = read(REVIEW); ids = set(); cur = None
+def review_items():
+    """**统一解析**：REVIEW 全部未修项（含搁置/复核）。
+    返回 [{section, id, text, status}]，status ∈ 未修/搁置/复核。
+
+    ⚠️ 判据（唯一）：
+      · fixed  → 被 DONE_PAT 命中（`✅ 已修` / `✅ 已收口` / `✅ **已修` …）→ **排除**
+      · 其余   → 保留；其中 `⏸/搁置` → 搁置，`⚠️/复核` → 复核，`✅ 部分修`/`⏳` → **未修**（半修＝没修完）
+    此前 ai-guard-unfixed 另有 DONE_MARKS（含裸 `✅`）→ 把 `✅ 部分修` 也当已修，
+    导致同一份 REVIEW 两个工具给出 17 vs 40 两个数（2026-10-04 统一）。
+    """
+    txt = read(REVIEW); items = []; cur = None
     for line in txt.splitlines():
         if line.startswith('## '):
-            if 'P1' in line: cur = 'P1'
-            elif 'P2' in line: cur = 'P2'
-            elif '战略' in line: cur = '战略'
-            elif 'P0' in line or 'P3' in line: cur = 'P0/P3'
-            elif '已修复' in line or '走查' in line: cur = None
+            if line.startswith('## 🔴'):
+                cur = line[3:].strip().replace('（未修复）', '').strip()
+            else:
+                cur = None                     # 非 🔴 段（已修复区/走查/成本）不算未修
             continue
-        if not cur or not line.startswith('|') or re.match(r'^\|[\s:|-]+\|', line):
+        if not cur or not line.startswith('|') or re.match(r'^\|[\s:|-]+\|\s*$', line):
             continue
-        cells = [c.strip() for c in line.strip('|').split('|')]
-        if cells and re.match(r'^(P\d+-|S\d|战略|\d+$)', cells[0]) and not DONE_PAT.search(line):
-            ids.add(re.sub(r'\s.*$', '', cells[0]))
-    return ids
+        cells = [c.strip() for c in line.strip().strip('|').split('|')]
+        if not cells or not re.match(r'^(P\d+-|S\d|战略|\d+$)', cells[0]):
+            continue
+        if DONE_PAT.search(line):
+            continue
+        cid = cells[0]
+        st = '搁置' if ('⏸' in line or '搁置' in line) else ('复核' if ('⚠️' in line or '复核' in line) else '未修')
+        desc = cells[1] if len(cells) > 1 else ''
+        items.append({'section': cur, 'id': cid, 'status': st,
+                      'text': (desc[:120] + ('…' if len(desc) > 120 else ''))})
+    return items
+
+
+def open_review_ids():
+    """全部未修项的编号集合（不分域）——用于算「未归类」。"""
+    return {it['id'] for it in review_items()}
 
 
 def list_domains():
@@ -354,14 +400,21 @@ def list_domains():
 
 
 def main():
-    args = [a for a in sys.argv[1:] if not a.startswith('--')]
-    as_json = '--json' in sys.argv
+    raw = sys.argv[1:]
+    if '--review-items' in raw:                 # 独立子命令（不走 args 过滤）
+        print(json.dumps(review_items(), ensure_ascii=False))
+        return
+    args = [a for a in raw if not a.startswith('--')]
+    as_json = '--json' in raw
     if not args:                      # 无参数 = 全景 + 域总览（最有用的默认）
         ov = overview(as_json)
         if as_json and ov:
             print(json.dumps(ov, ensure_ascii=False, indent=2))
         else:
             list_domains()
+        return
+    if args[0] == '--review-items':             # 供 ai-guard-unfixed 复用（统一解析）
+        print(json.dumps(review_items(), ensure_ascii=False))
         return
     if args[0] in ('overview', '--overview'):   # 只出全景
         res = overview(as_json)
