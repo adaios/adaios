@@ -3,13 +3,12 @@ title: 积录（adai-contentflow）考古：阿呆的能力原型与五年对照
 description: 2026-09-22 对已废弃老项目「积录」的只读考古——阿呆的哪些能力源自它、哪些是 AdaiOS 后来发明的、它留下的可回搬判断；含删除前的保留结论。想知道「阿呆从哪来/哪些老坑在重演」时读
 version: 1
 created: 2026-09-22
-updated: 2026-09-22
+updated: 2026-10-04
 status: active
-lines: 82
+lines: 81
 depends-on: []
 related:
   - _index.md
-  - ../VISION.md
 tags: [legacy, postmortem, kernel, learn]
 ---
 

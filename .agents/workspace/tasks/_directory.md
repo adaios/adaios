@@ -17,14 +17,14 @@ tags: [meta, directory]
 
 ## 职责边界
 - **放**：`<分支名>.md`（一条活跃分支一份）与 `_template.md`
-- **不放**：全局账本（`docs/reference/change-log.md` · `docs/review/REVIEW.md` · 各 `_index.md`）——那些是**合并时归档的目的地**
+- **不放**：全局账本（`.agents/records/change-log.md` · `.agents/records/REVIEW.md` · 各 `_index.md`）——那些是**合并时归档的目的地**
 
 ## 依赖关系
 
 | 方向 | 对象 | 说明 |
 |:--|:--|:--|
 | 被依赖 | `../../../AGENTS.md` | 规则 9（收工）与分支流程引用 |
-| 归档去向 | `../../../docs/reference/change-log.md` · `../../../docs/review/REVIEW.md` | 合并时把「待归档」搬进去 |
+| 归档去向 | `../../../.agents/records/change-log.md` · `../../../.agents/records/REVIEW.md` | 合并时把「待归档」搬进去 |
 | 工具 | `../../scripts/ai-worktree-prep.sh` | 新 worktree 就位后创建账本 |
 
 ## 触发关系

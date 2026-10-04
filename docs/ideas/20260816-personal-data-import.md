@@ -3,9 +3,12 @@ title: 个人数据导入总纲——阿呆认识「我」的入口
 description: 想法归档（未定型）：数据导入是阿呆的认知入口——从交易数据推广到全方位个人数据（账单/健康/轨迹/聊天），导入方式统一化（照片 OCR 为通用方式）
 version: 1
 created: 2026-08-16
-updated: 2026-08-16
+updated: 2026-10-04
 status: draft
 tags: [idea, import, data, personal]
+lines: 71
+depends-on: []
+related: []
 ---
 
 # 个人数据导入总纲（想法记录，不着急实现）

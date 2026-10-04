@@ -12,7 +12,7 @@ depends-on:
 related:
   - review.md
   - audit.md
-  - ../../docs/reference/status.md
+  - ../reference/status.md
 tags: [ai, process, ship]
 ---
 
@@ -38,20 +38,20 @@ tags: [ai, process, ship]
 
 - 后端：`cd services/adai-core && ./gradlew test`
 - 前端：对应 Flutter 工程的 `flutter test`
-- 更新 `docs/reference/status.md`（测试数/端点数唯一真相源，本处不复制数字）
+- 更新 `.agents/reference/status.md`（测试数/端点数唯一真相源，本处不复制数字）
 
 ### 2. 契约同步
 
-- 新增/修改 API → 同步 `docs/architecture/api-spec.md`（含版本 + 变更记录）
-- data/ 文件格式变更 → 同步 `docs/architecture/data-format-freeze.md`
-- 新功能落地 → 同步 `docs/reference/feature-reference.md`（功能真相源）
+- 新增/修改 API → 同步 `.agents/reference/api-spec.md`（含版本 + 变更记录）
+- data/ 文件格式变更 → 同步 `.agents/reference/data-format-freeze.md`
+- 新功能落地 → 同步 `.agents/reference/feature-reference.md`（功能真相源）
 
 ### 3. 文档登记
 
 - 新增/移动/删除文档 → 更新对应目录 `_index.md` 文件清单
 - 新增目录 → 补 `_index.md`（职责 + 文件清单 + 过期判断）
 - 子项目 AGENTS.md「当前焦点」批次状态更新
-- `docs/reference/change-log.md` 顶部追加一行（日期 | 批次 | 摘要 | 测试数变化）
+- `.agents/records/change-log.md` 顶部追加一行（日期 | 批次 | 摘要 | 测试数变化）
 
 ### 4. 决策沉淀（RFC 验收核验 + 沉淀检查）
 

@@ -13,11 +13,11 @@ tags: [meta, directory]
 
 # workspace/designs/ 目录契约
 
-**职责**：**设计与审核的多轮记录**——设计文档编写者与设计文档审核者的交叉产物，**一需求一目录**，每轮两份文件、**不覆盖历史**（这正是可追溯的来源）。它是审核驱动开发主链的**第二段**（见 `docs/architecture/ai-context-engineering.md` §4.6）。
+**职责**：**设计与审核的多轮记录**——设计文档编写者与设计文档审核者的交叉产物，**一需求一目录**，每轮两份文件、**不覆盖历史**（这正是可追溯的来源）。它是审核驱动开发主链的**第二段**（见 `.agents/assets/ai-context-engineering.md` §4.6）。
 
 ## 职责边界
 - **放**：`<需求id>/design-v<N>-<YYYYMMDD>.md`（编写者）· `<需求id>/review-v<N>-<YYYYMMDD>.md`（审核者）· 两个 `_template-*.md`
-- **不放**：需求文稿（→ `../requirements/`）· 任务账本（→ `../tasks/`）· **设计定稿**（归档到 `docs/architecture/` + ADR）
+- **不放**：需求文稿（→ `../requirements/`）· 任务账本（→ `../tasks/`）· **设计定稿**（归档到 `.agents/reference/` + ADR）
 
 ## 依赖关系
 
@@ -25,7 +25,7 @@ tags: [meta, directory]
 |:--|:--|:--|
 | 上游 | `../requirements/<需求id>.md` | **需求定稿是设计阶段的输入** |
 | 角色 | `../../roles/` | 设计文档审核者复用现有审查官（产品架构 / 交互 / 后端…）|
-| 归档去向 | `../../../docs/architecture/` · `../../assets/adr/` | 收敛后 `design-final.md` 搬过去 |
+| 归档去向 | `../../../.agents/reference/` · `../../assets/adr/` | 收敛后 `design-final.md` 搬过去 |
 
 ## 触发关系
 
@@ -49,5 +49,5 @@ tags: [meta, directory]
 ## 维护动作
 1. 需求定稿 → 建 `<需求id>/` → `cp _template-design.md <需求id>/design-v1-<YYYYMMDD>.md`
 2. 审核 → `cp _template-review.md <需求id>/review-v1-<YYYYMMDD>.md`
-3. 收敛 → 出 `design-final.md` → 归档 `docs/architecture/` + ADR → `rm -r <需求id>/`
+3. 收敛 → 出 `design-final.md` → 归档 `.agents/reference/` + ADR → `rm -r <需求id>/`
 4. 跑 `ai-guard-structure.sh --fix` 刷清单

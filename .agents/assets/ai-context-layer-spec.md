@@ -13,7 +13,7 @@ related:
   - ../../AGENTS.md
   - ../../.agents/scripts/ai-link-skills.sh
   - ../guards/ai-guard-tools.sh
-  - ../../docs/rfc/20261003-project-level-ai-context-layer.md
+  - ../rfc/20261003-project-level-ai-context-layer.md
 tags: [ai, meta, governance, context-layer]
 ---
 
@@ -31,7 +31,7 @@ tags: [ai, meta, governance, context-layer]
 
 ## 二、三层模型（不变量）
 
-> **本节的层用名字、不用编号**——「加载层」的 `L0–L3` 见 [`docs/architecture/ai-context-engineering.md`](../../docs/architecture/ai-context-engineering.md)；两者是**正交维度**（存放 vs 加载），共用编号会造成跨文档歧义（2026-10-03 审查修正）。
+> **本节的层用名字、不用编号**——「加载层」的 `L0–L3` 见 [`.agents/assets/ai-context-engineering.md`](../../.agents/assets/ai-context-engineering.md)；两者是**正交维度**（存放 vs 加载），共用编号会造成跨文档歧义（2026-10-03 审查修正）。
 
 ```
 真相源      项目层，进 git，唯一可写         ← 本仓库的 .agents/ 等
@@ -121,7 +121,7 @@ tags: [ai, meta, governance, context-layer]
 
 **一条命令补齐**：`bash .agents/scripts/ai-worktree-prep.sh`（自动含出口注册与 `--check`）。
 
-**分支开发下的全流程**（资产全景 · **加 skill 也开分支** · 改完怎么传给其他分支 · **合并后重建出口**）见 `docs/guides/branch-development.md`。
+**分支开发下的全流程**（资产全景 · **加 skill 也开分支** · 改完怎么传给其他分支 · **合并后重建出口**）见 `.agents/guides/branch-development.md`。
 
 **铁律**：**绝不 link 主仓库的出口**——那会让 `feat/a` 的技能漏进 `feat/b`，分支隔离在 AI 上下文层失效。
 

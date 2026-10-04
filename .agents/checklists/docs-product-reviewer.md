@@ -24,7 +24,7 @@ tags: [review, checklist, product]
 |:-:|:-------|:----:|
 | P1 | 五层架构符合度：新功能/改动明确归属 L1-L6 之一，无「不属于任何层」的游离功能 | PASS/FAIL |
 | P2 | 数据流完整性：Record → Timeline → Context → Memory → Knowledge 闭环；新输入不绕过（手拼 prompt、跳过 ContextEngine）| PASS/FAIL |
-| P3 | Roadmap 对齐：`docs/architecture/product-roadmap.md` 是唯一蓝图；偏离有 RFC 记录 | PASS/FAIL |
+| P3 | Roadmap 对齐：`.agents/direction/product-roadmap.md` 是唯一蓝图；偏离有 RFC 记录 | PASS/FAIL |
 | P4 | 原则符合度（★）：第一原则「无第三视角」等产品原则不被违反；抽查 Feed/时间线/记忆页无系统标签（问：/答：/图片记录：/【备注】）| PASS/FAIL |
 | P5 | 功能归属：新能力回答「Kernel 还是 Domain OS」；跨域协作经 application 编排（Domain 间禁直接依赖）| PASS/FAIL |
 | P6 | 产品叙事一致性：文案/术语/称呼全局一致（阿呆/复盘/记忆/时间线不混用）| PASS/FAIL |

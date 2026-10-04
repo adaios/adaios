@@ -13,11 +13,11 @@ tags: [meta, directory]
 
 # workspace/requirements/ 目录契约
 
-**职责**：需求讨论与定稿——**从想法到「人拍板的需求文稿」**的全过程记录。它是**审核驱动开发主链的第一段**（见 `docs/architecture/ai-context-engineering.md` §4.6）。
+**职责**：需求讨论与定稿——**从想法到「人拍板的需求文稿」**的全过程记录。它是**审核驱动开发主链的第一段**（见 `.agents/assets/ai-context-engineering.md` §4.6）。
 
 ## 职责边界
 - **放**：`<需求id>.md`（讨论中或已定稿的需求文稿）与 `_template.md`
-- **不放**：设计（→ `../designs/`）· 任务账本（→ `../tasks/`）· **定稿后的需求**（归档到 `docs/rfc/` 或 `docs/features/`）
+- **不放**：设计（→ `../designs/`）· 任务账本（→ `../tasks/`）· **定稿后的需求**（归档到 `.agents/rfc/` 或 `.agents/features/`）
 
 ## 依赖关系
 
@@ -25,7 +25,7 @@ tags: [meta, directory]
 |:--|:--|:--|
 | 被依赖 | `../../../AGENTS.md` | 规则 7「讨论与实施分离」——只约束代码/数据，本目录属工程维护 |
 | 下游 | `../designs/<需求id>/` | **需求定稿是设计阶段的输入** |
-| 归档去向 | `../../../docs/rfc/` · `../../../docs/features/` | 定稿后搬走 |
+| 归档去向 | `../../../.agents/rfc/` · `../../../.agents/features/` | 定稿后搬走 |
 
 ## 触发关系
 
@@ -48,4 +48,4 @@ tags: [meta, directory]
 ## 维护动作
 1. 有新需求 → `cp _template.md <需求id>.md`
 2. 讨论中更新；**只有人**能把它标成定稿
-3. 定稿 → 归档 `docs/rfc/` 或 `docs/features/` → `rm <需求id>.md` → 跑 `ai-guard-structure.sh --fix`
+3. 定稿 → 归档 `.agents/rfc/` 或 `.agents/features/` → `rm <需求id>.md` → 跑 `ai-guard-structure.sh --fix`

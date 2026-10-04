@@ -1,0 +1,557 @@
+---
+title: 前端参考（术语对照 + 布局视觉）
+description: 前端统一参考——UI 术语对照 + 布局视觉（含 adai-web 桌面端章节）
+version: 1
+created: 2026-08-15
+updated: 2026-10-04
+status: active
+lines: 557
+depends-on: []
+related: []
+tags: [fact, reference]
+---
+
+# 前端参考（术语对照 + 布局视觉）
+
+> AdaiOS Flutter 前端统一参考。术语用于代码/设计讨论，布局图用于 UI 修改沟通。
+> 设计原则：`apps/adai-app/DESIGN.md`
+
+---
+
+# 前端 UI 中英术语对照
+
+## 前端体系
+
+AdaiOS 前端分**两个独立产品入口**（两套 UI 各做各的，不互相适配）：
+
+| 前端 | 工程 | 形态 | 端口 |
+|:-----|:-----|:-----|:----:|
+| **桌面端**（产品主入口）| `apps/adai-web` | 两栏壳：左导航 + 主内容区，8 模块桌面原生布局 | :8082 |
+| **移动端** | `apps/adai-app` | 双 World 手势 + 单列 Feed | :8081 |
+| 产品后台 | `apps/adai-admin` | 四模块管理端 | :8083 |
+
+### adai-web 桌面端
+
+参考元宝电脑端：横版、左侧常驻侧栏 + 主对话区。桌面壳（`DesktopShell`）：
+
+| 中文 | 代码/设计名 | 说明 |
+|:----|:-----------|:-----|
+| 桌面壳 | `DesktopShell` / `desktop_shell.dart` | Row = 左导航 200（`nav-rail`）+ VerticalDivider + 主内容区 |
+| 导航项 | `_NavEntry` | 8 项：Feed/记忆/时间线/待办/交易/学习/搜索/档案（原生 6 + 插件 2），选中态左侧 3px 绿竖线 |
+| 页面保活 | lazy `IndexedStack` | 只实例化已访问页（`_visited` Set），切换后 offstage 保活，Feed 对话态跨页保留 |
+| 页面页头 | `PageHeader` / `page_header.dart` | 标题 + 副标题 + 右侧操作区 |
+
+各模块桌面形态：
+
+| 模块 | 形态 |
+|:-----|:-----|
+| Feed | 主对话流居中限宽 880 + 右上下文栏 300（今日简报/标签云）；桌面 FeedCard 时间竖列 + hover，4 态状态机 |
+| 记忆 | master-detail：左日期列表 + 右内容（kind 徽标 / superseded 划线淡化） |
+| 时间线 | 左月历面板（有记录绿点）+ 右当月记录 |
+| 待办 | 纯清单两态（OPEN / DONE，已完成折叠）+ 可选到期日 + 顶部直接加一条 |
+| 交易 | 快照 stat 卡 + 真 DataTable 持仓（红绿盈亏/数字右对齐）+ 记录交易 Dialog |
+| 搜索 | 顶部全宽搜索栏 + 关键词高亮结果流 |
+| 档案 | 左身份卡 + 右编辑区（偏好/规则键值行） |
+
+### 双 World 架构（adai-app 移动端）
+
+| 中文 | 代码/设计名 | 说明 |
+|:----|:-----------|:-----|
+| App 壳 | `DualWorldShell` / `main.dart` | 双 World 容器，250ms AnimatedSwitcher 切换 |
+| World A | 主页面（Feed） | 默认视图，TopBar + Feed 流 + InputBar |
+| World B | 启动器 / `LauncherPage` | 上滑进入，导航面板 + 标签宇宙 |
+| 切换手势 | 上滑 > 400 → World B，下滑 > 400 → World A | 第 58-64 行 |
+
+### World A 组件
+
+| 中文 | 代码/设计名 | 说明 |
+|:----|:-----------|:-----|
+| 主页面 | `MainPage` / `main_page.dart` | Feed 流主页面 |
+| 顶栏 | `TopBar` / `_TopBar` | 日期（左）+ 右箭头进入 World B（右） |
+| Feed 流 | Feed / Today Feed | 统一卡片列表，从简报开始到一天所有记录 |
+| 输入栏 | `InputBar` / `input_bar.dart` | 底部三列：语音/文字切换 + 输入框 + 发送/⊕ |
+| 激活卡片态 | active card | 左侧 3px 绿色竖线，底部无边（直角） |
+
+### World B 组件
+
+| 中文 | 代码/设计名 | 说明 |
+|:----|:-----------|:-----|
+| 启动器 | `LauncherPage` / `launcher_page.dart` | World B 主视图 |
+| 拖拽条 | drag handle | 顶部横线，下滑 > 300 → 回 World A |
+| 搜索栏 | search bar | 伪 TextField（GestureDetector），点按 → SearchPage |
+| 导航列表 | nav list | 5 条目：👤🧠📅📊📈，每项「emoji + 标题 + 预览 + ›」 |
+| 标签宇宙 | tag universe | 底部标签区，切换图谱/列表两种视图 |
+| 图谱视图 | graph view / `_buildGraphView` | CustomPaint 连线图，最多 15 个气泡 |
+| 列表视图 | list view / `_buildListView` | Wrap 布局，大小随权重变化，最多 20 个 |
+| 标签气泡 | tag bubble | 圆形 GestureDetector，点按 → SearchPage(tag) |
+
+### 子页面（从 World B 导航进入）
+
+| 中文 | 代码/设计名 | 说明 |
+|:----|:-----------|:-----|
+| 个人档案 | `ProfilePage` / `profile_page.dart` | 查看/编辑个人档案、沟通风格、规则开关 |
+| 记忆浏览 | `MemoryPage` / `memory_page.dart` | 按日浏览记忆，标签筛选 |
+| 时间线页 | `TimelinePage` / `timeline_page.dart` | 日历网格 + 当日记录列表（全页，非弹窗） |
+| 待办清单 | `TodoPage` / `todo_page.dart` | 纯清单两态（OPEN / DONE，已完成折叠）+ 可选到期日 + 完成/删除 + 顶部直接加一条（RFC 20260917 待办归 Kernel builtin，无插件门控）|
+| 交易管理 | `TradingPage` / `trading_page.dart` | 持仓列表 + 组合概览 + 记录交易表单 |
+| 搜索 | `SearchPage` / `search_page.dart` | 关键词搜索 + 结果高亮 |
+
+### 弹窗/底部面板
+
+| 中文 | 代码/设计名 | 说明 |
+|:----|:-----------|:-----|
+| 时间线弹窗 | `TimelineModal` / `timeline_modal.dart` | BottomSheet，75% 高度，日历 + 记录 |
+| 生活快速记录 | `LifeQuickEntry` / `life_quick_entry.dart` | BottomSheet，四类模板（心情/运动/饮食/睡眠） |
+| 附件菜单 | `_showAttach` / `input_bar.dart` | ⊕ 点按弹出，image/voice/file/link 四选项 |
+
+---
+
+## FeedCard 卡片
+
+| 中文 | 代码/设计名 | 说明 |
+|:----|:-----------|:-----|
+| 卡片 | `FeedCard` / `feed_card.dart` | Feed 流中的统一卡片容器 |
+| 卡片数据 | `FeedCardData` | 卡片的状态和数据模型 |
+| 卡片类型 | `FeedCardType` | `record`(用户记录) / `aiNote`(AI 分析) / `push`(资讯推送) |
+| 对话轮次 | `ConversationTurn` | 单条对话（`isUser` 区分用户还是 AI） |
+| 激活态卡片 | active card | 左侧 3px 绿色竖线，底部无边 |
+| 绿色竖线 | left accent | 激活卡片左侧绿色标识条 |
+
+### FeedCard 状态机
+
+| 中文 | `CardMode` | 显示样式 | 底部操作 |
+|:----|:----------|:---------|:---------|
+| 空闲态 | `idle` | 普通卡片，半透明背景 | `── ask ──` |
+| 等待态 | `waiting` | 激活 + 输入框绿色边框 | `end` |
+| 对话态 | `chatting` | 激活 + 对话记录 | `end` |
+| 结束态 | `ended` | 绿色边框 + 总结摘要 | `── ask ──`（绿字） |
+
+### 卡片显示风格
+
+| 中文 | 代码 getter | 判定逻辑 |
+|:----|:-----------|:---------|
+| 记录风格 | `_isLogStyle` | `intent == log`，或后端返回无 turns 的记录 |
+| 提问风格 | `_isAskStyle` | `intent == question`，或后端有 turns 的记录 |
+| 激活态 | `_isActive` | `waiting` 或 `chatting` |
+| 结束态 | `_isEnded` | `mode == ended` |
+
+### 卡片头部标签
+
+| 中文 | 显示 | 关联风格 |
+|:----|:-----|:---------|
+| log 标签 | 灰底灰字 `log` | `_isLogStyle` |
+| ask 标签 | 绿底绿字 `ask` | `_isAskStyle` |
+| 时间 | 灰色 `14:30` | 所有卡片 |
+| 对话圆点 | 绿色小圆点 | `_isChatting` |
+
+### 推送卡：一句话 + 可折叠四要素（RFC 20260922 C 批 C3）
+
+交易决策推送（早盘计划 / 尾盘卖点等）的正文由后端渲染成「**一句话结论 + 逐票四要素依据**」，
+App 端默认**只露结论**（标题 / 账日期 / 逐票结论行），依据（① 你的历史 · ② 证据 · ③ 规则原文 · ④ 位置）
+收在「看依据（N 只 · 四要素）」之后——手机一屏看得完，要核对时一点就到。
+
+- 解析：`lib/utils/push_evidence.dart` 的 `splitPushContent()`（纯函数，按行首 ①②③④ 判据）
+- 渲染：`feed_card.dart` 的 `_PushContent`（StatefulWidget，折叠状态属于这一张卡）
+- **没有四要素的推送原样全文**（行情异动 / 今日操作确认 / 复习提醒 / 旧后端）——解析不出来就不拆
+- adai-web 保留全文（桌面端空间够，不做折叠）
+
+---
+
+## 意图（后端分流）
+
+| 中文 | `IntentType` | 后端值 | 行为 |
+|:----|:------------|:-------|:-----|
+| 记录 | `log` | `'log'` | 存档到 Feed，无需 AI 对话 |
+| 提问 | `question` | `'question'` | 触发 AI 对话，进入 chatting 态 |
+
+---
+
+## 输入栏
+
+| 中文 | 代码 | 说明 |
+|:----|:----|:-----|
+| 语音模式 | `_isVoice` | 输入栏切换为"按住说话" |
+| 文字模式 | `!_isVoice` | 键盘输入 |
+| 有输入态 | `_hasText` | 输入框非空，右按钮变为 ↑ 发送 |
+| 空输入态 | `!_hasText` | 右按钮为 ⊕ 附件菜单 |
+| 激活卡片态 | `hasActiveChat` | 输入框显示 `ask your question...` 绿色边框 |
+| 录音中 | `_recording` | 长按语音按钮时 |
+
+---
+
+## 颜色系统
+
+| 中文 | 代码 token | 色值 | 用途 |
+|:----|:----------|:-----|:------|
+| 背景色 | `darkBg` | `#131211` | 页面背景 |
+| 表面色 | `darkSurface` | `#1D1B1A` | 卡片底色 |
+| 表面色2 | `darkSurface2` | `#252220` | 输入栏、按钮 |
+| 边框色 | `darkBorder` | `#2D2926` | 分割线 |
+| 灰1（最高） | `darkGrey1` | `#F0EDE9` | 正文文字 |
+| 灰2 | `darkGrey2` | `#D4D0CB` | 高强调 |
+| 灰3 | `darkGrey3` | `#B5B0AA` | 正文 body |
+| 灰4（次要） | `darkGrey4` | `#908B85` | 标签、时间 |
+| 灰5（三级） | `darkGrey5` | `#66615C` | 占位符、log 标签 |
+| 灰6 | `darkGrey6` | `#45423E` | placeholder |
+| 绿色 | `darkGreen` | `#3AB75A` | AI、激活、ask 标签 |
+| 橙色 | `darkOrange` | `#E8963A` | 预留 |
+| 蓝色 | `darkBlue` | `#5299FF` | 资讯推送（仅此用途） |
+| 紫色 | `darkPurple` | `#9B7FD4` | 预留 |
+| 黄色 | `darkYellow` | `#D4A043` | 预留 |
+| 红色 | `darkRed` | `#D95757` | 行情涨/负面（A 股红涨绿跌） |
+
+---
+
+## 聊天气泡
+
+| 中文 | 代码 | 说明 |
+|:----|:----|:-----|
+| 用户气泡 | `isUser == true` | 绿色半透明底，右上圆角 4 |
+| AI 气泡 | `isUser == false` | 深灰底，左上圆角 4 |
+| 气泡内边距 | 14h × 10v | px |
+| 气泡最大宽 | `maxWidth: 320` | px |
+
+---
+
+## 布局尺寸
+
+| 中文 | 值 | 代码位置 |
+|:----|:---|:---------|
+| 卡片圆角 | 16px | `Radius.circular(16)` |
+| 卡片左右 margin | 20px | `EdgeInsets.symmetric(horizontal: 20)` |
+| 卡片垂直间距 | 6px（×2=12px 呼吸感） | `vertical: 6` |
+| 绿色竖线宽度 | 3px | `width: 3` |
+| 输入栏高度 | 40px | `height: 40`（整栏 56px 含 padding） |
+| 输入框圆角 | 14px | `Radius.circular(14)` |
+| 按钮尺寸 | 40×40 | `width: 40, height: 40` |
+| 时间线弹窗高度 | 75% | `MediaQuery.of(context).size.height * 0.75` |
+| 入场动画时长 | 600ms | `Duration(milliseconds: 600)` |
+| 滚动动画时长 | 300ms | `Duration(milliseconds: 300)` |
+
+---
+
+## API 接口
+
+| 中文 | 方法 | 路径 | DTO |
+|:----|:-----|:-----|:----|
+| 提交记录 | POST | `/api/v1/records` | `RecordResponse` |
+| 结束对话 | POST | `/api/v1/conversations/end` | `EndConversationResponse` |
+| 获取 Feed | GET | `/api/v1/feed` | `FeedResponse` |
+| 今日简报 | GET | `/api/v1/brief` | `BriefResponse` |
+| 获取时间线 | GET | `/api/v1/timeline` | `List<TimelineEntryResponse>` |
+| 记忆查询 | GET | `/api/v1/memory` | `List<MemoryResponse>` |
+| 重建记忆 | POST | `/api/v1/memory/rebuild` | — |
+| 个人档案 | GET / PUT | `/api/v1/identity` | `IdentityResponse` |
+| 全文搜索 | GET | `/api/v1/search?q=` | `List<SearchResult>` |
+| 标签统计 | GET | `/api/v1/tags` | `TagIndexResponse` |
+| 待办列表 | GET | `/api/v1/todos?status=` | `List<TodoResponse>`（app `TodoItem`）|
+| 创建待办 | POST | `/api/v1/todos` | `TodoResponse`（app `TodoItem`）|
+| 更新待办 | PUT | `/api/v1/todos/{id}` | `TodoResponse`（app `TodoItem`）|
+| 删除待办 | DELETE | `/api/v1/todos/{id}` | — |
+| 待办统计 | GET | `/api/v1/todos/stats` | `TodoStatsResponse`（app `TodoStats`）|
+| 持仓查询 | GET | `/api/v1/trading/positions` | `List<PositionResponse>` |
+| 组合快照 | GET | `/api/v1/trading/portfolio` | `PortfolioSnapshotResponse` |
+| 交易复盘 | GET / POST | `/api/v1/trading/review` | `TradingReviewResponse` |
+| 反哺入库 | POST | `/api/v1/trading/reviews/{date}/promote` | `PromoteResponse`（双端交易页「反哺入库」按钮，#129）|
+| 记录交易 | POST | `/api/v1/trading/trades` | `TradeRequest` → `Position[]`（更新后持仓）|
+| 卡片迁移 | POST | `/api/v1/cards/migrate` | — |
+| 卡片清理 | POST | `/api/v1/cards/cleanup` | `CleanupResponse` |
+| 图片记录 | POST | `/api/v1/records/media` | `MediaRecordResponse`（multipart）|
+| 图片原图 | GET | `/api/v1/records/media/{id}` | 二进制 |
+| 图片追问 | POST | `/api/v1/records/media/{id}/ask` | `AskResponse`（图片卡 ── 提问 ── 追问）|
+| 多图问答 | POST | `/api/v1/records/media/ask-batch` | `AskBatchResponse`（1-3 张一次提问，P3 补登记 2026-08-17）|
+| 记忆待办完成 | PATCH | `/api/v1/memory/{id}/done` | —（完成待办时由后端同步调用；建待办不动记忆）|
+| 启用账号 | GET | `/api/v1/accounts/available` | `List<String>`（需登录，仅 userId 最小集，#215；产品端遗留选号，#178）|
+
+---
+
+## Git 和文件相关
+
+| 中文 | 值 |
+|:----|:----|
+| 文件位置 | `apps/adai-app/` |
+| 项目名 | `adai_app` |
+| Flutter SDK | 3.44.6 |
+| Dart SDK | 3.12.2 |
+| 后端地址 | `http://localhost:8080`（`--dart-define=API_BASE_URL=...` 覆盖） |
+
+---
+
+# 页面布局视觉参考
+
+> 所有页面状态的 ASCII 图，方便沟通 UI 修改。
+
+## 正常态（无激活卡片）
+
+```
+┌──────────────────────────────────────┐
+│ 7/20·周日                         ▼  │  ← TopBar：日期 + 时间线入口
+├──────────────────────────────────────┤
+│                                      │
+│  ┌────────────────────────────────┐  │
+│  │ today                          │  │  ← Brief 简报卡片（渐变色底）
+│  │                                │  │
+│  │ 早上好。今天下午有交易机会...     │  │
+│  │ • 京东方A 回踩支撑位           │  │
+│  │ • 关注半导体板块                │  │
+│  └────────────────────────────────┘  │
+│                                      │
+│  ┌────────────────────────────────┐  │
+│  │ 07:00   ·  分析                │  │  ← FeedCard: AI 分析（_isAskStyle）
+│  │                                │  │
+│  │ 京东方A 回踩支撑位...           │  │     绿底 ask 标签
+│  │ ────────────── ask ─────────── │  │     底部 ── ask ──
+│  └────────────────────────────────┘  │
+│                                      │
+│  ┌────────────────────────────────┐  │
+│  │ 09:30  log                     │  │  ← FeedCard: 记录（_isLogStyle）
+│  │                                │  │     灰底 log 标签
+│  │ 今天买了立昂微。                │  │     半透明背景
+│  │ [ 交易 ] [ 持仓 ]              │  │     有 tags
+│  │ ────────────── ask ─────────── │  │     底部 ── ask ──
+│  └────────────────────────────────┘  │
+│                                      │
+│  ┌────────────────────────────────┐  │
+│  │ 14:30  ask                     │  │  ← FeedCard: 对话记录（_isAskStyle）
+│  │                                │  │     绿底 ask 标签
+│  │ you  下午凤凰单丛怎么样         │  │     有 turns
+│  │ ai   凤凰单丛是乌龙茶...        │  │
+│  │ ────────────── ask ─────────── │  │     底部 ── ask ──
+│  └────────────────────────────────┘  │
+│                                      │
+│  ┌────────────────────────────────┐  │
+│  │ 14:30  ask                     │  │  ← FeedCard: 已结束对话（_isEnded）
+│  │                                │  │     绿色边框
+│  │ 下午凤凰单丛怎么样              │  │
+│  │ ✓ 聊了凤凰单丛和品茶心得        │  │  ← summary banner
+│  │ [ 茶 ] [ 生活 ]                │  │  ← tags
+│  │ ────────────── ask ─────────── │  │     底部 ── ask ──（绿字）
+│  └────────────────────────────────┘  │
+│                                      │
+├──────────────────────────────────────┤
+│ [🎤] ┌──────────────────────┐  [⊕]  │  ← InputBar: 空输入态
+│      │ 记一笔...              │      │     左 mic / 中输入框 / 右 ⊕
+│      └──────────────────────┘       │
+└──────────────────────────────────────┘
+```
+
+---
+
+## 对话态（卡片激活中）
+
+```
+┌──────────────────────────────────────┐
+│ 7/20·周日  ●                     ▼  │  ← TopBar：绿色圆点表示对话中
+├──────────────────────────────────────┤
+│  绿色  │                            │
+│  竖线  │   chat               [✕]  │  ← 激活卡片 header
+│  3px   │─────────────────────────────│     绿底 chat 标签 + 关闭按钮
+│        │                            │
+│        │ ┌────────────────────────┐ │
+│        │ │ 京东方A 回踩支撑位...   │ │  ← 用户消息（绿半透明底）
+│        │ └────────────────────────┘ │
+│        │ 14:30                      │  ← 时间戳
+│        │                            │
+│        │   ┌──────────────────────┐ │
+│        │   │ 支撑位目前在 4.52...   │ │  ← AI 回复（灰底）
+│        │   └──────────────────────┘ │
+│        │ 14:31                      │
+│        │                            │
+│        │ ┌────────────────────────┐ │
+│        │ │ 那压力位呢              │ │  ← 用户追问
+│        │ └────────────────────────┘ │
+│        │ 14:32                      │
+│        │                            │
+│        │ ⠋                          │  ← Loading dots（AI 思考中）
+│        │                            │
+│        │─────────────────────────────│
+│        │                       end  │  ← 底部 end 按钮（右侧）
+│        └─────────────────────────────│     底部无边框（直角）
+│                                      │
+├──────────────────────────────────────┤
+│ [🎤] ┌──────────────────────┐  [↑]  │  ← InputBar: 有输入态
+│      │ ask your question...   │      │     绿色边框 + 绿字 placeholder
+│      └──────────────────────┘       │     右按钮 ↑ 绿色（发送）
+└──────────────────────────────────────┘
+```
+
+---
+
+## 等待态（刚点 ask，正在输入）
+
+与对话态布局相同，区别：
+- `waiting` vs `chatting` — 视觉上相同
+- 输入框 `hasActiveChat = true`，显示绿色边框
+
+---
+
+## 结束态（已在 Feed 中）
+
+```
+┌────────────────────────────────────────┐
+│ 14:30  ask                             │
+│                                        │
+│ 下午凤凰单丛怎么样                       │
+│                                        │
+│ ✓ 聊了凤凰单丛和品茶心得                 │  ← 绿色勾 + summary（灰底）
+│                                        │
+│ [ 茶 ] [ 生活 ] [ 品茶 ]               │  ← 标签
+│                                        │
+│ ────────────── ask ───────────────     │  ← 底部 ask（绿字）
+│                                        │
+│ ← 绿色边框                             │
+└────────────────────────────────────────┘
+```
+
+**视觉特征**：
+- 整张卡片绿色边框 (`darkGreen` with 180 alpha)
+- 背景色 `darkSurface`（不透明）
+- 头部 ask 标签（绿底绿字）
+- 灰色 summary banner + 绿色 ✓
+- 标签行
+- 底部 `── ask ──` 绿字（点 ⨁ 回到 waiting 态）
+
+---
+
+## 时间线弹窗
+
+```
+┌──────────────────────────────────────┐
+│ ──────────────────────────────────    │  ← 拖拽条
+│                                      │
+│ 时间线                                │  ← 标题 22px
+│                                      │
+│ 2026 年 7 月                          │  ← 年月
+│ 一  二  三  四  五  六  日             │  ← 星期标签
+│        1   2   3   4   5   6          │
+│  7   8   9  10  11  12  13           │  ← 有记录的日期下有绿点
+│ 14  15  16  17  18  19  20●          │  ← 选中日白底黑字
+│ 21  22  23  24  25  26  27           │
+│ 28  29  30  31                       │
+│ ───────────────────────────────────    │  ← 分割线
+│                                      │
+│ 7月20日                               │  ← 选中日期标题
+│                                      │
+│ •  14:30  下午买了立昂微               │  ← 条目列表
+│ •  15:00  京东方A 回踩支撑位           │
+│ •  16:20  记录了一天的工作              │
+│                                      │
+│ (75% 屏幕高度)                        │
+└──────────────────────────────────────┘
+```
+
+---
+
+## InputBar 三种状态
+
+### 空输入态（默认）
+
+```
+[🎤]  ┌──────────────────────┐  [⊕]
+       │ 记一笔...              │
+       └──────────────────────┘
+```
+
+- 左：mic 图标（灰底，点按切换到语音）
+- 右：⊕ 灰底（点按弹出附件菜单）
+
+### 有输入态
+
+```
+[🎤]  ┌──────────────────────┐  [↑]
+       │ 今天买了立昂微          │
+       └──────────────────────┘
+```
+
+- 右：↑ 白底（发送）
+
+### 激活卡片态（hasActiveChat）
+
+```
+[🎤]  ┌──────────────────────┐  [↑]
+       │ ask your question...  │      ← 绿色边框 + 绿字 placeholder
+       └──────────────────────┘
+```
+
+- 输入框绿色边框 0.5px
+- placeholder 绿色字体
+- 右 ↑ 绿色底（发送）
+
+### 语音模式
+
+```
+[⌨]  ┌──────────────────────┐  [⊕]
+      │   🎤 按住 说话          │      ← 长按时变为 "🎤 松开 发送"（绿反馈）
+      └──────────────────────┘
+```
+
+- 左：键盘图标（白底，点按切回文字）
+- 中间：`hold to talk` 灰字
+- 右：⊕（附件菜单）
+
+---
+
+## 附件菜单（⊕ 点击弹出）
+
+```
+┌──────────────────────────────────────┐
+│ ──────────────────────────────────    │
+│                                      │
+│   [🖼]    [🎤]    [📄]    [🔗]       │
+│   image   voice   file    link       │
+│                                      │
+└──────────────────────────────────────┘
+```
+
+底部弹出的 BottomSheet，四个选项横向排列。
+
+---
+
+## 颜色标注
+
+```
+#### 深色模式调色盘 ####
+
+背景  darkBg       #0E0E0E  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+表面  darkSurface  #1A1A1A  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+表面2 darkSurface2 #232326  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+边框  darkBorder   #2C2C2E  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+灰1   darkGrey1    #F0EDE9  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  正文
+灰2   darkGrey2    #D4D0CB  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  高强调
+灰3   darkGrey3    #B5B0AA  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  正文
+灰4   darkGrey4    #908B85  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  标签/时间
+灰5   darkGrey5    #66615C  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  log标签/三级
+灰6   darkGrey6    #45423E  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  placeholder
+
+绿    darkGreen    #2BC457  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  AI/激活/ask
+橙    darkOrange   #E8963A  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  预留
+蓝    darkBlue     #5299FF  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  资讯推送
+```
+
+---
+
+## 布局尺寸汇总
+
+```
+卡片左右 margin:     20px
+卡片垂直间距:         6px（相邻 12px）
+卡片内边距:           16px left/right, 14px top, 0 bottom
+卡片圆角:             16px
+卡片边框宽:           1px
+绿色竖线宽:           3px
+
+输入栏整栏高:          56px（含 6px top + 10px bottom padding）
+输入栏内容区高:        40px
+输入框圆角:            14px
+按钮尺寸:              40×40
+
+气泡内边距:            14h × 10v
+气泡最大宽度:          320px
+气泡圆角:              用户 → TL:16 TR:4 BL:16 BR:16
+                       AI   → TL:4  TR:16 BL:16 BR:16
+
+入场动画:              600ms easeOutCubic
+滚动动画:              300ms easeOut
+模式切换:              200ms AnimatedSwitcher
+```

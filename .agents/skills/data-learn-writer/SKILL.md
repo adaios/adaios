@@ -13,7 +13,7 @@ related:
   - ../../guards/ai-guard-cost.sh
   - ../../assets/boundaries.md
   - ../../assets/pitfalls.md
-  - ../../../docs/rfc/20260829-learn-plugin.md
+  - ../../../docs/archive/20260829-learn-plugin.md
 tags: [skill, build, learn, digest]
 ---
 
@@ -100,7 +100,7 @@ tags: [skill, build, learn, digest]
 
 ## 参考资料
 
-- 历史蓝图（**已下架 2026-09-12，勿据此开工**）：`docs/rfc/20260829-learn-plugin.md`（learn 插件 RFC：卡片模板/分叉判定/三通道呈现；现为 superseded，仅作历史决策记录）
+- 历史蓝图（**已下架 2026-09-12，勿据此开工**）：`docs/archive/20260829-learn-plugin.md`（learn 插件 RFC：卡片模板/分叉判定/三通道呈现；现为 superseded，仅作历史决策记录）
 - 首次实践成果样例：`data/adai/learn/ai/harness-engineering/`（9 文档 + 素材，2026-09-06）——**含两处已知失真，新主题勿沿用**：① README 写「视频引用的 7 篇原文」，实测转写稿中 LangChain/Hashimoto/Fowler 等 5 篇命中 0 次（系用户补充或检索所得，来源未记清）；② README 声称 `_raw/` 含「7 篇原文文本」，实际 `_raw/` 仅视频 meta + 转写稿 2 个文件
 - 技能规范：`.agents/assets/skills-spec.md`；frontmatter：`.agents/frontmatter-spec.md`
 - 红线边界：`.agents/assets/boundaries.md`（B1/B3/B8）；坑：`.agents/assets/pitfalls.md`

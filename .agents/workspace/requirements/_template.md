@@ -15,7 +15,7 @@ tags: [requirement, workspace, template]
 
 **状态**：讨论中（★ **定稿由人拍板**，AI 不得自行宣布定稿）
 
-> **用法**：复制本文件为 `<需求id>.md`；讨论期只改这一份；定稿后归档到 `docs/rfc/` 或 `docs/features/` 并删除本文件。
+> **用法**：复制本文件为 `<需求id>.md`；讨论期只改这一份；定稿后归档到 `.agents/rfc/` 或 `.agents/features/` 并删除本文件。
 
 ## 问题 / 动机
 （为什么要做这个：谁遇到什么、不做的代价是什么）

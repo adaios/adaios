@@ -5,8 +5,8 @@
 `11-context/` 是 Project OS 对 AI / 外部系统暴露的认知接口层。
 
 **特殊之处：** Project OS 的知识来源在本目录之外，还自动融合项目级别数据：
-- `docs/rfc/` — 设计决策
-- `docs/architecture/` — 系统文档
+- `.agents/rfc/` — 设计决策
+- `.agents/reference/` — 系统文档
 - `git log` — 开发活动
 - `AGENTS.md` — 项目约定
 

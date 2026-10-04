@@ -13,7 +13,7 @@ depends-on:
 related:
   - ../roles/ux-interaction-reviewer.md
   - ../roles/ux-visual-reviewer.md
-  - ../../docs/architecture/product-architecture.md
+  - ../reference/product-architecture.md
 tags: [review, product, skill]
 ---
 
@@ -29,7 +29,7 @@ tags: [review, product, skill]
 
 1. **五层架构符合度**：新功能/改动是否明确归属 L1-L6 之一？是否有「不属于任何层」的游离功能（P1）
 2. **数据流完整性**：Record → Timeline → Context → Memory → Knowledge 流水线是否闭环？新输入是否绕过（手拼 prompt、跳过 ContextEngine）？
-3. **Roadmap 对齐**：docs/architecture/product-roadmap.md 是唯一蓝图——改动是否与路线一致？偏离是否有 RFC 记录？
+3. **Roadmap 对齐**：.agents/direction/product-roadmap.md 是唯一蓝图——改动是否与路线一致？偏离是否有 RFC 记录？
 4. **原则符合度**（★）：第一原则「无第三视角」等产品原则是否被违反？抽查实际展示（Feed/时间线/记忆页）是否有系统视角标签/数据结构暴露给用户
 5. **功能归属**：新能力是否回答「属于 Kernel 还是 Domain OS」？跨域协作是否经 application 编排（Domain 间禁直接依赖）
 6. **产品叙事一致性**：文案/术语/称呼在全局是否一致（阿呆/阿呆阿呆/控制台等）
@@ -47,6 +47,6 @@ P0 → 战略 → P1 → P2/P3 中文问题清单，每条含位置/问题/建�
 ## 参考资料
 
 - 检查清单：`../checklists/docs-product-reviewer.md`
-- 产品架构：`../../docs/architecture/product-architecture.md`
-- 蓝图：`../../docs/architecture/product-roadmap.md`
+- 产品架构：`../../.agents/reference/product-architecture.md`
+- 蓝图：`../../.agents/direction/product-roadmap.md`
 - 边界：`../assets/boundaries.md`

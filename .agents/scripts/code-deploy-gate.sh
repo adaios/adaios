@@ -37,7 +37,7 @@ bash .agents/guards/ai-guard-align.sh || { echo "❌ 内容对齐 FAIL——同�
 echo "▸ GATE-BEFORE 3/3 防复发（guard.sh G1-G7）..."
 # 2026-08-29 P2-A3 残留修复（对齐 .githooks/pre-commit 同款）：不再吞输出——
 # PASS 静默、HIT 显示摘要、脚本自坏（exit≠0 且无 HIT）单独报错可区分
-GUARD_OUT=$(bash docs/review/guard.sh 2>&1); GUARD_RC=$?
+GUARD_OUT=$(bash .agents/guards/guard.sh 2>&1); GUARD_RC=$?
 if [ "$GUARD_RC" -ne 0 ]; then
   if echo "$GUARD_OUT" | grep -qiE 'HIT'; then
     echo "❌ 守护检查有 HIT（防 P0 复发），请确认非复发后修复："
@@ -54,7 +54,7 @@ echo ""
 echo "▸ GATE-BEFORE 增量 review 提示："
 echo "  部署前建议跑一次增量深审（有未修项会在这暴露）："
 echo "    bash .agents/process/review.md  ← 流程文档（派官执行）"
-echo "  未修项真相源：docs/review/REVIEW.md"
+echo "  未修项真相源：.agents/records/REVIEW.md"
 echo ""
 echo "✅ 部署前检查全部通过，开始部署..."
 
@@ -220,4 +220,4 @@ fi
 echo "  建议现在打个锚点（本地动作；推送由你决定）："
 echo "      git tag -a \"v<版本号>\" -m \"部署 v<版本号> · ${RELEASE_DATE} · ${RELEASE_SHA}\""
 echo "      git push origin \"v<版本号>\"     # 外向动作，需你确认（边界 B8）"
-echo "  版本号以 docs/reference/status.md「生产当前版本」为准（如 v3.93）"
+echo "  版本号以 .agents/reference/status.md「生产当前版本」为准（如 v3.93）"

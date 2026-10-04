@@ -19,7 +19,7 @@ tags: [review, checklist, docs]
 
 | # | 检查方法 | 上次发现 |
 |:-:|:---------|:---------|
-| D1 | 每个 Controller 端点 ↔ `docs/architecture/api-spec.md` ↔ 前端调用 三方对齐 | api-spec 缺 7 个端点（P1，已修 v3.1）|
+| D1 | 每个 Controller 端点 ↔ `.agents/reference/api-spec.md` ↔ 前端调用 三方对齐 | api-spec 缺 7 个端点（P1，已修 v3.1）|
 | D2 | `docs/README.md` 索引指向的文件都存在；新增文档是否登记入口 | — |
 
 ## 架构图与代码一致
@@ -39,16 +39,16 @@ tags: [review, checklist, docs]
 
 | # | 检查方法 | 上次发现 |
 |:-:|:---------|:---------|
-| D6 | `docs/` 下是否有孤儿/过期/重复文档；`docs/reference/issue-log.md` 是否持续更新 | issue-log 唯一在 reference/（P2 #38）|
+| D6 | `docs/` 下是否有孤儿/过期/重复文档；`docs/records/issue-log.md` 是否持续更新 | issue-log 唯一在 reference/（P2 #38）|
 | D7 | `data/identity/profile.sample.md` 等 git 追踪的 sample 与真实文件格式是否一致（隐私文件不进 git）| 缺 identity/trading 目录（P2，已修）|
 | D8 | **skill/agent 自身可执行性**：SKILL.md/agent 引用的 bash 命令、grep 路径必须在仓库实测可执行，不 silent-fail | ship SKILL grep 路径不存在 → api-spec 同步跳过（P1 #34）|
 | D9 | **审核体系自审**：diff 触及 `.claude/**` 时，deep 必须派 docs-contract-reviewer 复核 skill/agent 的路径、清单引用、路由表覆盖一致性 | 路由表缺 `.claude/**` 无角色覆盖（战略 #33）|
 | D10 | 文件合并/移动/删除后，grep 全库对旧路径的引用（排除 inbox/历史），确保无断链、无重复 | 2026-08-02 文档精简：inbox 归位 17 文件 + frontend-reference 合并 + data-flow 并入 system-arch；曾现 ai-native 双份/AI_CONTEXT 孤儿 |
 | D11 | 新增子项目 AGENTS.md 的运行参数（端口/构建命令）与 `apps/adai-web/scripts/serve_web.sh` 跨文档对齐 | adai-web AGENTS.md `:8081` vs serve 脚本 `:8082`（P3，待修）|
 | D12 | api-spec Response 示例字段名直接对照后端 record/@JsonGetter 序列化名 + 前端 DTO fromJson 读取 key，三方对拍 | adai-web `positionCount` 后端无此字段 + portfolio 示例 `totalMarketValue` 失真（P1，待修）|
-| D13 | RFC frontmatter 一致性：`docs/rfc/*.md` 必须有 YAML frontmatter，缺则污染 `/project/status` rfcItems 状态 | 多模态 RFC 无 frontmatter → status=unknown（P1 #143，待修）|
+| D13 | RFC frontmatter 一致性：`.agents/rfc/*.md` 必须有 YAML frontmatter，缺则污染 `/project/status` rfcItems 状态 | 多模态 RFC 无 frontmatter → status=unknown（P1 #143，待修）|
 | D14 | 外部模型名/版本号跨文档对拍：roadmap/VISION/子项目 AGENTS.md 提及的外部模型与 `application.yml` 配置逐一对拍 | roadmap 仍写 GLM-4.6V-Flash（P1 #142，待修）|
-| D15 | README 索引完整性脚本化：`for f in docs/rfc/*.md; do grep -q "$(basename $f .md)" docs/README.md || echo 未登记` | README 缺 3 篇 RFC（P1 #141，待修）|
+| D15 | README 索引完整性脚本化：`for f in .agents/rfc/*.md; do grep -q "$(basename $f .md)" docs/README.md || echo 未登记` | README 缺 3 篇 RFC（P1 #141，待修）|
 | D16 | 「当前状态」类真相源联动：VISION §7 / product-architecture 状态表 / system-architecture §七 三处 ✅❌ 须与 change-log.md 批次同步 | 五层状态表过期（战略 #130，待修）|
 | D17 | 数据用户层迁移/rename 后 grep 残留旧层路径引用（`data/default` 等）：冻结契约/代码注释/迁移脚本/前端默认 userId/子项目 AGENTS.md 四处 | default→adai 迁移后 freeze/MarketAlert/前端默认值全残留（P1 #180）|
 | D18 | api-spec 版本/变更记录强同步：diff 触及任一 § 内容必须升版 + 追加变更记录行 | 3 处改动未升版 v3.7（P3 #191）|
@@ -57,7 +57,7 @@ tags: [review, checklist, docs]
 | D21 | 速查表反造假：前端参考 API 速查表每行——方法动词（GET/POST…）在后端 annotation 实测存在 + 返回类型在 api-spec/代码真实定义 + 前端 api_service 有对应调用 | frontend-reference 虚构 `GET /trading/trades` + TradeResponse（P1 #237，2026-08-12）|
 | D22 | api-spec changelog 声称的每个行为变化必须反向 grep 对应 § 正文（状态码/字段表）确认已同步，升版不只记 changelog | v3.14 声明 413 但 § records/media 正文仍写 400（P1 #238，2026-08-12）|
 | D23 | 新增 Controller/端点后必须同步子项目 AGENTS.md 的「X Controller Y 端点」计数——读 `build/resources/main/META-INF/endpoints.txt` 对拍（根 CLAUDE.md 已删；D20 扩展）| MeController 新增后 15/50 未更新为 16/51（P2-7，2026-08-15）|
-| D24 | README 索引完整性脚本须扫 `docs/reference/` 与 `docs/rfc/` 两个目录（D15 只扫 rfc/ 有盲区）| `task-plugin-model.md` 未登记即因 D15 漏扫 reference/（P1-8，2026-08-15）|
+| D24 | README 索引完整性脚本须扫 `.agents/reference/` 与 `.agents/rfc/` 两个目录（D15 只扫 rfc/ 有盲区）| `task-plugin-model.md` 未登记即因 D15 漏扫 reference/（P1-8，2026-08-15）|
 | D25 | RFC 修订新增决策时，frontmatter 的「X 决策」计数须与正文决策表行数一致 | RFC 20260814 frontmatter「四决策」vs 正文 D1-D5（P3，2026-08-15）|
 | D26 | 重大新能力落地只同步 api-spec + freeze 不算完整闭环——feature-reference（唯一功能真相源）须补对应章节 | 插件模型全文 feature-reference 零登记（P2-8，2026-08-15）|
 
@@ -77,8 +77,8 @@ tags: [review, checklist, docs]
 | D34 | frontmatter `lines` 字段 /ship 回写门禁（按 wc -l 校准）| lines 未校准（走查 P3，2026-08-15）|
 | D35 | status.md 内部交叉校验：端点数 vs endpoints.txt、Controller 计数 vs 测试覆盖描述 | status 失真（走查 P1-W16，2026-08-15）|
 
-| D36 | 契约同步目标存在性断言：ship 引用的 api-spec/feature-reference/data-format-freeze 路径必须 grep 断言目标存在 | ship.md 指向不存在的 docs/architecture/feature-reference.md（自伤自查 8 官，2026-08-15）|
-| D37 | RFC 索引状态对拍：docs/rfc/_index.md 每行状态必须等于对应 RFC frontmatter 的 status（取值 draft/approved/implemented）| ai-engineering-layer 索引 draft vs 文件 approved（自伤自查，2026-08-15）|
+| D36 | 契约同步目标存在性断言：ship 引用的 api-spec/feature-reference/data-format-freeze 路径必须 grep 断言目标存在 | ship.md 指向不存在的 .agents/reference/feature-reference.md（自伤自查 8 官，2026-08-15）|
+| D37 | RFC 索引状态对拍：.agents/rfc/_index.md 每行状态必须等于对应 RFC frontmatter 的 status（取值 draft/approved/implemented）| ai-engineering-layer 索引 draft vs 文件 approved（自伤自查，2026-08-15）|
 | D38 | 迁移完整性三件套：目录物理迁移 = ①文件移动 ②全库旧路径 grep 零残留（含自身目录/docs 索引/子项目 AGENTS.md）③_index/README 同步，三步全过才算完成 | docs/ai→ai-engineering 只完成第①步、16 处残留（自伤自查 6 官 ⭐，2026-08-15）|
 | D39 | RFC 验收标准核验：approved RFC 的「验收标准」在 ship 时逐条 PASS/FAIL 并留痕（写回 RFC 或 change-log）| AI 工程层 RFC #1-#5 无人核验（自伤自查 3 官，2026-08-15）|
 | D40 | 状态真相源三方对拍：REVIEW 未修项 vs 审核摘要 vs change-log 出表记录三方一致 | P1-W16 已修/未修矛盾 + P2 计数 11 vs 14 vs 15（自伤自查，2026-08-15）|
@@ -105,4 +105,4 @@ tags: [review, checklist, docs]
 | D61 | PushSettings 类型增量跨文档全同步：新增推送类型必须同步 api-spec / feature-reference 开关清单 / REVIEW 登记，一处漏即红灯 | learn-review 入 ALL_TYPES 但 feature-ref 8 类型清单未更（learn V2 审 P2-docs6，2026-09-07）|
 | D62 | 端点计数与实现对拍：ai-guard-align 只抓「端点↔api-spec 存在性」，抓不到段落幽灵/漏记——新增 Controller 路由后核对 change-log/status 的端点增量数 | GET /learn/card 漏计 116 vs 117（learn V2 审 P2-docs2，2026-09-07）|
 | D63 | 提醒/推送触发条件口径逐字对拍：变更行/注释/正文的触发语义（如「满 7 天」= created 还是 reviewAt）必须一致并随实现修正 | learn 复习提醒 created vs review 口径漂移（learn V2 审 S-learn1，2026-09-07）|
-| D64 | **功能主轴同步（RFC 20261001 批 3）**：本批动到的功能 → `docs/features/_index.md` 那一行（状态/需求出处/实现出处/欠着）必须同步；被碰到的功能**还没有意图卡就补一张**（≤12 行、只写意图，禁写实现细节）。**机器守卫 `ai-guard-feature.sh` 只查「已写的有没有写跑偏」，查不出「该写没写」——这一条靠审查官判** | 新机制（2026-10-01）；守卫盲区如实标注|
+| D64 | **功能主轴同步（RFC 20261001 批 3）**：本批动到的功能 → `.agents/features/_index.md` 那一行（状态/需求出处/实现出处/欠着）必须同步；被碰到的功能**还没有意图卡就补一张**（≤12 行、只写意图，禁写实现细节）。**机器守卫 `ai-guard-feature.sh` 只查「已写的有没有写跑偏」，查不出「该写没写」——这一条靠审查官判** | 新机制（2026-10-01）；守卫盲区如实标注|

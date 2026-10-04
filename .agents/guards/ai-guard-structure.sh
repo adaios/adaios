@@ -95,7 +95,11 @@ for name in SUBS:
     if not idx.exists():
         continue
     text = idx.read_text(encoding="utf-8")
-    listed = set(re.findall(r"^\| `([^`]+)` \|", text, re.M))
+    # 2026-10-04 修：只在「## 文件清单」段内抓取——此前抓全文，把功能主轴的 ID（`account`）
+    # 与 RFC 清单的标题列误当文件名，造成「多列 37 项 / 漏列 66 项」的假报。
+    _m = re.search(r'## 文件清单(?:（\d+ 项）)?\n(.*?)(?=\n## |\Z)', text, re.S)
+    _scope = _m.group(1) if _m else ''
+    listed = set(re.findall(r"^\| `([^`]+)` \|", _scope, re.M))
     actual = set(actual_items(d))
 
     if FIX and listed != actual:

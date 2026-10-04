@@ -44,7 +44,7 @@ else:
     hints.append('S1 本批无代码变更（纯文档/配置），无需沉淀')
 
 # S2 出表检查：REVIEW 未修项 vs 本批变更文件
-review = ROOT / 'docs/review/REVIEW.md'
+review = ROOT / '.agents/records/REVIEW.md'
 if review.exists() and code_changed:
     rt = review.read_text(encoding='utf-8')
     # 找 REVIEW 未修区的编号（战略/P1/P2 表格行）
@@ -65,7 +65,7 @@ if review.exists() and code_changed:
 
 # S3 登记检查：change-log 是否登记本批（仅当有变更时）
 if changed:
-    cl = ROOT / 'docs/reference/change-log.md'
+    cl = ROOT / '.agents/records/change-log.md'
     if cl.exists():
         clt = cl.read_text(encoding='utf-8')
         today = __import__('datetime').date.today().isoformat()

@@ -12,7 +12,7 @@ depends-on:
   - ../checklists/ux-visual-reviewer.md
 related:
   - ../roles/ux-interaction-reviewer.md
-  - ../../docs/architecture/frontend-reference.md
+  - ../reference/frontend-reference.md
 tags: [review, ui, skill]
 ---
 
@@ -47,5 +47,5 @@ tags: [review, ui, skill]
 ## 参考资料
 
 - 检查清单：`../checklists/ux-visual-reviewer.md`
-- 前端参考：`../../docs/architecture/frontend-reference.md`
+- 前端参考：`../../.agents/reference/frontend-reference.md`
 - 边界：`../assets/boundaries.md`

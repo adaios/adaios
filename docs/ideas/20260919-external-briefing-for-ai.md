@@ -3,22 +3,18 @@ title: 阿呆（AdaiOS）现状简报——供外部 AI 讨论发展方向
 description: 自包含事实底稿——现状/能力/工程/真实使用数据/资源约束/诚实短板/开放问题 + 已否决方向；用于把项目交给外部 AI（ChatGPT 等）做发展方向讨论时，避免它基于想象给建议
 version: 1
 created: 2026-09-19
-updated: 2026-09-19
+updated: 2026-10-04
 status: active
-lines: 210
+lines: 206
 depends-on:
-  - ../VISION.md
 related:
-  - ../architecture/product-roadmap.md
-  - ../review/REVIEW.md
-  - ../reference/status.md
   - 20260916-plugin-and-cold-start-discussion.md
 tags: [ideas, briefing, strategy, external]
 ---
 
 # 阿呆（AdaiOS）现状简报——供外部 AI 讨论发展方向
 
-> **数据截止**：2026-09-19。所有数字的真相源是仓库内 `docs/reference/status.md`（测试数/端点数/版本）、`docs/review/REVIEW.md`（未修项）、`docs/architecture/product-roadmap.md`（蓝图）。
+> **数据截止**：2026-09-19。所有数字的真相源是仓库内 `.agents/reference/status.md`（测试数/端点数/版本）、`.agents/records/REVIEW.md`（未修项）、`.agents/direction/product-roadmap.md`（蓝图）。
 
 ---
 

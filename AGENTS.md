@@ -10,8 +10,8 @@ depends-on:
   - .agents/README.md
 related:
   - ARCHITECTURE.md
-  - docs/VISION.md
-  - docs/architecture/product-roadmap.md
+  - .agents/direction/VISION.md
+  - .agents/direction/product-roadmap.md
 tags: [ai, entry]
 ---
 
@@ -27,7 +27,7 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 
 0. **开工自举（必做，零人工）**：任何 AI 开始工作前**自动执行** `bash .agents/guards/ai-guard-context.sh`，以其输出（状态/未修项/边界/坑/规范/待办/成本提醒）为上下文基线——用户不需要手动跑脚本、不需要回忆任何事（2026-08-18 用户确立）
 0b. **跨会话记忆（自动）**：DSH/Claude 等工具会话开始时**自动注入**项目根 `AGENTS.local.md`——上次收尾的状态快照（机器生成勿手改；真相源是 `docs/` 源文件；体积预算见 .agents/checklists/ai-cost-checklist.md C7）。**收尾时强制两步，缺一不可**：① `bash .agents/guards/ai-guard-context.sh --write-local`（刷 AGENTS.local.md 快照）② `bash .agents/guards/ai-guard-cost.sh --record`（今日成本入账）——下次开工自动带上，用户零操作（2026-08-20 确立，2026-08-22 补 cost 强制）
-1. **必读文档**：先读 `docs/VISION.md`（理念）→ `ARCHITECTURE.md`（架构红线）→ `docs/architecture/product-roadmap.md`（唯一蓝图）→ `.agents/README.md`（本会话协作标准）
+1. **必读文档**：先读 `.agents/direction/VISION.md`（理念）→ `ARCHITECTURE.md`（架构红线）→ `.agents/direction/product-roadmap.md`（唯一蓝图）→ `.agents/README.md`（本会话协作标准）
 2. **工作焦点分离**：子项目有独立 AGENTS.md（分层应用、就近原则——`services/adai-core`、`apps/*`、`os/*`）；在哪个目录工作只看哪个领域
 3. **入口统一，后台分流**：`POST /api/v1/records` 是唯一输入入口
 4. **第一原则「无第三视角」**：所有用户可见展示必须是「我和阿呆」的自然对话，不得出现系统视角标签（问：/答：/图片记录：/【备注】）
@@ -57,7 +57,7 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 | 元治理自检 | `.agents/guards/ai-guard-meta.sh` | 一条命令：frontmatter 图谱断链/lines 漂移/孤儿（`--fix` 回写）|
 | **技能包质量** | `.agents/guards/ai-guard-skills.sh` | 官方 Agent Skills 规范硬约束：S3 `name` 字符集/长度/与目录名一致 · S4 `description` 长度 · S5 五段结构 · S7 偏离在案（git pre-commit 自动触发）|
 | 文档自动对齐 | `.agents/guards/ai-guard-align.sh` | 代码↔文档内容对齐：端点↔api-spec / 测试数↔status.md（git pre-commit 自动触发）|
-| **功能索引自检** | `.agents/guards/ai-guard-feature.sh` | **功能主轴**（`docs/features/`）是否真实：索引行字段/链接/状态枚举 · 欠着编号存在 · 卡内无实现细节 · 卡 ≤12 行 · 卡文件非孤儿（git pre-commit 自动触发）；规格见 RFC 20261001 |
+| **功能索引自检** | `.agents/guards/ai-guard-feature.sh` | **功能主轴**（`.agents/features/`）是否真实：索引行字段/链接/状态枚举 · 欠着编号存在 · 卡内无实现细节 · 卡 ≤12 行 · 卡文件非孤儿（git pre-commit 自动触发）；规格见 RFC 20261001 |
 | 任务上下文 | `.agents/guards/ai-guard-context.sh` | 开工前生成上下文清单（状态/未修项/边界/坑/规范/待办，可按主题过滤）；`--write-local` 收尾刷 AGENTS.local.md 快照（DSH 自动注入）|
 | 沉淀检查 | `.agents/guards/ai-guard-sediment.sh` | ship 时检查沉淀/出表/登记（S1 坑/ADR、S2 REVIEW 出表、S3 change-log）|
 | 部署门禁 | `.agents/scripts/code-deploy-gate.sh` | 部署前强制 review+guard，部署后自动 smoke（最硬闸门）；同时把「本次应更新哪几端」写进生产 `DEPLOYED` |
@@ -70,10 +70,10 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 
 ## 状态真相源
 
-- 测试数/端点数/运行环境：`docs/reference/status.md`
-- 未修项：`docs/review/REVIEW.md`
-- 批次历史：`docs/reference/change-log.md`
-- 发布：`docs/releases/`、`docs/architecture/product-roadmap.md`
+- 测试数/端点数/运行环境：`.agents/reference/status.md`
+- 未修项：`.agents/records/REVIEW.md`
+- 批次历史：`.agents/records/change-log.md`
+- 发布：`docs/records/`（Release Notes 存档）、`.agents/direction/product-roadmap.md`（唯一蓝图）
 
 ## 工具接入
 

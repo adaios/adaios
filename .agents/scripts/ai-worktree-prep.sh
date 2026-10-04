@@ -39,7 +39,7 @@
 #      **绝不 link 主仓库的出口**：那样技能指向主仓库的 ai-engineering/，**不随分支**
 #   3. **要跑会写数据的实验，先 --copy**——默认 link 模式下的写入会直接落到 337M 真实数据上
 #
-# 相关：docs/guides/worktree-workflow.md（完整手册：目录方案 / 端口 / 提交纪律 / 验证清单）
+# 相关：.agents/guides/worktree-workflow.md（完整手册：目录方案 / 端口 / 提交纪律 / 验证清单）
 # ─────────────────────────────────────────────────────────────
 set -uo pipefail
 
@@ -53,7 +53,7 @@ worktree 外挂补齐（AdaiOS）——补 data / .env（服务端）/ state 三
   bash .agents/scripts/ai-worktree-prep.sh              # link（默认，共享真实数据）+ 注册工具出口
   bash .agents/scripts/ai-worktree-prep.sh --copy       # copy（要写数据的实验用）
   bash .agents/scripts/ai-worktree-prep.sh --force      # 已存在也重建
-完整说明见 docs/guides/worktree-workflow.md
+完整说明见 .agents/guides/worktree-workflow.md
 EOF
 }
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────
-# 功能索引守护检查（ai-guard-feature）—— docs/features/ 功能主轴自检
+# 功能索引守护检查（ai-guard-feature）—— .agents/features/ 功能主轴自检
 #
 # 用法:  bash .agents/guards/ai-guard-feature.sh
 #        bash .agents/guards/ai-guard-feature.sh --root /tmp/fixture   # 测试夹具（默认仓库根）
@@ -17,7 +17,7 @@
 #   F3 标 ⚠️ 的行必须写明缺因（文件缺失/无实体/无 RFC）
 #   F4 状态枚举合法 + **关键词粗对拍**（shipped 不得配「待建/未做/无专章/待生长」）
 #      ⚠️ 这不是 RFC 原承诺的「状态与证据一致」（那需要每行带可机器验证的证据字段）；
-#         现状＝状态由人填 + 一条粗对拍，**已如实降格**，见 docs/features/_index.md 头部与 RFC §十。
+#         现状＝状态由人填 + 一条粗对拍，**已如实降格**，见 .agents/features/_index.md 头部与 RFC §十。
 #   F5 RFC status 枚举合法（只查 date >= 2026-10-01 的新文件；**缺 date 一律按新文件强制**，
 #      存量 65 篇实测均有 date，故无误伤）
 #   F6 「欠着」必须是 REVIEW.md 里真实存在的编号（**词边界匹配**，防 P2-测试1 命中 P2-测试11）
@@ -45,10 +45,10 @@ python3 - "$ROOT" <<'PYEOF'
 import re, sys, pathlib
 
 ROOT = pathlib.Path(sys.argv[1])
-FEAT = ROOT / 'docs/features'
+FEAT = ROOT / '.agents/features'
 INDEX = FEAT / '_index.md'
-REVIEW = ROOT / 'docs/review/REVIEW.md'
-RFC = ROOT / 'docs/rfc'
+REVIEW = ROOT / '.agents/records/REVIEW.md'
+RFC = ROOT / '.agents/rfc'
 
 CUTOFF = '2026-10-01'          # F5 生效日：此前的老文件不强制（存量渐进）
 STATUS_OK = {'idea', 'rfc', 'designed', 'building', 'shipped', 'retired'}
@@ -70,20 +70,27 @@ fails = []
 
 if not INDEX.exists():
     print('FEATURE-GUARD: 1 FAIL')
-    print('    F0 索引不存在 docs/features/_index.md')
+    print('    F0 索引不存在 .agents/features/_index.md')
     sys.exit(1)
 
 text = INDEX.read_text(encoding='utf-8')
 
-# ── 解析功能行：首列是反引号包裹的 ID ──────────────────────────
+# ── 解析功能行：**只在「## 二、功能清单」段内**（首列是反引号包裹的 ID）──────
+# 2026-10-04 修：此前扫全文，`_index.md` 顶部的「## 文件清单」段（首列也是反引号文件名）
+# 被误当功能行 → 列数 3 ≠ 6 假报。目录清单与功能主轴是**两个段**，必须分段解析。
+_m = re.search(r'^## 二、功能清单\s*$\n', text, re.M)
+_base = text[:_m.end()].count('\n') if _m else 0
+_body = text[_m.end():] if _m else text
+_e = re.search(r'^## ', _body, re.M)
+_scope = _body[:_e.start()] if _e else _body
 rows = []
-for ln, line in enumerate(text.splitlines(), 1):
+for _i, line in enumerate(_scope.splitlines()):
     if not line.startswith('|'):
         continue
     cells = [c.strip() for c in line.strip().strip('|').split('|')]
     if len(cells) < 2 or not re.fullmatch(r'`[\w.\-]+`', cells[0]):
         continue
-    rows.append((ln, cells))
+    rows.append((_base + _i + 1, cells))
 
 # F0 防假绿
 if not rows:
@@ -92,7 +99,7 @@ if not rows:
 # F1 / F3 / F4 / F6
 # REVIEW 缺失时不能静默跳过 F6（假绿防线：宁可报错，也不要「查不了就当过」）
 if not REVIEW.exists():
-    fails.append('F6 缺 docs/review/REVIEW.md——「欠着」编号无法校验，按 FAIL 处理（不做假绿）')
+    fails.append('F6 缺 .agents/records/REVIEW.md——「欠着」编号无法校验，按 FAIL 处理（不做假绿）')
 review_text = REVIEW.read_text(encoding='utf-8') if REVIEW.exists() else ''
 
 for ln, cells in rows:
@@ -124,7 +131,7 @@ for ln, cells in rows:
                 fails.append(f'F6 {INDEX.name}:{ln} `{fid}` 欠着编号 `{i}` 在 REVIEW.md 里查无此条')
 
 # F2 链接可达（索引层全部 markdown 链接；**先剥 #锚点**——锚点链接是规格允许的）
-for f in [INDEX] + [p for p in sorted(FEAT.rglob('*.md')) if p.name != '_index.md']:
+for f in [INDEX] + [p for p in sorted(FEAT.rglob('*.md')) if p.name not in ('_index.md', '_directory.md')]:
     body = f.read_text(encoding='utf-8')
     for m in re.finditer(r'\]\(([^)\s]+)\)', body):
         t = m.group(1).strip()
@@ -140,7 +147,7 @@ for f in [INDEX] + [p for p in sorted(FEAT.rglob('*.md')) if p.name != '_index.m
 rfc_skipped = 0
 if RFC.exists():
     for p in sorted(RFC.glob('*.md')):
-        if p.name == '_index.md':
+        if p.name in ('_index.md', '_directory.md'):   # 目录契约也是元文件，不是 RFC
             continue
         body = p.read_text(encoding='utf-8')
         # frontmatter 按「第二个 ---」解析（原实现用 [:900] 窗口，description 一长就漏 —— 对抗审查 B2）
@@ -160,7 +167,7 @@ if RFC.exists():
             fails.append(f'F5 {where}: status `{val}` 不在枚举 {sorted(RFC_STATUS_OK)}')
 
 # ── F7 / F8 / F9 / F10 意图卡 ─────────────────────────────────
-card_files = [p for p in sorted(FEAT.rglob('*.md')) if p.name != '_index.md']
+card_files = [p for p in sorted(FEAT.rglob('*.md')) if p.name not in ('_index.md', '_directory.md')]
 card_count = 0
 for p in card_files:
     # F9 登记判定：索引里必须以链接形式出现该文件名（原实现用子串包含 —— 对抗审查 C6）

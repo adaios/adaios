@@ -17,7 +17,7 @@ tags: [meta, directory]
 
 ## 职责边界
 - **放**：规范 / 边界 / 决策记录 / 已知坑；每条都带 frontmatter 与图谱边
-- **不放**：一次性讨论 → `docs/inbox/`；流程定义 → `process/`；工具脚本 → `guards/`
+- **不放**：一次性讨论 → `../../docs/ideas/`；流程定义 → `../process/`；工具脚本 → `../guards/`
 
 ## 依赖关系
 

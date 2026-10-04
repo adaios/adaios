@@ -1,9 +1,9 @@
 ---
 title: .agents/ 目录契约
-description: AI 上下文工程容器的职责边界 · 依赖 · 触发 · 约束 · 守卫 · 维护——工具中立、真相源进 git、出口不入库
-version: 1
+description: 规则与机制层的职责边界 · 依赖 · 触发 · 约束 · 守卫 · 维护——判据＝按性质（回答「怎么做」的进本层）；工具中立、真相源进 git、出口不入库
+version: 2
 created: 2026-10-03
-updated: 2026-10-03
+updated: 2026-10-04
 status: active
 lines: 30
 depends-on: []
@@ -13,11 +13,15 @@ tags: [meta, directory, ai]
 
 # .agents/ 目录契约
 
-**职责**：AdaiOS 的 **AI 上下文工程容器**（工具中立）——所有 AI 协作资产的家：机制（守卫/脚本/契约）、内容（规范/决策/坑）、角色的真相源，以及协作状态。
+**职责**：AdaiOS 的 **AI 运行时容器**（工具中立）——凡 **AI 干活时会读 / 会写**的资产都归这里。
+
+**判据（2026-10-04 二批定格）**：**这份文档 AI 在干活时会读 / 写它吗？**
+- **会 → 本容器**：**① 方向**（`direction/`）· **② 事实**（`reference/` `features/`）· **① 决策**（`rfc/` `assets/adr/`）· **③ 规则**（`assets/` `guides/` `deployment/` `process/` `workflow/` `roles/` `skills/` `checklists/` `method/`）· **④ 活账本**（`records/`）· **⑤ 机制**（`guards/` `scripts/` `lib/` `tests/`）· 协作状态（`state/` `workspace/`）
+- **不会 → `../docs/`**（档案馆：史 / 存档 / 对外 / 研究）
 
 ## 职责边界
-- **放**：AI 协作相关的一切真相源——技能 / 审查官 / 守卫 / 脚本 / 规范 / 决策 / 坑 / 流程 / 契约 / 状态
-- **不放**：代码本体（`services/` `apps/` `os/`）；人也常读的产品文档（`docs/`）；工具私有（`.idea/` `.obsidian/`）
+- **放**：一切**规则类**真相源——规范 / 边界 / 决策 / 坑 / 流程 / **工程规则（`guides/`）** / **运维规则（`deployment/`）** / 技能 / 审查官 / 守卫 / 脚本 / 契约 / 状态
+- **不放**：代码本体（`services/` `apps/` `os/`）；**① 方向 / ② 事实 / ④ 记录 / 对外材料**（→ `../docs/`）；工具私有（`.idea/` `.obsidian/`）
 
 ## 依赖关系
 
@@ -58,5 +62,5 @@ tags: [meta, directory, ai]
 4. **改动结构（层级）** → 全仓库搜 `$(dirname "$0")/..` 与旧路径（pitfalls 二十三四条）
 
 ## 边界
-- vs `../docs/`：**这里放 AI 协作机制与内容**；`docs/` 放**人也常读**的产品文档（VISION / 路线图 / 功能手册 / 指南）
+- vs `../docs/`：**本容器放「AI 运行时需要的一切」**；`docs/` 是**档案馆**（AI 运行不需要的：史 / 存档 / 对外 / 研究）。完整判定表见 `../docs/README.md`——**判据演进：按读者（旧）→ 按性质（一批）→ AI 运行时是否需要（二批，定格）**
 - vs `../services/` `../apps/` `../os/`：那是**代码本体**，本容器只放"关于它们的事实与约束"

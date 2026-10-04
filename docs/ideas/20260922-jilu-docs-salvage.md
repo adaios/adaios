@@ -3,14 +3,13 @@ title: 积录文档库拾遗：代码之外的那一半
 description: 2026-09-22 对老项目「积录」设计文档库（adai-docs/docs/projects，77 个 md / 3100 行）的只读拾遗——代码考古（姊妹篇 postmortem）看不到的设计意图、未实现清单、产品立场、工程规范与同源明文凭据风险。想知道「积录当年想做什么却没做」时读
 version: 1
 created: 2026-09-22
-updated: 2026-09-22
+updated: 2026-10-04
 status: active
-lines: 127
+lines: 126
 depends-on: []
 related:
   - _index.md
   - 20260922-adai-contentflow-postmortem.md
-  - ../VISION.md
 tags: [legacy, salvage, docs, kernel, learn]
 ---
 

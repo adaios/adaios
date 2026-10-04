@@ -7,11 +7,11 @@ updated: 2026-10-04
 status: active
 lines: 186
 depends-on:
-  - ./skills-spec.md
+  - skills-spec.md
 related:
-  - ./ai-context-layer-spec.md
+  - ai-context-layer-spec.md
   - ../roles/_directory.md
-  - ../../docs/architecture/ai-context-engineering.md
+  - ai-context-engineering.md
 tags: [ai, spec, naming]
 ---
 
@@ -180,7 +180,7 @@ tags: [ai, spec, naming]
 4. **`guards/` 改名**（11 个 + `pre-commit` 的调用 + 所有流程文档引用）
 5. **`scripts/` 改名**（逐个判断 + launchd plist 重装）
 6. **每步验证**：`ai-guard-meta` / `ai-guard-structure` / `ai-guard-skills` / `ai-guard-tools` 全绿 + **反例可用**
-7. **收尾**：`docs/architecture/ai-context-engineering.md` 等文档同步；`AGENTS.md` 审查体系表更新
+7. **收尾**：`.agents/assets/ai-context-engineering.md` 等文档同步；`AGENTS.md` 审查体系表更新
 
 > **纪律**：**一步一提交、一步一验证**；每步都跑 `ai-guard-structure.sh --fix` 刷清单。
 > **风险控制**：改名是纯机械替换 + `git mv`，**由守卫兜底**（断链 / 孤儿 / 清单不一致都会被拦）。

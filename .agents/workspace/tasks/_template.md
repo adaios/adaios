@@ -28,7 +28,7 @@ tags: [task, branch, template]
 ## 待归档（合并时搬进全局账本）
 | 内容 | 归档到 |
 |:--|:--|
-| （本轮做了什么）| `docs/reference/change-log.md` |
-| （新发现的问题）| `docs/review/REVIEW.md` |
+| （本轮做了什么）| `.agents/records/change-log.md` |
+| （新发现的问题）| `.agents/records/REVIEW.md` |
 | （新增的文件）| 各目录 `_index.md`（跑 `bash .agents/guards/ai-guard-structure.sh --fix`）|
 | （新坑 / 新决策）| `.agents/assets/pitfalls.md` / `.agents/assets/adr/` |

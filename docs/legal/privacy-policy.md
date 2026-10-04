@@ -3,12 +3,12 @@ title: 隐私政策（阿呆阿呆 / AdaiOS）
 description: 阿呆阿呆 iOS App 与 adaiadai.com 的隐私政策正文——收集什么、怎么用、交给哪些第三方、你的权利；TestFlight 外测与 App Store 上架提交材料
 version: 2
 created: 2026-09-17
-updated: 2026-09-21
+updated: 2026-10-04
 status: active
-lines: 92
+lines: 98
 depends-on: []
 related:
-  - ../deployment/testflight-external-testing.md
+  - ../../.agents/deployment/testflight-external-testing.md
 tags: [legal, privacy, ios]
 ---
 

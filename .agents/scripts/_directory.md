@@ -24,7 +24,7 @@ tags: [meta, directory]
 | 方向 | 对象 | 说明 |
 |:--|:--|:--|
 | 依赖 | `../lib/` | 共用库 |
-| 被依赖 | `../../docs/guides/development.md` | 换机必跑清单 |
+| 被依赖 | `../../.agents/guides/development.md` | 换机必跑清单 |
 | 被依赖 | `ai-setup-launchd.sh` → LaunchAgent | 定时任务指向这里 |
 
 ## 触发关系
@@ -47,4 +47,4 @@ tags: [meta, directory]
 
 ## 维护动作
 
-1. 新增脚本 → 补 `_index.md` → 若是换机必需，补 `docs/guides/development.md`
+1. 新增脚本 → 补 `_index.md` → 若是换机必需，补 `.agents/guides/development.md`

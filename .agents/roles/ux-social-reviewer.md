@@ -13,7 +13,7 @@ depends-on:
 related:
   - ../roles/ux-stranger-reviewer.md
   - ../roles/ux-support-reviewer.md
-  - ../../docs/architecture/product-roadmap.md
+  - ../direction/product-roadmap.md
 tags: [review, external, skill]
 ---
 

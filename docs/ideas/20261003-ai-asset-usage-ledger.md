@@ -3,13 +3,11 @@ title: AI 资产台账与加载路径体检——使用/陈旧/断链三维度
 description: 用户 2026-10-03 想法（电脑管家提醒「几个 app 多少天没使用」→ AI 上下文资产也该有总览：使用次数、多久没读写，用于防断链与优化）的分析留档——含只读抽样实测（近 5 天 34 会话 / 3213 次工具调用）、三档判据强弱对比、以及「真病灶是幽灵资产而非冷资产」的结论。想知道「AI 资产该不该按使用率治理」时读
 version: 1
 created: 2026-10-03
-updated: 2026-10-03
+updated: 2026-10-04
 status: draft
-lines: 95
+lines: 93
 depends-on: []
 related:
-  - ../rfc/20261003-project-level-ai-context-layer.md
-  - ../../.agents/assets/ai-context-layer-spec.md
   - ../../.agents/guards/ai-guard-meta.sh
   - ../../.agents/guards/ai-guard-tools.sh
   - ../../.agents/guards/ai-guard-cost.sh
@@ -19,7 +17,7 @@ tags: [ideas, ai-engineering, 资产治理, 使用统计, 幽灵资产]
 # AI 资产台账与加载路径体检
 
 > **性质**：想法登记（未立项、未实施）。2026-10-03 用户拍板「**先不动，结论留档**」——本轮只做只读实测与分析，**未改任何代码、未实施任何监控**（AGENTS.md 规则 7）。
-> **维护方式**：结论主载于此；日后重拾时按 §六 的触发条件复核，若立项则升级为 `docs/rfc/`。
+> **维护方式**：结论主载于此；日后重拾时按 §六 的触发条件复核，若立项则升级为 `.agents/rfc/`。
 > **一句话**：方向对（体系确实缺「运行时」这一层），但**真病灶不是「多少天没被读的冷资产」，而是「静态全绿、运行时从不加载的幽灵资产」**。
 
 ## 一、来源
@@ -39,7 +37,7 @@ tags: [ideas, ai-engineering, 资产治理, 使用统计, 幽灵资产]
 | **出口断链** | `code-api-writer.md` / `code-domain-writer.md` / `ship.md` 为扁平布局，`.dsh/skills` 与 `.agents/skills` **只有 data-learn-writer** | 工具**根本看不见**这三个，等于不存在（ai-guard-tools T4 只验了「软链是否指回本体系」，未验「应有的技能是否都有出口」） |
 | **冷资产占比** | `ai-engineering/**` 63 个 md，**47 个（75%）从未被读**；仓库 `.md` 957 个，近 5 天读过 47 个（5%） | 需分类解读，见 §三 |
 | **陈旧度暂无分辨力** | git 最后写入：≤7 天 18 个 · 8-30 天 14 个 · 31-60 天 32 个 · **>60 天 0 个**，最久 49 天 | 项目本身才 49 天——此维度现在做出来只会全绿 |
-| **成本不是理由（实测修正）** | 读取**已高度分页**（多为 `limit=1~20` 行小窗口）；即使全量读 `docs/reference/status.md` 一次仅 53.5k tokens ≈ **0.08 元** | 别为省钱做这件事（动机错位）；真正的成本大头是长会话的缓存命中输入，见 `.agents/checklists/ai-cost-checklist.md` |
+| **成本不是理由（实测修正）** | 读取**已高度分页**（多为 `limit=1~20` 行小窗口）；即使全量读 `.agents/reference/status.md` 一次仅 53.5k tokens ≈ **0.08 元** | 别为省钱做这件事（动机错位）；真正的成本大头是长会话的缓存命中输入，见 `.agents/checklists/ai-cost-checklist.md` |
 
 ## 三、关键判断
 
@@ -61,7 +59,7 @@ tags: [ideas, ai-engineering, 资产治理, 使用统计, 幽灵资产]
 
 ### 3.4 反直觉的一笔：热而肥
 
-`docs/review/REVIEW.md`（610 行 / 433,651 字节）、`docs/reference/status.md`（70 行 / 187,076 字节，**单行 2.7KB**）、`docs/reference/change-log.md`（354 行 / 545,939 字节）是「单行即一条完整记录」的巨行表格。因分页粒度是「行」，`limit=1` 也可能几千字节——这与使用率无关，但按记录拆文件能同时省上下文，值得单独议（**未议**）。
+`.agents/records/REVIEW.md`（610 行 / 433,651 字节）、`.agents/reference/status.md`（70 行 / 187,076 字节，**单行 2.7KB**）、`.agents/records/change-log.md`（354 行 / 545,939 字节）是「单行即一条完整记录」的巨行表格。因分页粒度是「行」，`limit=1` 也可能几千字节——这与使用率无关，但按记录拆文件能同时省上下文，值得单独议（**未议**）。
 
 ## 四、候选形态（未采纳，记录备查）
 

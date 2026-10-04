@@ -3,9 +3,9 @@ title: scripts/ 目录索引
 description: scripts/ 的文件清单与过期判断；目录的职责边界与依赖契约见 ./_directory.md
 version: 1
 created: 2026-10-03
-updated: 2026-10-03
+updated: 2026-10-04
 status: active
-lines: 46
+lines: 47
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index]
@@ -15,7 +15,7 @@ tags: [meta, index]
 
 > 本文件只列**有什么**；**规则与依赖**见 [`_directory.md`](./_directory.md)。
 
-## 文件清单（19 项）
+## 文件清单（20 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -33,6 +33,7 @@ tags: [meta, index]
 | `data-sync-stock-names.py` | -*- coding: utf-8 -*- | active |
 | `data-sync-tdx.sh` | ========================================================… | active |
 | `data-verify-tdx.py` | -*- coding: utf-8 -*- | active |
+| `serve_static.py` | 生产静态文件服务器（正确 MIME + 多线程 + gzip + 分级缓存；修复 Flutter Web 生产白屏）——**2026-10-04 自 `docs/deployment` 归位** | active |
 | `task-cadence.sh` | 协作默契执行器（task-cadence）— 2026-09-26 用户「我们需要某种默契」落地 | active |
 | `task-check-deadlines.py` | -*- coding: utf-8 -*- | active |
 | `task-noon.d/.gitkeep` | — | active |

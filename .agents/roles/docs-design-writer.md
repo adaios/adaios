@@ -19,7 +19,7 @@ tags: [ai, role, design]
 
 ## 触发条件
 
-- **何时被派出**：`workspace/requirements/<需求id>.md` **已由人拍板定稿**，主链进入**设计阶段**（见 `docs/architecture/ai-context-engineering.md` §4.6）。
+- **何时被派出**：`workspace/requirements/<需求id>.md` **已由人拍板定稿**，主链进入**设计阶段**（见 `.agents/assets/ai-context-engineering.md` §4.6）。
 - **每轮一次**：**v1** 只读需求定稿；**vN（N≥2）** 读需求定稿 + **上一轮** `review-v<N-1>-<YYYYMMDD>.md`。
 - **不归你触发**：需求未定稿**不启动**——需求定稿是人的介入点 ①，AI 不得自行宣布。
 - **对打关系**：你与**设计文档审核者**是**两个独立 subagent**，各自独立工作、不共享上下文；多轮交叉直至审核报「无 P0/P1」。
@@ -56,5 +56,5 @@ tags: [ai, role, design]
 - `../workspace/designs/_template-design.md` —— 模板 A（本角色的产出形态）
 - `../workspace/designs/_directory.md` —— 目录契约：轮次命名 / 收敛判据 / 一需求一目录
 - `../workspace/designs/_template-review.md` —— 对家的产出形态（知道会被怎么挑）
-- `docs/architecture/ai-context-engineering.md` §4.6 —— 主链全图与两条判据
+- `.agents/assets/ai-context-engineering.md` §4.6 —— 主链全图与两条判据
 - `./ai-context-reviewer.md` —— 同类五段结构参考

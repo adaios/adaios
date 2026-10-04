@@ -28,16 +28,25 @@ DOCS = ROOT / 'docs'
 AI = ROOT / '.agents'
 
 # 强制范围（frontmatter-spec §四）：AGENTS.md + docs/_index.md + 各目录 _index.md + .agents/**
+# 2026-10-04 二批（判据＝「AI 上下文运行时是否需要」）：AI 运行需要的文档**全部收进 .agents/**，
+# docs/ 自此为**档案馆**（史 / 存档 / 对外 / 未定型）——本清单据此重组。
 files = [ROOT/'AGENTS.md', DOCS/'_index.md', AI/'_index.md', AI/'README.md', AI/'frontmatter-spec.md']
-files += sorted(DOCS.glob('*/_index.md'))        # 各子目录索引（目录治理）
-# 2026-10-01 补：guides 正文此前**不在覆盖内**（只查了 docs/guides/_index.md）——后果是
-# 「ai-guard-meta PASS」对正文是假绿：qoder 手册声明 lines:550 而实际早已 553，长期无人发现。
-# 范围刻意只放到 guides（那是一份份独立正文）；docs/ 其余区仍是渐进档，要扩需先跑一轮全量 --fix。
-files += sorted((DOCS/'guides').glob('*.md'))
-# 技能包两种布局都覆盖：扁平 <name>.md（旧）与官方目录 <name>/SKILL.md（RFC 20261003 批 1 起）。
-# 只收 SKILL.md，**不收**技能目录内的 references/*.md —— 那些不是技能包、无 10 字段契约，会被 REQUIRED 误判。
+files += sorted(DOCS.glob('*/_index.md'))        # docs 各子目录索引（目录治理）
+# ── .agents/ 新增五区（2026-10-04 二批）──
+files += sorted((AI/'direction').glob('*.md'))   # ① 方向（VISION / roadmap）
+files += sorted((AI/'reference').glob('*.md'))   # ② 事实（架构设计 / 手册 / 状态）
+files += sorted((AI/'features').rglob('*.md'))   # ② 事实（功能主轴 + 意图卡，含子目录）
+files += sorted((AI/'rfc').glob('*.md'))         # ① 决策记录（67 份）
+# 账本三份是 append-only 历史（正文含"当时"的路径），**按文件豁免**——
+# 否则历史记录会被要求"指向现在"，那是失真而非修正。
+files += [f for f in sorted((AI/'records').glob('*.md'))
+          if f.name not in ('change-log.md', 'task-log.md', 'REVIEW.md')]
+# 技能包两种布局都覆盖：扁平 <name>.md（旧）与官方目录 <name>/SKILL.md。
+# 只收 SKILL.md，**不收**技能目录内的 references/*.md（无 10 字段契约，会被 REQUIRED 误判）。
+files += sorted((AI/'guides').glob('*.md'))
+files += sorted((AI/'deployment').glob('*.md'))
 files += sorted((AI/'roles').glob('*.md')) + sorted((AI/'roles').glob('*/SKILL.md'))
-files += sorted((AI/'skills').glob('*.md')) + sorted((AI/'skills').glob('*/SKILL.md'))  # 建设/流程技能包
+files += sorted((AI/'skills').glob('*.md')) + sorted((AI/'skills').glob('*/SKILL.md'))
 files += sorted((AI/'process').glob('*.md'))
 files += sorted((AI/'checklists').glob('*.md'))
 files += sorted((AI/'assets').glob('*.md'))      # 资产层
@@ -45,17 +54,18 @@ files += sorted((AI/'assets/adr').glob('*.md'))  # ADR
 files += sorted((AI/'assets/projects').glob('*.md'))  # 项目资产卡
 files += sorted((AI/'workflow').glob('*.md'))    # 工作流层
 files += sorted((AI/'state').glob('*.md'))       # 状态层
-files += sorted((DOCS/'review/audits').glob('*.md'))  # 走查存档（带 frontmatter）
-files += sorted((DOCS/'rfc').glob('*.md'))            # RFC（带 frontmatter）
-# 2026-10-01 补（对抗审查 B4）：功能主轴与守卫反例测试区此前不在覆盖内——
-# 「ai-guard-meta PASS」因此是覆盖盲区造成的假绿（kernel.md 的 lines 漂移无人管）
-files += sorted((DOCS/'features').rglob('*.md'))      # 功能索引 + 意图卡（含子目录）
-files += sorted((AI/'tests').glob('*.md'))            # 守卫反例回归区索引
-files += sorted((AI/'guards').glob('*.md'))           # 守卫 + 目录两件套
-files += sorted((AI/'lib').glob('*.md'))              # 库 + 两件套
-files += sorted((AI/'method').glob('*.md'))           # 元方法层
-files += sorted((AI/'scripts').glob('*.md'))          # 环境脚本 + 两件套
-files += sorted((AI/'workspace').rglob('*.md'))      # 任务账本（L1，可二级）
+files += sorted((AI/'tests').glob('*.md'))       # 守卫反例回归区索引
+files += sorted((AI/'guards').glob('*.md'))      # 守卫 + 目录两件套
+files += sorted((AI/'lib').glob('*.md'))         # 库 + 两件套
+files += sorted((AI/'method').glob('*.md'))      # 元方法层
+files += sorted((AI/'scripts').glob('*.md'))     # 环境脚本 + 两件套
+files += sorted((AI/'workspace').rglob('*.md'))  # 任务账本（L1，可二级）
+# ── docs/ 档案馆：**活文档**（研究 / 想法 / 法务）纳入；**历史存档豁免** ──
+# 豁免：records/audits 27 份走查存档 · records 的 4 份存档（issue-log / testflight / app-polish / release-*）
+#       · archive/ 正文——它们是"当时的事实"，不适用"引用必须指向现在"。
+files += sorted((DOCS/'research').glob('*.md'))
+files += sorted((DOCS/'ideas').glob('*.md'))
+files += sorted((DOCS/'legal').glob('*.md'))
 files = [f for f in files if f.exists()]
 files = list(dict.fromkeys(files))   # 去重：同一文件会被多个 glob 命中（如 docs/*/_index.md 与各区专属 glob）
                                      # —— list 累加会让「N files」虚高（2026-10-03 实测虚高 3）；判据本身等价（同一文件查两遍）
@@ -83,12 +93,14 @@ REQUIRED = ['title','description','version','created','updated','status','lines'
 fails = []
 
 def is_entry(f):
-    return f.name == '_index.md' or f == ROOT/'AGENTS.md'
+    # _directory.md 与 _index.md 是配对的既定入口：structure 的 actual_items 明确排除它，
+    # 故此处必须同样豁免，否则同一文件会被 S2（不该列）与 M3（不列即孤儿）**互相矛盾地要求**。
+    return f.name in ('_index.md', '_directory.md') or f == ROOT/'AGENTS.md'
 
 def is_light(f):
     # 轻量档：RFC 用自有 frontmatter（title/date/status/decided-by），audits 为历史存档
     r = str(f.relative_to(ROOT))
-    return r.startswith('docs/rfc/') or r.startswith('docs/review/audits/')
+    return r.startswith('.agents/rfc/') or r.startswith('.agents/records/') or r.startswith('docs/records/')
 
 # M1 + M2 per file（轻量档只查 有 frontmatter + lines 准确 + 边可解析）
 for f in files:
@@ -183,7 +195,7 @@ for f in files:
 
 # M4 正文路径引用扫描：强制区文档正文中的仓库内路径（`docs/...`、`ai-engineering/...`、`bash <script>`）
 # 断言目标存在——堵 M1 盲区（frontmatter 边之外，正文路径引用断链）
-M4_SKIP = ('docs/rfc/', 'docs/review/audits/')  # 历史记录/存档不查正文
+M4_SKIP = ('.agents/rfc/', '.agents/records/', 'docs/records/')  # 决策记录与存档含"当时"的路径，不查正文
 for f in files:
     rel = str(f.relative_to(ROOT))
     if rel.startswith(M4_SKIP): continue

@@ -8,7 +8,7 @@
 #        但条目状态（待做/顺延/已实现）零对拍检测，S-5 已实锤漂移
 #        （选号已实现仍标 v1.0.1 顺延；双主页/launcher/搜索形态无条目）。
 #        本命令做：新鲜度 + 版本状态 + 已知漂移点检查。
-#        真相源:docs/architecture/product-roadmap.md + status.md（实现证据）。
+#        真相源:.agents/direction/product-roadmap.md + status.md（实现证据）。
 # ─────────────────────────────────────────────────────────────
 set -u
 
@@ -19,9 +19,9 @@ python3 - "$ROOT" <<'PYEOF'
 import re, sys, pathlib, datetime
 
 ROOT = pathlib.Path(sys.argv[1])
-ROADMAP = ROOT / 'docs/architecture/product-roadmap.md'
-STATUS = ROOT / 'docs/reference/status.md'
-TASKLOG = ROOT / 'docs/reference/task-log.md'
+ROADMAP = ROOT / '.agents/direction/product-roadmap.md'
+STATUS = ROOT / '.agents/reference/status.md'
+TASKLOG = ROOT / '.agents/records/task-log.md'
 
 today = datetime.date.today()
 out = []

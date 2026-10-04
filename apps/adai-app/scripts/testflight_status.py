@@ -103,7 +103,7 @@ def show(data):
         expired = a.get("expired")
         # 2026-09-29：processingState=VALID ≠ 可用。Apple 会把构建整体作废（expired=true），
         # 此时 TestFlight 里**仍能看到**该构建、却点更新下不动——只看 processingState 会误报
-        # 「✅ 可测试」把人骗过去（实测教训：REVIEW P1-发布1 / docs/deployment/testflight-beta-contract-missing.md）。
+        # 「✅ 可测试」把人骗过去（实测教训：REVIEW P1-发布1 / docs/records/testflight-beta-contract-missing.md）。
         human = "❌ 已被 Apple 作废（不可安装）" if expired is True else STATE_HUMAN.get(state, state)
         print(f"  · 版本 {a.get('version')}  {state} —— {human}")
         print(f"      上传 {a.get('uploadedDate')}  过期 {str(a.get('expirationDate'))[:10]}"

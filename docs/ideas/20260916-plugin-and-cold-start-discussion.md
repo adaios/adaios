@@ -3,22 +3,20 @@ title: 插件、冷启动与知识传递——会话讨论沉淀
 description: 2026-09-16/17 会话讨论沉淀——插件盘点（3+1）、普通用户适配判断、记忆出口、AI「记忆主权」风口、新用户依赖机制（托付）、知识传递的表征适配；未定型，可能孵化成 RFC
 version: 1
 created: 2026-09-16
-updated: 2026-09-16
+updated: 2026-10-04
 status: draft
-lines: 305
+lines: 303
 depends-on: []
 related:
-  - ../review/audits/2026-09-17-wiring-audit.md
-  - ../architecture/framework-plus-plugin-model.md
-  - ../rfc/20260916-first-meeting.md
+  - ../records/audits/2026-09-17-wiring-audit.md
 tags: [ideas, plugin, cold-start, learn, memory]
 ---
 
 # 插件、冷启动与知识传递——会话讨论沉淀
 
 > **性质**：会话讨论记录（未定型）。**本轮只讨论、未改任何代码**（遵守 AGENTS.md 规则 7「讨论与实施分离」）。
-> **维护方式**：§一~§十 始终承载**最新结论**；后续同类讨论**追加到文末**新起「讨论轮次 N」小节（不改写上文）。**本文已 305 行（超 300 阈值）**——新讨论另起 `-part2` 续篇，避免单文档膨胀；结论定型后升级为 `docs/rfc/`。
-> **姊妹文档**：`../review/audits/2026-09-17-wiring-audit.md`（接线盘点——本次讨论中验证出的代码级断点，独立成篇）。
+> **维护方式**：§一~§十 始终承载**最新结论**；后续同类讨论**追加到文末**新起「讨论轮次 N」小节（不改写上文）。**本文已 305 行（超 300 阈值）**——新讨论另起 `-part2` 续篇，避免单文档膨胀；结论定型后升级为 `.agents/rfc/`。
+> **姊妹文档**：`../records/audits/2026-09-17-wiring-audit.md`（接线盘点——本次讨论中验证出的代码级断点，独立成篇）。
 
 ---
 
@@ -302,4 +300,4 @@ ContextPackage ctx = ContextPackage.simple("learn", null, "学习消化", userPr
 >
 > 因此**最大的杠杆可能不在「下一个插件」，而在把已有的两端接起来**——而接线恰好是「基于对你的了解」能成立的唯一前提。
 
-代码级证据与完整断点清单：见姊妹文档 `../review/audits/2026-09-17-wiring-audit.md`。
+代码级证据与完整断点清单：见姊妹文档 `../records/audits/2026-09-17-wiring-audit.md`。

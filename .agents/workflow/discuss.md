@@ -9,7 +9,7 @@ lines: 50
 depends-on: []
 related:
   - design.md
-  - ../../docs/ideas/README.md
+  - ../../docs/ideas/_index.md
 tags: [ai, workflow, discuss]
 ---
 

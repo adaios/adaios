@@ -7,9 +7,9 @@
 #        bash .agents/guards/ai-guard-unfixed.sh --drift     # 只看游离+矛盾（不展示已归口明细）
 #
 # 聚合来源（REVIEW.md 是唯一真相源，其余为补充与对账）:
-#   ① docs/review/REVIEW.md        战略 + P0/P1/P2 未修复（表内状态列非已修的）
-#   ② docs/reference/task-log.md   待办迁移区（P3/观察项/可排期）
-#   ③ docs/review/audits/*.md      每期审查报告中的「未修」行——未归口 REVIEW 的标记为游离
+#   ① .agents/records/REVIEW.md        战略 + P0/P1/P2 未修复（表内状态列非已修的）
+#   ② .agents/records/task-log.md   待办迁移区（P3/观察项/可排期）
+#   ③ docs/records/audits/*.md      每期审查报告中的「未修」行——未归口 REVIEW 的标记为游离
 #   ④ 状态对账:已修复区声称出表、但 REVIEW 表状态未标 ✅ 的编号（下批 review 回填）
 #
 # 背景:2026-08-23 用户盘点发现未修项散在 REVIEW/audits/task-log 多处
@@ -35,9 +35,9 @@ ROOT = pathlib.Path(sys.argv[1])
 TOPIC = sys.argv[2]
 DRIFT_ONLY = len(sys.argv) > 3 and sys.argv[3] == '1'
 
-REVIEW = ROOT / 'docs/review/REVIEW.md'
-TASKLOG = ROOT / 'docs/reference/task-log.md'
-AUDITS_DIR = ROOT / 'docs/review/audits'
+REVIEW = ROOT / '.agents/records/REVIEW.md'
+TASKLOG = ROOT / '.agents/records/task-log.md'
+AUDITS_DIR = ROOT / 'docs/records/audits'
 
 def topic_ok(*texts):
     if not TOPIC:

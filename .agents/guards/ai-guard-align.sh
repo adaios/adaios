@@ -24,7 +24,7 @@ warns = []
 
 # ── A1 端点对齐：源码 @Mapping ↔ api-spec 标题 ──
 interfaces = ROOT / 'services/adai-core/src/main/java/com/adaiadai/core/interfaces'
-spec = (ROOT / 'docs/architecture/api-spec.md').read_text(encoding='utf-8')
+spec = (ROOT / '.agents/reference/api-spec.md').read_text(encoding='utf-8')
 
 endpoints = []  # (method, full_path)
 for ctrl in sorted(interfaces.glob('*Controller.java')):
@@ -60,7 +60,7 @@ else:
     print(f'A1 端点对齐 PASS（{len(endpoints)} 个端点全部在 api-spec.md）')
 
 # ── A2 测试数对齐：实测 @Test ↔ status.md ──
-status_text = (ROOT / 'docs/reference/status.md').read_text(encoding='utf-8')
+status_text = (ROOT / '.agents/reference/status.md').read_text(encoding='utf-8')
 
 def count_tests(glob_pattern, is_dart=False):
     n = 0

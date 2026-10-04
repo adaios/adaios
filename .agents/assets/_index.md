@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-04
 status: active
-lines: 43
+lines: 58
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index]
@@ -15,7 +15,7 @@ tags: [meta, index]
 
 > 本文件只列**有什么**；**规则与依赖**见 [`_directory.md`](./_directory.md)。
 
-## 文件清单（16 项）
+## 文件清单（18 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -25,6 +25,8 @@ tags: [meta, index]
 | `adr/ADR-004.md` | 决策：推送 per-user 开关（写读双侧门控）+ 交易日志归集三步流水线（识别→候选→审核落库，仅插件用户）… | accepted |
 | `adr/ADR-005.md` | 决策：全库 CLAUDE.md→AGENTS.md 迁移（工具无关统一入口）+ 建设/收尾/审查技能封装为 SK… | accepted |
 | `adr/ADR-006.md` | 决策：所有用户可见能力分三层——core（记录/问答/记忆/上下文/身份/存储，不可关）/ builtin（待办… | accepted |
+| `ai-calling-governance.md` | AI 调用治理方案（模型路由 / 流式 / 超时矩阵 / 上下文瘦身）——13 处 LLM + 3 处视觉调用按体验敏感度分档，四维治理 + 降级矩阵 | draft |
+| `ai-context-engineering.md` | ★ **AI 上下文工程体系总览**——分层模型（L0 入口 / L1 任务 / L2 约束 / L3 事实 + 横跨工具层）· 目录与文件全量定位 · 六张流程图 · 触发词工作流 · 个人与团队两种配置 · 防腐机制 · 落地缺口 · 审核驱动主链（**2026-10-04 自 `.agents/reference/` 转入**） | active |
 | `ai-context-layer-spec.md` | AdaiOS 项目级 AI 上下文的中间层规范——定义 AI 资产**放在哪**（真相源）、**怎么被各工具发现… | active |
 | `boundaries.md` | AdaiOS「不做什么」的集中声明——原则级（不可违反）与功能级（当前不做）；任何新功能先查边界再定方案 | active |
 | `conventions.md` | 代码/文档/协作三组规范集中声明——从原根 CLAUDE.md（2026-08-19 删除）与 AI 工程层归集… | active |
@@ -35,6 +37,19 @@ tags: [meta, index]
 | `projects/adai-core.md` | adai-core 项目资产卡——分层/模块/端点分布/鉴权边界；改 core 前先读本卡 | active |
 | `projects/adai-web.md` | adai-web 项目资产卡——模块划分/职责边界/与 app 的关系；改 web 前先读本卡 | active |
 | `skills-spec.md` | AdaiOS 版 SKILL.md 技能包标准——审查官与高频流程封装为跨工具技能包（name/descript… | active |
+
+## ADR 与 RFC 的分工（2026-10-04 目录归纳批）
+
+本目录的 `adr/`（6 份）与 [`../../.agents/rfc/`](../../.agents/rfc/_index.md)（70 份）**分家不动**：
+
+| | **ADR**（本目录） | **RFC**（`.agents/rfc/`） |
+|:--|:--|:--|
+| 回答 | **为什么这么定**（架构决策） | **要不要做 / 怎么做**（方案决策） |
+| 体量 | 少而长期 | 多而随产品演进 |
+| 变更 | **append-only** + `supersededBy` 链 | 状态推进（draft → approved → superseded） |
+| 判据 | **结论** | **过程**（含未采纳的备选与理由） |
+
+> RFC 被接受后，若构成长期架构约束，**沉淀为一条 ADR**。
 
 ## 过期判断
 

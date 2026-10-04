@@ -61,7 +61,7 @@ if [ -n "${MAIN_ROOT}" ] && [ "${ROOT}" != "${MAIN_ROOT}" ]; then
       ;;
     daily|weekly|release)
       echo "⚠️  当前在 worktree（${ROOT}）——「${CMD}」是全局操作（读写主仓库的 state/），" >&2
-      echo "   结果与在主仓库跑一致；按约定这些只在主仓库跑（见 docs/guides/worktree-workflow.md §四）。" >&2
+      echo "   结果与在主仓库跑一致；按约定这些只在主仓库跑（见 .agents/guides/worktree-workflow.md §四）。" >&2
       ;;
   esac
 fi
@@ -333,7 +333,7 @@ cmd_check() {
     for pair in "结构门禁（frontmatter 图谱 / lines / 孤儿）:.agents/guards/ai-guard-meta.sh" \
                 "内容对齐（端点↔api-spec / 测试数↔status）:.agents/guards/ai-guard-align.sh" \
                 "工具接入（快照 / 技能 / 入口 / shell lint）:.agents/guards/ai-guard-tools.sh" \
-                "防复发 G1–G7:docs/review/guard.sh"; do
+                "防复发 G1–G7:.agents/guards/guard.sh"; do
         name="${pair%%:*}"; script="${pair#*:}"
         last="$(bash "$script" 2>&1 | tail -1)"
         case "$last" in
@@ -381,7 +381,7 @@ cmd_todo() {
         | grep -v '^$' | cut -c1-150 | head -16
     local insp; insp="$(cadence_get inspection.covered_through)"
     hr "节奏"
-    printf '  巡检游标 %s · 任务表 docs/reference/task-log.md · 产品蓝图 docs/architecture/product-roadmap.md\n' \
+    printf '  巡检游标 %s · 任务表 .agents/records/task-log.md · 产品蓝图 .agents/direction/product-roadmap.md\n' \
         "${insp:-未建立}"
 }
 

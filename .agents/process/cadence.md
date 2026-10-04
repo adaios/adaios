@@ -10,9 +10,9 @@ depends-on:
   - ../scripts/task-cadence.sh
   - ../guards/ai-guard-prod.sh
 related:
-  - ./ship.md
-  - ./review.md
-  - ../../docs/guides/routine.md
+  - ship.md
+  - review.md
+  - ../guides/routine.md
   - ../state/_index.md
 tags: [ai, process, task-cadence]
 ---
@@ -92,7 +92,7 @@ tags: [ai, process, task-cadence]
 
 | 本批 diff | 审查档位 | 结论去哪 |
 |:--|:--|:--|
-| 含**代码文件**（`*.java` / `*.dart` / `*.ts` / `*.py` / `*.sh` …）**且**触及**并发 / 数据 / 契约 / 用户可见行为** | **deep**：按改动目录派对应官 + **对抗官**（`process/review.md` §3），**只读、不改码** | `docs/review/REVIEW.md` 新增「独立审查」条目 + `docs/reference/change-log.md` 本批行内写审查说明 |
+| 含**代码文件**（`*.java` / `*.dart` / `*.ts` / `*.py` / `*.sh` …）**且**触及**并发 / 数据 / 契约 / 用户可见行为** | **deep**：按改动目录派对应官 + **对抗官**（`process/review.md` §3），**只读、不改码** | `.agents/records/REVIEW.md` 新增「独立审查」条目 + `.agents/records/change-log.md` 本批行内写审查说明 |
 | 纯文档 / 样式 / 配置 | **light**：`ai-guard-meta` + `ai-guard-align` + 守护快扫（`task-cadence.sh check`） | change-log 一句话即可 |
 | 任意本批 | **P0/P1 先修再提交**；当场修不动的如实登记 REVIEW（写给用户拍板） | REVIEW 未修区 |
 
@@ -115,7 +115,7 @@ task-cadence.sh          ← 调度 + 游标（唯一入口）
 └── state/cadence.json 游标（gitignore）
 ```
 
-- 用户侧人肉清单（盘后三份导出、每周盘账等）仍在 `docs/guides/routine.md`——**routine 管「人做什么」，本文件管「AI 什么时候自动做什么」**
+- 用户侧人肉清单（盘后三份导出、每周盘账等）仍在 `.agents/guides/routine.md`——**routine 管「人做什么」，本文件管「AI 什么时候自动做什么」**
 - 产品心跳 C0 在 `AGENTS.local.md` 快照里，巡检时由 `task-cadence.sh daily` 取最新
 
 ## 六、候选默契（2026-09-26 盘点：还有哪些「靠人记」值得收进来）

@@ -1,7 +1,20 @@
+---
+title: 记录↔任务模块关联（R2）
+description: ✅ 已实现（RFC 20260813）：domain=project 记录自动转任务（默认转 + AI actionable 挡 + #备忘/#想法 排除标签），带 sourceRecordId 溯源
+version: 1
+created: 2026-08-12
+updated: 2026-10-04
+status: active
+lines: 55
+depends-on: []
+related: []
+tags: [idea]
+---
+
 # 记录 ↔ 任务模块关联（想法，2026-08-12 登记）
 
 > 来源：阿呆 2026-08-12 补充想法——「adai用户提交的关于项目类型的记录是否可以和我的任务模块关联起来呢」。
-> 状态：想法登记（未立项）。成熟后升级 `docs/rfc/`。
+> 状态：想法登记（未立项）。成熟后升级 `.agents/rfc/`。
 
 ## 想法原话（转述）
 

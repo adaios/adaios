@@ -11,8 +11,8 @@ depends-on:
   - ../conventions.md
   - ../boundaries.md
 related:
-  - ../projects/adai-web.md
-  - ../projects/adai-admin.md
+  - adai-web.md
+  - adai-admin.md
   - ../../../apps/adai-app/DESIGN.md
 tags: [ai, assets, project, app, user-view]
 ---

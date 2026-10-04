@@ -8,7 +8,7 @@
 # 说明:  每次开工前跑一次，自动汇总 AI 该知道的上下文，不用人提醒：
 #         C0 产品心跳（用户是否还在用 — 最高优先级信号，2026-09-13 新增）
 #         C1 当前状态（state/_index 指针 → status/REVIEW/task-log）
-#         C1.5 主题手册导航（docs/reference/*-features.md 深度文档直读索引）
+#         C1.5 主题手册导航（.agents/reference/*-features.md 深度文档直读索引）
 #         C2 未修项（REVIEW 战略/P1/P2 中与本批相关的）
 #         C3 边界（boundaries 原则级）
 #         C4 坑（pitfalls 复发信号）
@@ -152,7 +152,7 @@ out.append("")
 
 # C1 当前状态
 out.append("## C1 当前状态")
-status = (ROOT/'docs/reference/status.md')
+status = (ROOT/'.agents/reference/status.md')
 if status.exists():
     c1 = 0
     for l in status.read_text(encoding='utf-8').splitlines():
@@ -175,15 +175,15 @@ if status.exists():
 out.append("")
 
 # C1.4 功能主轴（RFC 20261001 批 1，2026-10-01 新增）
-# 约定：docs/features/_index.md = 全项目功能清单（一个功能一行），开工先靠它定位「这功能是什么、到哪一步、欠什么」；
-#       被碰到的功能在 docs/features/<插件>.md 里有意图卡（按需生长，只写意图）。
-feature_idx = ROOT/'docs/features/_index.md'
+# 约定：.agents/features/_index.md = 全项目功能清单（一个功能一行），开工先靠它定位「这功能是什么、到哪一步、欠什么」；
+#       被碰到的功能在 .agents/features/<插件>.md 里有意图卡（按需生长，只写意图）。
+feature_idx = ROOT/'.agents/features/_index.md'
 if feature_idx.exists():
     ftext = feature_idx.read_text(encoding='utf-8', errors='ignore')
     frows = [l for l in ftext.splitlines() if re.match(r'^\|\s*`[\w.\-]+`\s*\|', l)]
-    fdir = ROOT/'docs/features'
-    fcards = len([p for p in fdir.glob('*.md') if p.name != '_index.md']) if fdir.exists() else 0
-    fline = f"- 全项目 **{len(frows)} 个功能**一行一个 → `docs/features/_index.md`（ID/插件/状态/需求出处/实现出处/欠着）"
+    fdir = ROOT/'.agents/features'
+    fcards = len([p for p in fdir.glob('*.md') if p.name not in ('_index.md', '_directory.md')]) if fdir.exists() else 0
+    fline = f"- 全项目 **{len(frows)} 个功能**一行一个 → `.agents/features/_index.md`（ID/插件/状态/需求出处/实现出处/欠着）"
     if fcards:
         fline += f"；已生长意图卡 **{fcards}** 份（只写意图，卡内禁写实现细节）"
     if not (TOPIC and TOPIC not in fline):
@@ -192,10 +192,10 @@ if feature_idx.exists():
         out.append("")
 
 # C1.5 主题手册导航（深度文档直读索引，2026-08-22 新增）
-# 约定：docs/reference/*-features.md = 各主题功能手册（trading-features.md 等），
+# 约定：.agents/reference/*-features.md = 各主题功能手册（trading-features.md 等），
 #       新主题手册放入即自动纳入本导航；TOPIC 过滤时只留相关主题。
 out.append("## C1.5 主题手册导航（深度文档，按需直读）")
-handbook_dir = ROOT/'docs/reference'
+handbook_dir = ROOT/'.agents/reference'
 handbook_count = 0
 if handbook_dir.exists():
     for f in sorted(handbook_dir.glob('*-features.md')):
@@ -208,7 +208,7 @@ if handbook_dir.exists():
             dm = re.search(r'^description:\s*(.+)$', fm.group(1), re.M)
             if tm: title = tm.group(1).strip()
             if dm: desc = dm.group(1).strip()
-        row = f"- **{title}** → `docs/reference/{f.name}`"
+        row = f"- **{title}** → `.agents/reference/{f.name}`"
         if desc:
             row += f"（{desc[:50]}…）" if len(desc) > 50 else f"（{desc}）"
         if TOPIC and TOPIC not in row: continue
@@ -220,7 +220,7 @@ out.append("")
 
 # C2 未修项（REVIEW）
 out.append("## C2 未修项（REVIEW.md）")
-review = ROOT/'docs/review/REVIEW.md'
+review = ROOT/'.agents/records/REVIEW.md'
 DONE_MARKS = ('✅', '已修', '出表', '已确认', '已移除', '已闭环', '不成立', '误报', '清零')
 if review.exists():
     lines = review.read_text(encoding='utf-8').splitlines()
@@ -328,7 +328,7 @@ out.append("")
 
 # C6 待办（task-log 当前任务区）
 out.append("## C6 待办（task-log.md 当前任务）")
-tl = ROOT/'docs/reference/task-log.md'
+tl = ROOT/'.agents/records/task-log.md'
 if tl.exists():
     lines = tl.read_text(encoding='utf-8').splitlines()
     count = 0

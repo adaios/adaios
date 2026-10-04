@@ -31,7 +31,7 @@ sh scripts/build_web.sh https://api.adaiadai.com /m/      # 子路径构建（/m
 sh scripts/serve_web.sh https://api.adaiadai.com /m/
 
 # iOS 发布（TestFlight，2026-09-15 起；无线分发，不需要数据线/手机在场）
-# 完整方案见 docs/deployment/ios-release.md
+# 完整方案见 .agents/deployment/ios-release.md
 export ASC_ISSUER_ID=<App Store Connect Issuer ID>   # 一次性配置
 sh scripts/release_testflight.sh                     # 构建 + 导出 IPA + 上传
 sh scripts/release_testflight.sh --build-number 2    # 递增构建号（同一版本重复上传会被 Apple 拒）
@@ -80,7 +80,7 @@ lib/
 
 ## 当前测试状态
 
-- **测试数唯一事实源：`../../docs/reference/status.md`**（RFC `20260815-docs-governance`，/ship 时更新，本文件不复制数字）
+- **测试数唯一事实源：`../../.agents/reference/status.md`**（RFC `20260815-docs-governance`，/ship 时更新，本文件不复制数字）
 - 测试在 `test/`（widget_test / user_id_test / feed_state_machine_test / pages_widget_test / input_bar_keyboard_test / learn_page_test），覆盖：DTO JSON 解析、FeedCardData 模型、FeedCard 渲染（idle/chatting/ended/折叠/loading/对话态 + #15 chatting 不折叠回归）、userId query 解析、Feed 状态机（ask→waiting→chatting→ended/追加/错误重试/删除/加载更多/#100 竞态 + #234 分页终止口径 + #235/#245 图片上传占位卡重试 + Phase 1 带图 ask-batch 触发/分流）、6 页面（memory/timeline/search/trading/todo/profile 数据渲染 + 错误态 + 重试；待办页另有 `todo_page_test.dart` 专项：两态渲染/到期日人话/增删改/失败可重试）、输入栏（键盘收起 + Phase 1 图片数量上限/角标封顶 + **批次锁拒绝时不清空已选图**）、**图文一体多图一次投递（2026-09-22：一次 `POST /records/media/batch` + `Idempotency-Key` 重试复用同一 key + 一次投递一张卡 + 卡内多图并排 `media_thumb_strip.dart` + 多图回合追问走 `ask-batch` 带全部图 + `mediaPaths` 消费）**、学习页（分组/搜索/进度汇总/失败可见）。
 > ApiService 支持注入 `http.Client`（MockClient），所有 widget 测试不依赖真实后端。
 
@@ -114,7 +114,7 @@ cd apps/adai-app && flutter test
 
 ## API 依赖
 
-前端需要后端 `services/adai-core` 运行中。API 契约见 `docs/architecture/api-spec.md`。
+前端需要后端 `services/adai-core` 运行中。API 契约见 `.agents/reference/api-spec.md`。
 
 | 前端操作 | API 调用 |
 |:---------|:---------|
@@ -135,7 +135,7 @@ cd apps/adai-app && flutter test
 - **原生侧**：`ios/Runner/Runner.entitlements`（`aps-environment`）+ pbxproj 三个 Runner 配置挂 `CODE_SIGN_ENTITLEMENTS` + `ios/Runner/AppDelegate.swift`（注册远程通知、token/失败/点击回调经 MethodChannel `adai/push` 交给 Dart、前台也弹横幅）。⚠️ `FlutterAppDelegate` **本身已遵循** `UNUserNotificationCenterDelegate`，四个回调必须写成类体内的 `override`（放 extension 会报 redundant conformance，见 pitfalls 十三）。
 - **Dart 侧**：`PushService` 只在 `!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS` 生效；登录后由 `DualWorldShell.initState` 调用；通知点击 → 切回 Feed 并刷新；权限被拒 → 一条可点的「去开启」引导；登出注销本机设备。
 - **环境别猜**：deviceToken 分属 sandbox / production 两套互不相通的网关，App 侧读包内 `embedded.mobileprovision` 的 `aps-environment` 得出环境上报（**不能用 `#if DEBUG`**：本项目装机是 `--release` + development 描述文件 = release 优化 + 沙箱环境）。
-- 服务端配置与验证步骤见 `docs/deployment/backend-deployment.md` §11。
+- 服务端配置与验证步骤见 `.agents/deployment/backend-deployment.md` §11。
 
 ## iOS 外部入口（RFC 20260913 + 2026-09-13 整理动作批 + RFC 20260914 分享扩展批）
 
@@ -169,6 +169,6 @@ cd apps/adai-app && flutter test
 |:-------------------------------|:----|:------|
 | UI_REFERENCE.md | 本目录 | 📌 每个按钮→代码行精确对照 |
 | DESIGN.md | 本目录 | 设计原则与核心哲学 |
-| `frontend-reference.md` | `../../docs/architecture/` | 前端统一参考（术语对照 + 布局视觉） |
-| `api-spec.md` | `../../docs/architecture/` | API 接口契约（全局唯一真相源） |
+| `frontend-reference.md` | `../../.agents/reference/` | 前端统一参考（术语对照 + 布局视觉） |
+| `api-spec.md` | `../../.agents/reference/` | API 接口契约（全局唯一真相源） |
 | `VISION.md` | `../../docs/` | 项目愿景与核心理念 |

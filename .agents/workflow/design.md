@@ -9,13 +9,13 @@ lines: 87
 depends-on:
   - discuss.md
 related:
-  - ../../docs/rfc/20260815-ai-engineering-layer.md
+  - ../rfc/20260815-ai-engineering-layer.md
 tags: [ai, workflow, design]
 ---
 
 # 方案设计（design）
 
-> **定位**：工作流第二段——从「想法」到「可执行方案」。产出 RFC（`docs/rfc/`），通过后关键决策入 `assets/adr/`。
+> **定位**：工作流第二段——从「想法」到「可执行方案」。产出 RFC（`.agents/rfc/`），通过后关键决策入 `assets/adr/`。
 
 ## RFC 骨架（7 段）
 

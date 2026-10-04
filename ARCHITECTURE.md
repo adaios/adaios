@@ -9,15 +9,15 @@ lines: 62
 depends-on: []
 related:
   - AGENTS.md
-  - docs/architecture/product-architecture.md
-  - docs/architecture/system-architecture.md
+  - .agents/reference/product-architecture.md
+  - .agents/reference/system-architecture.md
   - .agents/assets/boundaries.md
 tags: [ai, architecture, governance]
 ---
 
 # AdaiOS 架构骨架（ARCHITECTURE.md）
 
-> **架构红线单文件**——AI 进项目直读，防止随意变更技术栈/数据流向/权限逻辑。详细设计见 `docs/architecture/`；本文件只承载红线。
+> **架构红线单文件**——AI 进项目直读，防止随意变更技术栈/数据流向/权限逻辑。详细设计见 `.agents/reference/`；本文件只承载红线。
 
 ## 一句话
 
@@ -34,7 +34,7 @@ AdaiOS 是 **Personal AI Operating System**：以 Kernel（Context + Memory + Kn
 
 ## 五层产品架构
 
-L1 AI 问答 / L2 主动推送 / L3 数字身份 / L4 通用记录 / L5 外部信息 / L6 交易反哺——**任何新功能必须明确归属某层**（详见 `docs/architecture/product-architecture.md`）。
+L1 AI 问答 / L2 主动推送 / L3 数字身份 / L4 通用记录 / L5 外部信息 / L6 交易反哺——**任何新功能必须明确归属某层**（详见 `.agents/reference/product-architecture.md`）。
 
 ## 分层依赖（红线）
 

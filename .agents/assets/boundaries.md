@@ -8,7 +8,7 @@ status: active
 lines: 50
 depends-on: []
 related:
-  - ../../docs/VISION.md
+  - ../direction/VISION.md
   - adr/ADR-001.md
 tags: [ai, assets, boundaries]
 ---
@@ -28,7 +28,7 @@ tags: [ai, assets, boundaries]
 | B5 | **不混合代码和知识**：代码仓库只放代码/配置/构建；Prompt 模板归 `kernel/context/prompt` | ARCHITECTURE.md 红线 2 |
 | B6 | **Domain 间不直接依赖**：跨域协作经 application 层编排 | ARCHITECTURE.md 分层依赖 |
 | B7 | **审查只报告不直接修**（除 P0 数据丢失可与用户确认后修）| AGENTS.md 规则 6 |
-| B8 | **外向动作默认不做**：部署/推送/外发网络请求须人确认（见 docs/guides/development.md 部署说明 + deploy.sh 头部）| docs/guides/development.md |
+| B8 | **外向动作默认不做**：部署/推送/外发网络请求须人确认（见 .agents/guides/development.md 部署说明 + deploy.sh 头部）| .agents/guides/development.md |
 | B9 | **仓库外兄弟目录只读**：ai-context-research/ 是设计来源参考，不编辑（方法论已放回仓库 .agents/method/）| 本层约定 |
 
 ## 二、功能级边界（当前不做，解除须 RFC）

@@ -6,7 +6,7 @@
 
 为什么要有它：2026-10-01 首版切卡逻辑被一级标题挡住 → 卡计数恒 0（F7/F8 形同虚设），
 正例照样 PASS。**只测正例 = 假绿的温床**。当年对抗审查又抓出 4 处假绿 + 1 处误报
-（见 docs/review/audits/2026-10-01-feature-index-adversarial.md），坏样本全部固化在这里。
+（见 docs/records/audits/2026-10-01-feature-index-adversarial.md），坏样本全部固化在这里。
 夹具只写 /tmp，**不动仓库任何文件**。
 """
 import pathlib, shutil, subprocess, sys
@@ -23,7 +23,7 @@ def w(rel, text):
 
 shutil.rmtree(FIX, ignore_errors=True)
 
-w('docs/features/_index.md', '''# 索引
+w('.agents/features/_index.md', '''# 索引
 
 | ID | 功能 | 状态 | 需求出处 | 实现出处 | 欠着 |
 |:---|:-----|:----:|:---------|:---------|:-----|
@@ -47,7 +47,7 @@ w('docs/features/_index.md', '''# 索引
 | kernel | [kernel.md](kernel.md) | `good` |
 ''')
 
-w('docs/features/kernel.md', '''---
+w('.agents/features/kernel.md', '''---
 title: x
 ---
 
@@ -70,23 +70,23 @@ title: x
 ''' + '\n'.join(f'- 第 {i} 行' for i in range(1, 14)) + '\n')
 
 # F9 孤儿卡（根目录，未登记）
-w('docs/features/other.md', '---\ntitle: y\n---\n\n# 孤儿\n\n## `某卡`\n\n- **干什么用**：一句话。\n')
+w('.agents/features/other.md', '---\ntitle: y\n---\n\n# 孤儿\n\n## `某卡`\n\n- **干什么用**：一句话。\n')
 # B5 子目录卡文件（非递归 glob 会漏检）——故意不登记
-w('docs/features/kernel/orphan.md', '---\ntitle: z\n---\n\n# 子目录孤儿\n\n## `子卡`\n\n- **干什么用**：一句话。\n')
+w('.agents/features/kernel/orphan.md', '---\ntitle: z\n---\n\n# 子目录孤儿\n\n## `子卡`\n\n- **干什么用**：一句话。\n')
 # F10 有 ## 段落但标题不含反引号 → 卡识别不出来（防格式写歪导致 F7/F8 静默失效）
-w('docs/features/kernel/badformat.md', '---\ntitle: f\n---\n\n# 格式写歪\n\n## 记录提交与意图分流\n\n- **干什么用**：标题里没有反引号 ID。\n')
+w('.agents/features/kernel/badformat.md', '---\ntitle: f\n---\n\n# 格式写歪\n\n## 记录提交与意图分流\n\n- **干什么用**：标题里没有反引号 ID。\n')
 
-w('docs/rfc/20261001-ok.md', '---\ntitle: ok\ndate: 2026-10-01\nstatus: approved\n---\n# ok\n')
-w('docs/rfc/20261001-bad.md', '---\ntitle: bad\ndate: 2026-10-01\nstatus: completed\n---\n# bad\n')
+w('.agents/rfc/20261001-ok.md', '---\ntitle: ok\ndate: 2026-10-01\nstatus: approved\n---\n# ok\n')
+w('.agents/rfc/20261001-bad.md', '---\ntitle: bad\ndate: 2026-10-01\nstatus: completed\n---\n# bad\n')
 # B2a 新 RFC 缺 date：不得静默跳过
-w('docs/rfc/20261001-nodate.md', '---\ntitle: nodate\nstatus: completed\n---\n# 缺 date\n')
+w('.agents/rfc/20261001-nodate.md', '---\ntitle: nodate\nstatus: completed\n---\n# 缺 date\n')
 # B2b date 被超长 description 顶到解析窗口之外（旧实现 [:900] 会漏）
-w('docs/rfc/20261001-longdesc.md',
+w('.agents/rfc/20261001-longdesc.md',
   '---\ntitle: longdesc\ndescription: ' + 'x' * 2000 + '\ndate: 2026-10-01\nstatus: completed\n---\n# 长 description\n')
 # 存量：date < 截止日 → 应被跳过（不报）
-w('docs/rfc/20260901-old.md', '---\ntitle: old\ndate: 2026-09-01\nstatus: completed\n---\n# old\n')
-w('docs/review/REVIEW.md', '| P2-测试11 | 正常条目 |\n')
-w('empty/docs/features/_index.md', '# 啥也没有\n\n没有功能行。\n')
+w('.agents/rfc/20260901-old.md', '---\ntitle: old\ndate: 2026-09-01\nstatus: completed\n---\n# old\n')
+w('.agents/records/REVIEW.md', '| P2-测试11 | 正常条目 |\n')
+w('empty/.agents/features/_index.md', '# 啥也没有\n\n没有功能行。\n')
 
 
 def run(root):

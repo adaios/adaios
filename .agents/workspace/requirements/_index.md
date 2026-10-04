@@ -23,6 +23,6 @@ tags: [meta, index]
 
 ## 过期判断
 
-- **定稿归档后必须删除**（定稿搬进 `docs/rfc/` 或 `docs/features/`，`workspace/` 只留在制品）
+- **定稿归档后必须删除**（定稿搬进 `.agents/rfc/` 或 `.agents/features/`，`workspace/` 只留在制品）
 - `status != active` → 候选清理
 - **清单须与实际一致**（`ai-guard-structure` S2 双向校验；跑 `bash .agents/guards/ai-guard-structure.sh --fix` 刷新）

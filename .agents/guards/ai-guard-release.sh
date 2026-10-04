@@ -289,7 +289,7 @@ else
                 printf '  【Web 桌面端】\n'
                 printf '    cd apps/adai-web && sh .agents/scripts/serve_web.sh https://api.adaiadai.com --build-only\n'
                 printf '    cd build/web && tar -cf - . | ssh %s "sudo rm -rf /opt/adaios/web.new && sudo mkdir -p /opt/adaios/web.new && sudo tar -xf - -C /opt/adaios/web.new && sudo chown -R adaios:adaios /opt/adaios/web.new && sudo rm -rf /opt/adaios/web && sudo mv /opt/adaios/web.new /opt/adaios/web && sudo systemctl restart adaios-web"\n' "$HOST"
-                printf '    （完整步骤见 docs/deployment/backend-deployment.md §8）\n'
+                printf '    （完整步骤见 .agents/deployment/backend-deployment.md §8）\n'
                 ;;
             admin)
                 printf '  【管理后台】\n'
@@ -302,7 +302,7 @@ else
                 printf '    sh apps/adai-app/scripts/release_testflight.sh --build-number %s\n' "$NEXT_BUILD"
                 printf '    （构建号 %s → %s：Apple 拒重复构建号；不带 --build-number 时脚本自动 +1 并写回 pubspec.yaml）\n' \
                     "$APP_BUILD" "$NEXT_BUILD"
-                printf '    （上传后外测组需过一次 Beta App Review ≈21 小时；攒批可省一次，见 docs/deployment/ios-release.md）\n'
+                printf '    （上传后外测组需过一次 Beta App Review ≈21 小时；攒批可省一次，见 .agents/deployment/ios-release.md）\n'
                 ;;
         esac
     done

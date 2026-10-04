@@ -1,6 +1,6 @@
 ---
 title: 守护检查清单
-description: 每次 /review 必跑的 G1-G10 防 P0 复发清单（数据丢失/契约破坏/口径漂移），执行器为 docs/review/guard.sh
+description: 每次 /review 必跑的 G1-G10 防 P0 复发清单（数据丢失/契约破坏/口径漂移），执行器为 .agents/guards/guard.sh
 version: 1
 created: 2026-08-15
 updated: 2026-09-14
@@ -13,7 +13,7 @@ tags: [review, checklist, guard]
 
 # 守护检查清单（每次 /review 必跑）
 
-防 P0 复发（数据丢失/契约破坏）。**执行器：`docs/review/guard.sh`**（一条命令跑完 G1-G10，输出 PASS/HIT，内部自动 cd 到仓库根，免疫 cwd 漂移）。本清单是"查什么 + 上次发现"的说明文档，实际执行以脚本为准。任何模式都不跳过。
+防 P0 复发（数据丢失/契约破坏）。**执行器：`.agents/guards/guard.sh`**（一条命令跑完 G1-G10，输出 PASS/HIT，内部自动 cd 到仓库根，免疫 cwd 漂移）。本清单是"查什么 + 上次发现"的说明文档，实际执行以脚本为准。任何模式都不跳过。
 
 > 格式：`[命令]` 检查什么。`上次发现` 记录历史命中，用于判断复发。
 
@@ -49,7 +49,7 @@ tags: [review, checklist, guard]
 
 | # | 检查方法 | 上次发现 |
 |:-:|:---------|:---------|
-| G8 | `bash docs/review/guard.sh` 的 G8 — 每个 `PushMessage` 构造点必须显式给锁屏版（`lockScreenContent` / `lockScreenTitle`）；漏传即回落中性文案（fail-closed），**绝不允许回落完整正文** | 锁屏脱敏只覆盖「收盘小结」→ 早中尾盘/买点/操作确认/行情异动/批次止损/学习复习全回落完整正文（P0，已修）|
+| G8 | `bash .agents/guards/guard.sh` 的 G8 — 每个 `PushMessage` 构造点必须显式给锁屏版（`lockScreenContent` / `lockScreenTitle`）；漏传即回落中性文案（fail-closed），**绝不允许回落完整正文** | 锁屏脱敏只覆盖「收盘小结」→ 早中尾盘/买点/操作确认/行情异动/批次止损/学习复习全回落完整正文（P0，已修）|
 | G9 | guard.sh 的 G9 — 默认值是相对路径（`../`）的 `@Value` 属性，必须在 `application.yml` 显式声明同名的 `adai.*` 键（否则 `.env` 里名字相近的环境变量静默不生效，落回相对默认值再按 WorkingDirectory 解析到错位置）| `adai.market.adj-path` 从未声明 → 生产「除权因子读取失败」、前复权静默失效 16 天（P2-交易49，已修）|
 | G10 | guard.sh 的 G10 — 「从分享文本里择链接」的正则**双端逐字同口径**（Dart `_httpLinkRe` ↔ Swift `linkPattern`）；也可单跑 `sh apps/adai-app/scripts/check_link_pattern.sh` | Swift 侧漏全角 `）`（U+FF09）→ 带全角括号的分享文本择出垃圾 URL（`…BV1xx411c7mD）讲得不错`），而同一内容在 App 内正常 = 「App 能整理、分享进来却说找不到链接」（对抗审查 P1-3，2026-09-14 已修）|
 

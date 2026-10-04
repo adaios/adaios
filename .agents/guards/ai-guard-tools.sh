@@ -140,7 +140,7 @@ else
 fi
 
 # T7: 定时任务（launchd）——把「静默失效的自动化」变成每次自检都可见
-# 由来见 docs/guides/routine.md §六：生产备份 26 天没跑、每周审查从未运行，
+# 由来见 .agents/guides/routine.md §六：生产备份 26 天没跑、每周审查从未运行，
 # 而当时没有任何一处会报出来（crontab 被 TCC 拦，声称「已挂载」却无日志）。
 echo ""
 echo "T7 定时任务（launchd：每日备份 / 每周审查）"

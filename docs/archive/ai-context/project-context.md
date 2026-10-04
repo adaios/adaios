@@ -30,9 +30,9 @@ tags: [ai, context, superseded]
 
 ## 必读文档
 
-- [VISION.md](../../docs/VISION.md) — ⚡ 项目愿景与核心理念（每个 AI 会话必须首先阅读）
+- [VISION.md](../../.agents/direction/VISION.md) — ⚡ 项目愿景与核心理念（每个 AI 会话必须首先阅读）
 - [AGENTS.md](../../AGENTS.md) — 完整架构与开发规则
-- [docs/architecture/system-architecture.md](../../docs/architecture/system-architecture.md) — v0.2 系统架构
+- [.agents/reference/system-architecture.md](../../.agents/reference/system-architecture.md) — v0.2 系统架构
 
 ## 架构摘要
 
@@ -61,6 +61,6 @@ tags: [ai, context, superseded]
 
 ## 相关文档
 
-- [VISION.md](../../docs/VISION.md) — ⚡ 项目愿景与核心理念（每个 AI 会话必须首先阅读）
+- [VISION.md](../../.agents/direction/VISION.md) — ⚡ 项目愿景与核心理念（每个 AI 会话必须首先阅读）
 - [AGENTS.md](../../AGENTS.md) — 完整架构与开发规则
 - [README.md](../../README.md) — 项目总览

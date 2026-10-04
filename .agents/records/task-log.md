@@ -1,0 +1,380 @@
+---
+title: 任务开发文档（Task Log）
+description: 待办迁移区——从产品路线拆任务 + REVIEW 的 P3/观察项；ai-guard-unfixed / ai-guard-roadmap / ai-guard-context 共用的数据源
+version: 1
+created: 2026-08-15
+updated: 2026-10-04
+status: active
+lines: 380
+depends-on: []
+related:
+  - REVIEW.md
+  - ../direction/product-roadmap.md
+tags: [record, tasklog]
+---
+
+# 任务开发文档（Task Log）
+
+> **定位：** 新功能开发和系统改进的追踪文档。按模块组织，标注优先级、状态、关联 RFC。
+> **对照：** `feature-reference.md` 定义"现在有什么"，此文档定义"接下来要做什么"。
+>
+> **文档版本：** v1.1 | **最后更新：** 2026-08-15（v1.1：REVIEW P3/观察项迁移入列，RFC `20260815-docs-governance`）
+
+---
+
+## 模块对照表
+
+同 `issue-log.md` 的模块划分：
+
+| 编号 | 模块名 | 参考文档章节 |
+|:----:|:-------|:------------|
+| M1 | 主页 Feed 流 | [§1](feature-reference.md#1-主页-feed-流) |
+| M2 | 记录提交流 | [§2](feature-reference.md#2-记录提交流) |
+| M3 | 问答会话流 | [§3](feature-reference.md#3-问答会话流) |
+| M4 | FeedCard 卡片组件 | [§4](feature-reference.md#4-feedcard-卡片组件) |
+| M5 | 简报模块 | [§5](feature-reference.md#5-简报模块) |
+| M6 | 时间线模块 | [§6](feature-reference.md#6-时间线模块) |
+| M7 | 记忆模块 | [§7](feature-reference.md#7-记忆模块) |
+| M8 | Launcher 导航模块 | [§8](feature-reference.md#8-launcher-导航模块) |
+| M9 | 交易模块 | [§9](feature-reference.md#9-交易模块) |
+| M10 | 待办模块（原「项目管理模块」已退役）| [§10](feature-reference.md#10-待办模块kernel-builtin-rfc-20260917) |
+| M11 | 搜索模块 | [§11](feature-reference.md#11-搜索模块) |
+| M12 | 身份资料模块 | [§12](feature-reference.md#12-身份资料模块) |
+| M13 | 标签模块 | [§13](feature-reference.md#13-标签模块) |
+| M14 | 账号体系（多账号功能层）| RFC `20260802-multi-account-prep` |
+| M15 | adai-admin 管理后台 | RFC `20260802-adai-admin` |
+| M-AI | AI 提示词/解析 | — |
+
+---
+
+## 优先级定义
+
+| 级别 | 含义 | 响应要求 |
+|:----:|:------|:---------|
+| P0 | 阻塞性 bug / 核心流程不通 | 立即处理 |
+| P1 | 功能完整性问题 / 影响体验 | 本轮迭代内 |
+| P2 | 体验优化 / 非核心功能 | 可排下一轮 |
+| P3 | 长远架构 / 探索性 | 不定时 |
+
+---
+
+## 当前任务
+
+### M2 — 记录提交流
+
+#### MD1：记忆重建后刷新 Feed（P1，✅ 已修 2026-08-07）
+
+| 字段 | 值 |
+|:-----|:----|
+| **描述** | `POST /api/v1/memory/rebuild`（adai-admin 触发）后 Feed 中 `ai_note` 未更新，需手动下拉刷新 |
+| **现状** | rebuild 在 adai-admin（独立 app），adai-app 无从感知 → Feed 内存态陈旧 |
+| **方案（已实施）** | `DualWorldShell._toggleWorld` 世界切回 Feed 时递增 `ValueNotifier` → `MainPage.refreshTick` 监听重载 `_refreshFeed()`（不清 active 态，保持对话现场） |
+| **涉及文件** | `main.dart`（壳层）、`main_page.dart`（refreshTick 监听） |
+| **测试** | `feed_state_machine_test.dart` 新增「MD1 世界切回 Feed 刷新」用例 |
+
+---
+
+### M3 — 问答会话流
+
+#### MD2：Chat 关闭流程修复确认（P2，可延期）
+
+| 字段 | 值 |
+|:-----|:----|
+| **描述** | ConversationController prompt 已改为去第一人称；前端改为只弹窗不兜底。但关闭后内容消失是否需要缓存？ |
+| **现状** | close 后内容不保留，需要重新 ask 才能看到历史 |
+| **待定** | 是否需要保留已结束对话的可读视图？ |
+
+---
+
+### M7 — 记忆模块
+
+#### MD3：Memory Phase 2 — 生命周期 + 评价机制（P2）
+
+| 字段 | 值 |
+|:-----|:----|
+| **描述** | 记忆需要引入：时效性评分（recency）、一致性评分（coherence）、冲突检测（contradiction） |
+| **现状** | 记忆只存不评，所有记忆等权重 |
+| **目标** | 记忆按质量和时效性排序，低质量自动降权 |
+| **关联 RFC** | `20260727-memory-upgrade.md` Phase 2 |
+| **前置** | Phase 0-1 已完成 |
+
+#### MD4：Memory Phase 3 — Context Engine 深度集成（P2-P3）
+
+| 字段 | 值 |
+|:-----|:----|
+| **描述** | Context Engine 当前只取最近 7 天记忆。Phase 3 应做到：相关记忆优先（按 tag/entity）、时效分级注入、冲突标记 |
+| **现状** | 简单按日期取最近 N 条 |
+| **目标** | 按相关度 + 时效性从 Memory OS 检索 |
+| **关联 RFC** | `20260727-memory-upgrade.md` Phase 3 |
+| **前置** | MD3 |
+
+#### MD5：Memory Phase 4 — 知识反哺闭环（P3）
+
+| 字段 | 值 |
+|:-----|:----|
+| **描述** | 高频确认的 pattern/preference 自动写入 Domain OS 知识库（os/*/11-context/） |
+| **现状** | pattern/preference 存在记忆文件但不反哺 |
+| **目标** | 自动从记忆提炼规则 → 人工审核 → 入库 |
+| **关联 RFC** | `20260727-memory-upgrade.md` Phase 4 + `20260725-layer6-knowledge-feedback-loop.md` |
+| **前置** | MD3 |
+
+---
+
+### M8 — Launcher 导航模块
+
+#### MD6：Launcher 双指手势灵敏度优化（P2）
+
+| 字段 | 值 |
+|:-----|:----|
+| **描述** | 双指滑动切换 World A/B 的门槛是 400px/s。部分用户觉得太灵敏/太迟钝 |
+| **现状** | 200px/s（MainPage 上滑触发）+ 300px/s（Launcher 下滑返回）+ 400px/s（DualWorldShell 切换），阈值不一致 |
+| **方案** | 统一为 350px/s，或加可配置 |
+| **涉及文件** | `main.dart`, `main_page.dart`, `launcher_page.dart` |
+| **关联 RFC** | `20260723-launcher-polish.md` |
+
+---
+
+### M10 — 待办模块（Kernel builtin；原「项目管理模块」已退役 2026-09-17）
+
+#### MD9：待办归 Kernel + 撤 project 插件（P0，✅ 已实施 2026-09-17；未部署）
+
+| 字段 | 值 |
+|:-----|:----|
+| **描述** | ① 待办从 project 插件摘出，归 **Kernel builtin**（人人有、无门控）：纯清单两态（OPEN/DONE）+ 可选到期日 + 到期推送（`todo-due`）、**不再进 Feed**；② **撤 project 插件**（自举看板 + 两端入口 + 知识注入 + admin 开关）；③ 命名与端点硬切：`Task*`→`Todo*`、`domain/project`→`kernel/todo`、`/api/v1/project/tasks*`→`/api/v1/todos*`、`data/{userId}/todos/`（旧 App 不兼容，用户已确认可重装）；④ R2 改单向同步（建待办不清记忆；完成/删除时同步） |
+| **依据** | `.agents/rfc/20260917-todo-kernel-retire-project-plugin.md`（approved；§三 能力三层定位 / §五 五步实施顺序） |
+| **现状（实施前）** | 前后端把「任务」判成两种东西（前端=基础能力、后端写端点被 project 插件 403）；R2 把记忆待办搬进没人走的任务表（2026-08-01 后零写入） |
+| **实施结果** | ✅ 五步全部落地（2026-09-17，RFC §五 ⑤ 文档与测试收尾同批完成）。**撤 project 插件**：`domain/project`（Task / TaskStatus / TaskRepository / ProjectContextContributor / package-info）、`ProjectStatusAppService`、`ProjectTaskAppService`、`RecordToTaskLinker`、`ProjectStatusController`、`ProjectFileRepository`、`ProjectKnowledgeSource` 全部删除；**端点 6 删 5 增**（旧 `GET /api/v1/project/status`、`GET\|POST /api/v1/project/tasks`、`PUT\|DELETE /api/v1/project/tasks/{id}`、`GET /api/v1/project/tasks/stats` breaking 无兼容别名；新 `GET\|POST /api/v1/todos`、`PUT\|DELETE /api/v1/todos/{id}`、`GET /api/v1/todos/stats`）。**待办归 Kernel builtin**（无插件门控）：`kernel/todo/` + `application/TodoAppService` + `RecordToTodoLinker`（记录可执行 → 自动建待办，**不再清记忆**）+ `TodoReminderService`（新推送类型 `todo-due`，到期当天 08:00 / 18:00）+ `interfaces/TodoController` + `infrastructure/storage/TodoFileRepository`；存储 `data/{userId}/todos/YYYY/MM.md`（旧 `data/{userId}/project/tasks/` 原样留存、不迁不删）；两态 OPEN / DONE + 可选到期日 `due`；完成/删除单向同步记忆。**前端**：双端待办清单页（`pages/todo_page.dart`，两态 + 可选到期日 + 完成/删除 + 已完成折叠）、Launcher「任务」→「待办」（原生组，副标题「有地方看，会提醒你」）、Feed 去待办卡、推送开关加「待办到期提醒」、通知深链 `todo:today`。**admin**：账号页 `project` 插件开关 + 数据页「任务」页签/相关 DTO/API 删除。**未部署**（本次按用户要求只实施、不部署、不 push） |
+| **涉及文件** | 后端 `kernel/todo/*`、`application/TodoAppService`、`RecordToTodoLinker`、`TodoReminderService`、`interfaces/TodoController`、`infrastructure/storage/TodoFileRepository`、`kernel/plugin/PluginRegistry`（只剩 trading / learn）；前端双端 `pages/todo_page.dart` + admin 账号/数据页 |
+| **注** | 本项落地后 **MD7 作废**（待办不再有"详情编辑页"——纯清单只要一句话 + 到期日）；`os/project-os/` 知识文件保留在仓库（File First），但不再注入任何用户上下文 |
+
+#### MD7：任务详情编辑页（P2）——⛔ 作废（随 MD9）
+
+| 字段 | 值 |
+|:-----|:----|
+| **作废原因** | 待办重构为 Kernel builtin 纯清单（RFC 20260917），不再有优先级/标签/描述等字段，详情编辑页无对象 |
+| **原描述** | ~~当前任务只能改状态（TODO/DOING/DONE）、没有独立的编辑页面；点击任务卡片应可编辑全部字段~~ |
+
+---
+
+### M4 — FeedCard 卡片组件
+
+#### MD8：FeedCard 交互规范文档化（P1，建议类）
+
+| 字段 | 值 |
+|:-----|:----|
+| **描述** | 当前 4 种 CardMode × 3 种 Intent × 2 种 loading，条件分支 20+。建议写一份交互规范文档，定义每个状态视觉表现、转换条件、错误策略 |
+| **现状** | 逻辑散落在 `feed_card.dart` 和 `main_page.dart` 中 |
+| **来源** | `20260728-project-development-suggestions.md` 建议 A |
+
+---
+
+### M-AI — AI 提示词
+
+#### MD9：STATEMENT 走轻量链路，QUESTION 走重链路（P2，架构建议）
+
+| 字段 | 值 |
+|:-----|:----|
+| **描述** | 当前 STATEMENT 走完整 ContextEngine（identity + memory + tagIndex + search），QUESTION 反而走简化链路。实际提问更需要上下文 |
+| **现状** | STATEMENT: 完整 ContextEngine → AiClient 分析模式 (temp=0.3)；QUESTION: DeepSeek 聊天模式 (temp=0.7) |
+| **方案** | 交换权重：QUESTION 用最全面的上下文，STATEMENT 用轻量链路（只取 identity + 标签相关） |
+| **来源** | `20260728-project-development-suggestions.md` 建议 B |
+
+#### MD10：简报 prompt 统一为中文（P2/P3）
+
+| 字段 | 值 |
+|:-----|:----|
+| **描述** | STATEMENT prompt 是中文指令，Brief prompt 是英文指令。建议统一 |
+| **现状** | Brief prompt 全英文，但要求输出中文 |
+| **方案** | Brief prompt 改为中文 |
+| **涉及文件** | `BriefAppService.java` |
+
+---
+
+### M14 — 账号体系（多账号功能层，v1.0.0）
+
+#### MD11：Account 存储 + 账号列表端点（P0）
+
+| 字段 | 值 |
+|:-----|:----|
+| **描述** | 账号存储（File First，`data/accounts/`，含 disabled + 角色 admin/user）+ `GET /api/v1/accounts`（列表，供 adai-app 选号进入）。**无口令/登录校验**（现阶段：选择即进入，不校验）；账号由 adai-admin 创建（不做注册）|
+| **seed** | `adai`（admin 角色，文件预置，2026-08-02 定）|
+| **鉴权** | ⏸ 后补：v1 纯 userId 隔离 + 选择进入；口令/token 鉴权 app+后端统一后补 |
+| **前置** | 多账号架构预留 ✅（userId 全链路透传，`f4efc5c`）|
+| **涉及文件** | 新 `AccountRepository`、`AccountController`、api-spec §auth |
+| **来源** | RFC `20260802-multi-account-prep.md` §六 |
+
+#### MD12：adai-app 选号进入（P0）
+
+| 字段 | 值 |
+|:-----|:----|
+| **描述** | adai-app 首屏：加载账号列表（`GET /accounts`）→ 用户选一个 → 本地存 userId → 所有请求带 `X-User-Id` → 进入主界面。**无口令**（选择即进入）|
+| **鉴权** | ⏸ 后补：纯选择进入；口令/token 鉴权与后端统一后补（2026-08-02 定）|
+| **前置** | MD11（账号列表端点）|
+| **涉及文件** | adai-app：`api_service.dart`、新选号页、入口路由 |
+
+### M15 — adai-admin 管理后台（v1.0.0）
+
+#### MD13：adai-admin 账号管理（Phase 0，P0）
+
+| 字段 | 值 |
+|:-----|:----|
+| **描述** | 后台建号工具：账号列表 / 建号（无注册，管理员建）/ 禁用 / 删除。**后台直接进入**（本机管理工具，无口令）|
+| **形态** | ✅ 独立前端入口（2026-08-02 定）：adai-admin 独立于 adai-app 的构建/路由，复用其设计系统/组件 |
+| **前置** | MD11（Account 存储）；seed `adai` 文件预置 |
+| **来源** | RFC `20260802-adai-admin.md` §3.0 |
+
+#### MD14：数据管理基础（Phase 1，P1）
+
+| 字段 | 值 |
+|:-----|:----|
+| **描述** | records 浏览/编辑/删除/批量 · memory 视图（kind/superseded/待办）+ 手动修正 · identity/tasks/positions 管理 · `data/` 文件树浏览 |
+| **前置** | MD13（admin 框架就位）|
+| **来源** | RFC `20260802-adai-admin.md` §3.1 |
+
+#### MD15：系统操作台（Phase 2，P2）
+
+| 字段 | 值 |
+|:-----|:----|
+| **描述** | Feed 预览（含 action/market）· 行情快照/复盘/知识反哺操作 · 记忆重建/重补/清理触发（`/memory/rebuild` 等）|
+| **前置** | MD14 |
+| **来源** | RFC `20260802-adai-admin.md` §3.2 |
+
+#### MD16：知识浏览（Phase 3，P3）
+
+| 字段 | 值 |
+|:-----|:----|
+| **描述** | `os/` 知识资产浏览（trading/life/project）+ 术语/规则查看 |
+| **前置** | MD15 |
+| **来源** | RFC `20260802-adai-admin.md` §3.3 |
+
+#### MD17：行情数据包导入（TDX .day 压缩包上传）（✅ 2026-09-04 晚间自主批实现）
+
+| 字段 | 值 |
+|:-----|:----|
+| **状态** | ✅ 已实现（2026-09-04 晚间自主批，见 change-log）——后端 `TdxDataPackageImporter`（zip 流式收集 `(sh\|sz)\d{6}.day` 防 zip-slip、逐文件解析校验、`.tmp`+原子 move 覆盖）+ `POST /api/v1/admin/market/tdx-import`（multipart，AuthFilter role=admin）+ adai-admin「维护」页签「行情数据导入」卡片（file_picker 选 zip → 长超时上传 → 结果摘要）；api-spec v3.42；`application.yml` multipart 上限改 env 可覆盖（生产配 `ADAI_MAX_FILE_SIZE`）。**未部署**（外向动作待用户确认） |
+| **描述** | admin 控制台提供「行情数据包导入」入口：上传通达信 .day 压缩包（zip，根下 `sh/lday/*.day` + `sz/lday/*.day`）→ 后端校验包结构 + .day 可解析 → 原子解压更新 TDX 行情目录（`adai.market.tdx-path`，生产 `/opt/adaios/data/market/tdx`）→ 返回结果（解压/更新文件数、失败清单）。替代「Windows 打包 → scp → 服务器手工解压」的运维流程 |
+| **形态** | 后端新增 admin 维护端点（`/api/v1/admin/**`，登录 + role=admin）+ adai-admin 数据页/系统页上传入口；zip 解析在服务端 |
+| **前置** | TDX 本地行情源已上线（TdxFileKlineSource + 前复权，2026-08-30）；生产 tdx 目录结构已就绪（sh/sz/lday 共 ~1.9 万 .day） |
+| **来源** | 2026-09-04 用户需求：Windows 通达信行情数据同步生产（当前手工 scp，2026-09-04 现场验证过目录结构与覆盖流程） |
+
+---
+
+## 已完成任务
+
+### M7 — 记忆模块
+
+| ID | 任务 | 完成 | 关联 RFC |
+|:---|:-----|:----|:---------|
+| DONE-1 | **Memory Phase 0：修复复读机** — summary/insight 拆分 | 07-28 | `20260727-memory-upgrade.md` P0 |
+| DONE-2 | **Memory Phase 1：多类型化** — pattern/preference 支持 | 07-28 | `20260727-memory-upgrade.md` P1 |
+
+### M4 — FeedCard + M3 — 问答流
+
+| ID | 任务 | 完成 | 关联 |
+|:---|:-----|:----|:-----|
+| DONE-3 | **FeedCard 状态机修复** — ask 直接回复、close 显示总结、load more 滚动 | 07-28 | AGENTS.md |
+| DONE-4 | **Chat 关闭流程修复** — ConversationController prompt 去第一人称、前端弹窗处理 | 07-28 | AGENTS.md |
+| DONE-5 | **P0-P1 两轮修复** — 18 个问题的完整修复（详见 `issue-log.md`） | 07-28 | issue-log.md |
+
+### M-AI — 提示词修复（本轮 07-29）
+
+| ID | 任务 | 完成 | 说明 |
+|:---|:-----|:----|:-----|
+| DONE-6 | **#1 人称代词根除** — system prompt 同步改"避免人称代词" | 07-29 | `DeepSeekAiClient.java` system prompt |
+| DONE-7 | **ND1 输出指令统一** — CHAT system prompt 升级为完整 JSON | 07-29 | 统一两处 prompt |
+| DONE-8 | **前端 stripping 兼容多行 JSON** — `_removeTrailingJson` | 07-29 | 配合 ND1 |
+
+### M4 — FeedCard（本轮 07-29）
+
+| ID | 任务 | 完成 | 说明 |
+|:---|:-----|:----|:-----|
+| DONE-9 | **#3/#4 ended mode 正确赋值** — `_closeChat` 设 `mode: CardMode.ended` | 07-29 | `main_page.dart` |
+
+### M2 — 记录提交流（本轮 07-29）
+
+| ID | 任务 | 完成 | 说明 |
+|:---|:-----|:----|:-----|
+| DONE-10 | **ND2 死代码清理** — 删除 `handleDecision()` + `DecisionResponse` | 07-29 | `RecordController.java` |
+
+---
+
+## 路线总览
+
+```
+Phase                    P0  P1  P2  P3
+────────────────────────────────────────
+Memory Phase 0-1         ✅  ✅  —   —
+Memory Phase 2           —   —   MD3 —
+Memory Phase 3           —   —   —   MD4
+Memory Phase 4           —   —   —   MD5
+交互规范文档              —   MD8 —   —
+提示词权重调整            —   —   MD9 —
+任务编辑页               —   —   MD7 —
+拉手灵敏度               —   —   MD6 —
+简报 prompt 统一          —   —   MD10 —
+记忆重建刷新 Feed         —   MD1 —   —
+Chat 关闭保留历史         —   —   MD2 —
+────────────────────────────────────────
+v1.0.0（adai-admin + 多账号）：
+  账号存储+登录           MD11 —   —   —
+  前端登录页+登录态       MD12 —   —   —
+  admin 账号管理          MD13 —   —   —
+  admin 数据管理基础      —   MD14 —   —
+  admin 系统操作台        —   —   MD15 —
+  admin 知识浏览          —   —   —   MD16
+────────────────────────────────────────
+本轮完成（07-29）：
+  #1 人称代词 ✓  ND1 prompt 统一 ✓  ND2 死代码 ✓  #3/#4 ended ✓
+```
+
+---
+
+## 待办迁移（2026-08-15 自 REVIEW P3/观察项；2026-08-17 追加交易 A-E 批）
+
+> RFC `20260815-docs-governance`：REVIEW.md 只留「战略 + P0-P2 未修复」；可排期项入此区，纯记录/已实现项删除。来源编号保持 REVIEW 原编号可追溯。
+
+### 可排期待办
+
+| # | 任务 | 位置/说明 | 优先级 |
+|:-:|:-----|:---------|:------:|
+| 工程-hook | **`pre-commit` 的 `ai-guard-meta --fix` 与暂存区不一致（2026-09-17 收尾复核发现）**：`--fix` 回写的是**工作区**文件（frontmatter `lines`/`updated`），而本次提交用的是**已暂存**的旧内容 → 每次改 md 提交后，工作区都会留下「frontmatter 漂移」，直接违反 ship.md 的「收工前 `git status` 必须干净」。本次已手工补提交（`bae973e`，`lines 120→136`）。**修法二选一**：① `--fix` 之后把**已在暂存区的** md 文件重新 `git add`（只重新暂存暂存区里已有的路径，绝不把并发会话的工作区改动带进来）；② 把 `--fix` 挪到**暂存之前**（提交前手动跑一次）。倾向 ①（自动、零记忆负担），但需补一条「不误 add 未暂存路径」的反向用例。 | `.githooks/pre-commit` / `ai-guard-meta.sh` | P2 |
+| 08-15 后端×6 | `init()` 迁移新增启动期 findAll+writeAll 依赖（accounts.json 损坏即启动 fail-fast，可接受需知悉）| `AccountFileRepository.java:67-82` | 知悉 |
+| 149 | 多账号细节复核（2026-09-05）：**accounts.json 无锁 → ✅ 已修**（2026-08-17 P1-4：单共享文件跨用户 RMW 改文件级全局锁 FILE_LOCK + 原子写，mergePlugins 账号级锁，见 AccountFileRepository 注释）；**删号不清理数据 → ✅ 已修（2026-09-16 用户拍板「二次确认后清理」）**：`DELETE /accounts/{userId}` 默认**只删账号、保留 `data/{userId}/`**，`?purge=true` 才清理并回 `purgedFiles` 计数（adai-admin 侧还会过一次「输入账号名确认」）；配套测试 2 条；**允许创建 default → ✅ 已修（`RESERVED_USER_IDS` 已禁）**（`default` 是历史遗留测试目录名，真实账号用同名会与测试夹具混淆，建议 createAccount 禁保留字 + 测试）| `AccountFileRepository` / `AccountController` | P2（v1.0.1）|
+| 153 | 数据形态失衡观察：08 月 131/133 条为对话摘要，原始 note <2% | `data/adai/records/2026/08/` | 观察 |
+| 176 | 交易录入无严格校验：TradeRequest 仅 @NotBlank/@Positive，建议三层校验（格式/quote 存在性/名称模糊比对）；用户指出输入校验+持仓分析+反哺流程整体待打磨 | `TradeRequest` / `TradingAppService.recordTrade` | P2（v1.0.0 后批次）|
+| 117 | 缓存 key 分桶未测（价值低，留待多账号批）| `test/` | P3 |
+| 166 剩余 | MediaController 上传 413 + emoji 截断已修；剩余 market id 同秒碰撞 | 后端多处 | P3 |
+| 168 | os/ 知识 P3 杂项：空文件 / 重复 JSON / PNG 入库 / life-os 引用漂移 / project-os 路径漂移 / 未索引标签 / gitignore 单层 / decision 死分支 | `os/` 多处 | P3 |
+| 171 | 优化方向（非问题）：项目页「项目记录」聚合视图 + 记录可标记类型（问题/建议）并流转为任务 | adai-app 项目页 + domain 体系 | 产品方向 |
+| 202 剩余 | ① `userTradeLocks` 按 userId 无界累积 —— **✅ 已核实已修（2026-09-26 夜间批六）**：`TradingAppService` 早已收敛为**固定 16 条带** `USER_TRADE_LOCKS`（`Object[16]` + `tradeLock(userId)` 散列取带，类注释明确写「原 ConcurrentHashMap computeIfAbsent 按 userId 无界增长」已消除），本条后半句属过时登记。② `AiClient.generate(ctx, null)` 默认 system 仍是 JSON 分析指令与生成语义矛盾 —— **✅ 已修（2026-09-26 夜间批六）**：`DeepSeekAiClient` 新增 `INTENT_SYSTEM`（意图分类，只答 ask/log）与 `GENERATE_DEFAULT_SYSTEM`（生成正文，不输出 JSON），`recognizeIntent` 与 `generate(null)` 各自改用语义相符的 system（不再共用到 `understand` 的「分析记录 → 输出 JSON」默认），+2 请求体级回归 | 后端多处 | ✅ 2026-09-26 |
+| 229 剩余 | **折叠渐隐遮罩色不一致 ✅ 已修（2026-09-26 夜间批五）**：折叠只在 `!_isActive` 时发生（idle 卡底色是半透明 `darkSurface.withAlpha(200)`、ended 卡是不透 `darkSurface`），而渐隐末色写死不透的 `darkSurface` → 浏览态折叠卡底部会多出一条更暗的色带；改为**跟随卡片底色**（新增 `_cardSurface` getter，`Container(color:)` 与渐隐共用同一判据），+1 widget 回归（断言渐隐末色 == 卡片底色）。**其余两项保留**：**图片摘要/文件名进正文 ✅ 已修（2026-09-26 夜间批六）**——无 caption 的图片卡此前把**文件名**（`images.first.name`）当 `content`，被渲染成 15px 正文与头部 chip（系统痕迹冒充「用户说的话」，违背 B1）→ 成功卡只保留用户自己写的 caption（没写即为空），`feed_card` 对空正文/空 chip 加 guard；+1 widget 回归。**`main()` 首帧 await 延迟 ✅ 已修（2026-09-26 夜间批七）**：两次**串行** await（`loadToken` → `loadUserId`）改**并发**（先发起再依次 await），首帧提前、`forceLogin` 语义与首屏不变。**#15 折叠对超长 active 卡不设上限 —— ⏸ 待拍板（2026-09-26）**：涉及「多长算超限、超限后是折叠还是只给提示」的产品口径（active 卡不折叠正是为了让用户看到完整上下文），不擅自定 | `feed_card.dart`（已修）· `main_page.dart:926-930` / `main.dart:11-22`（待办）| P3 |
+| 121 | 无最小宽度/响应式保护（批 H 已评估：桌面端专用产品、常规宽度无问题，极窄窗口才压缩，低优先级）| `desktop_shell.dart` | 已评估 |
+| 125 剩余 | ~~README 默认模板~~ ✅ **已修（2026-09-26 夜间批七）**：`apps/adai-web/README.md` 从 Flutter 默认模板（"A new Flutter project"）改为项目说明——定位与边界、构建必须走 `.agents/scripts/serve_web.sh`（裸 `flutter build web` 会白屏/中文全框）、发布口径指向 `ai-guard-release.sh` 且「AI 不主动部署」。~~hover 无手型~~ ✅ **已修（同批）**：`Hoverable` 补 `cursor`（默认手型，纯高亮可 `defer`）+2 回归。**仍保留**：圆角 token 散落（`circular(4/6/8/10/12/16)` 硬编码分布在 8 个文件、数十处）——属**重构**而非缺陷（改错会动全站观感），建议单独立批次 + 视觉回归，本轮不做 | 多处 | P3（部分完成）|
+| 263 | 99-inbox 预存项：`7家公司IPO...json` 与 `-gemini.json` MD5 重复；`AI 图形知识工程.md`/`outline.md` 缺尾部换行（数据卫生，下次 os 治理批处理）| `os/trading-engine/99-inbox/` | P3 |
+| FL-04/06 | 审查跟进机制 —— **✅ 触发侧已闭环（2026-09-26 流程批，用户「同意，按建议实施」）**：审查触发进了「收工」流程——工具层 D7 改为**收工前必判**（含代码且触及并发/数据/契约/用户可见行为 → deep 含对抗官；纯文档 → light），`task-cadence.sh ship` **机械数本批代码文件数并提示派审**，`process/task-cadence.md` 定档位判据与结论去向，且**结论不许只留在对话里**。**仍未闭环**：REVIEW 未修项的**人工修复**仍靠自觉（无强制排期 / 到期机制），`task-weekly-audit.sh` 只覆盖自动审查触发。原登记：REVIEW 未修项无强制处理（2026-08-23 归口自 audits/2026-08-16-ai-engineering-workflow.md）| `.agents/process/` | 流程改进（触发侧 ✅）|
+| 2026-09-04 交易-批次止损 | ✅ **已实现（2026-09-04 晚间自主批 II，用户「按推荐来」拍板方案 A；见 change-log）**——覆盖层 `lot-stoploss.json` + derive 合并 + `PUT/DELETE /trading/lots/{lotId}/stop-loss` + web 批次弹窗行内「改」止损；app 不做止损编辑（沿用「去 web」管理惯例）。原始登记：按批次止损编辑闭环——每个买入批次独立设/改止损位且事后可单独调。现状缺口：止损编辑仅持仓级 `PUT /positions/{symbol}`（写 positions.md），非初始批止损锁死买入流水事后改不了 | `TradingLotService` / `TradingController` / web 批次弹窗 | P2（✅ 2026-09-04）|
+| 2026-09-04 交易-资金曲线 | ✅ **已实现（2026-09-04 晚间自主批 IV，用户「按推荐来」拍板方案 A；见 change-log）**——EquityCurveService（现金现值锚定 + 流水/转账事件 + 底仓恒持 + 收盘价）+ `GET /trading/equity-curve` + web 资金 Tab 曲线卡（净值/总资产折线 + 最大回撤）。原始登记：资金/权益曲线图（对标调研 ❌ 无 + P0 必备）；曲线起点由数据自动定（最早流水/转账），invested 口径 = 期初投入缺口 + 转账累计 | `EquityCurveService` / `EquityCurveController` / web 资金 Tab | P2（✅ 2026-09-04）|
+| 文档-手册对齐 | **交易专题手册 `trading-features.md` 系统性滞后于代码（2026-10-03 登记，用户拍板「先不动，只登记」）**——端点数（表 60 vs 实 77）、Controller 计数、推送类型（8→12）与渠道（缺 APNs）、定时任务（缺 20:30/15:35）、双端 UI 清单等约 30 处失准 + 8 处自相矛盾；**完整清单与两档修法（① 回填手册 ② 给 `ai-guard-align.sh` 加手册端点表对拍）见 `REVIEW.md` P2-文档5**——此处不复述，避免第二处记录各自腐烂（该 P2 的病根正是「多处记录、无人同步」）。根因＝该手册不被任何门禁覆盖（`ai-guard-align.sh` 只管 api-spec + status 端点数），且缺 `updated`/`lines` 字段（`ai-guard-meta` 够不着）| `.agents/reference/trading-features.md` · `.agents/reference/feature-reference.md` §9 · `.agents/reference/status.md:22` · `.agents/records/REVIEW.md` P2-文档5 | P2 |
+| 交易-清仓K线 | **清仓股 K 线图 + B/S 标注（2026-10-03 用户提出：「清仓股可以像完美案例画个 k 线图，直观点，标注好 B/S 点」）**——**可行性已核实**：**数据齐**（`sold.json` 有 `buyDate/sellDate`，168 条；`GET /trading/rounds` 已识别 232 轮；`trades` 有逐笔方向/价/量）· **后端能力已有**（`KlineService.klineRange(symbol, from, to)`，**只缺暴露端点**——现全项目唯一 K 线端点是 `GET /trading/cases/{caseId}?kline=true`）· **前端可复用** `apps/adai-web/lib/widgets/case_kline_chart.dart`（主图蜡烛 + MA10/MA60 + 买点日标记、副图量/MACD/KDJ，前端从 OHLCV 重算——本来就会画标记，扩成 B/S 双向即可）· **app 端全库无图表组件**（`find -iname "*kline*" -o -iname "*chart*"` 零结果）→ 首批只能 web，与现有「K线在电脑端」口径一致。**设计要点**：**别按 sold 记录画**——`tradeCount` 形如 `"6+2"` 说明它是「标的级总账（首次介入→最后一次清仓）」，最长跨 479 天；要按 `rounds` 的**轮次**画（232 轮），每轮一段 K 线 + 该轮 B/S 点 | `TradingRoundController` · `KlineService.klineRange` · `apps/adai-web/lib/widgets/case_kline_chart.dart` · 先例见 `.agents/reference/trading-features.md` §10（案例 K 线）| 待排期（**新功能，非缺陷**；若做按 feature 卡/RFC 流程走）|
+
+| 2026-09-14 合规-公安备案 | **公安联网备案（ICP 备案后 30 天内，最迟 2026-09-30）**：到全国互联网安全管理服务平台（**beian.mps.gov.cn**，2026-09-21 实测 200）提交；通过后把公安备案号 + 平台给的图标/HTML 代码挂到网站底部（web/admin 已有 ICP 栏可并列，4 处挂载点见清单）。同项登记 `REVIEW.md` P1-合规1 + `status.md` 运行环境 | 运营/合规（无代码）；**逐步清单 `.agents/deployment/gongan-filing.md`**（2026-09-21 新增，含材料/六步流程/填写口径/挂载点）+ `icp-filing.md` §6 步骤 5 | P1（**2026-09-21 已提交 → ✅ 2026-09-24 办结**）：备案号 `京公网安备11011402057309号` + 图标已挂 web/admin 底部（壳/登录页）与两份 privacy.html，并已部署 |
+
+### 已删除（纯记录/已实现，2026-08-15 出表）
+
+- **#173 带图提问 intent=question** → 已被 Phase 1 带图 ask（`ask-batch` 问句分流）实现
+- **#262 stripCodeFences 边界** → 标注"可接受记录"（复盘正文罕见含代码块，无需修）
+
+## 全维度走查（2026-08-15 首轮，7 官）
+
+> docs/ai/process/audit.md 首轮走查。P0/战略/P1 在 REVIEW.md 走查区；以下为 P2/P3 待办。
+
+### P2 待办
+
+| # | 任务 | 位置/说明 | 优先级 |
+|:-:|:-----|:---------|:------:|
+
+### P3 打磨（选录）
+
+| # | 任务 | 位置/说明 | 优先级 |
+|:-:|:-----|:---------|:------:|
+| W-P3-9 | ✅ **已修（2026-09-26 夜间批四）**：新增 `lib/utils/image_downscale.dart`——上传前用 `ui.instantiateImageCodec` 在**解码阶段**降到长边 1600（小图原样返回零重编码；结果比原图大则回退原字节；解码失败原样返回不阻断选图），接入 `feed_page._pickImage` 与 `learn_page._pickImages`（截图/文件导入是 csv/txt，不涉及）；+3 回归（小图不碰 / 超限降采样且体积不增 / 损坏字节原样返回）| `apps/adai-web/lib/utils/image_downscale.dart` | ✅ 2026-09-26 |

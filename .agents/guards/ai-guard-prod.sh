@@ -483,7 +483,7 @@ RENDER_EOF
 # ── 到期倒数（REVIEW P2-APNs5，2026-09-17）──────────────────────────────────────
 # 为什么塞进每日巡检：这些日子**只会被忘记**——iOS 描述文件/付费账号到期当天 App 直接
 # 打不开（2026-08-26 已经吃过一次「7 天过期」的亏），而没人会主动去翻文档。
-# 日期真相源：docs/reference/status.md（改期请两处同步）。
+# 日期真相源：.agents/reference/status.md（改期请两处同步）。
 # 注意：hr 是上面 Python 渲染块里的函数，shell 侧不存在（2026-09-17 修复
 # 「line 334: hr: command not found」）；这里用 printf 复刻同一视觉样式。
 printf '\n\033[1m── %s ──\033[0m\n' "到期倒数（30 天内标红）"
@@ -501,7 +501,7 @@ check_expiry() {
         printf "  · %s 还有 %d 天（%s）\n" "$label" "$days" "$date"
     fi
 }
-check_expiry "iOS 描述文件 / 付费账号" "2027-09-13" "到期当天 App 打不开：提前续费 + 重签（见 docs/deployment/ios-release.md §到期与应急）"
+check_expiry "iOS 描述文件 / 付费账号" "2027-09-13" "到期当天 App 打不开：提前续费 + 重签（见 .agents/deployment/ios-release.md §到期与应急）"
 # 2026-09-24：公安联网备案已通过（京公网安备11011402057309号）且底部挂载已部署 → 本倒数项撤下（不再倒计时）
 check_expiry "域名 adaiadai.com" "2027-01-30" "DNSPod 续费"
 echo

@@ -33,7 +33,7 @@ DEADLINES = [
         title="域名 adaiadai.com 到期（DNSPod）",
         impact="域名失效 → web / API / PWA / iOS App 全部不可达",
         action="DNSPod 控制台续费",
-        ref="docs/reference/status.md",
+        ref=".agents/reference/status.md",
     ),
     dict(
         date="2027-09-13",
@@ -47,7 +47,7 @@ DEADLINES = [
         title="iOS 描述文件（Provisioning Profile）到期",
         impact="App 当天打不开",
         action="续费后重新签名打包装机",
-        ref="docs/reference/status.md",
+        ref=".agents/reference/status.md",
     ),
 ]
 
@@ -56,7 +56,7 @@ UNSCHEDULED = [
     dict(
         title="生产服务器（82.156.111.146）续费日",
         action="腾讯云控制台查到到期日后，补进本脚本 DEADLINES",
-        ref="docs/reference/status.md（自述「服务器续费日未登记」）",
+        ref=".agents/reference/status.md（自述「服务器续费日未登记」）",
     ),
 ]
 

@@ -11,7 +11,7 @@ depends-on:
   - ../assets/conventions.md
   - ../checklists/code-backend-reviewer.md
 related:
-  - ../../docs/architecture/api-spec.md
+  - ../reference/api-spec.md
   - ../process/ship.md
 tags: [skill, build, api]
 ---
@@ -30,10 +30,10 @@ tags: [skill, build, api]
 2. **写代码**：按分层依赖 `interfaces → application → domain/kernel ← infrastructure`；构造注入（C2）、业务异常（C4）、SLF4J 日志（C3）
 3. **插件门控**：新端点是否只对启用插件的用户开放？是 → 加 PluginService 门控（B36，防「无插件用户访问 trading/project」坑）
 4. **测试配套**：Controller 层 `@WebMvcTest` + MockBean；关键分支（解析/upsert/状态保留/写回）必须测；边界用例（跨天/歧义/脏数据）
-5. **同步 api-spec**：`docs/architecture/api-spec.md` 升版 + 变更记录行（D48 教训：15 端点无版本行）
-6. **同步 status.md**：`docs/reference/status.md` 端点数更新（唯一真相源）
+5. **同步 api-spec**：`.agents/reference/api-spec.md` 升版 + 变更记录行（D48 教训：15 端点无版本行）
+6. **同步 status.md**：`.agents/reference/status.md` 端点数更新（唯一真相源）
 7. **对齐验证**：`bash ai-engineering/ai-guard-align.sh`（A1 端点对拍）+ `bash ai-engineering/ai-guard-meta.sh` PASS
-8. **功能登记**：新功能 → `docs/reference/feature-reference.md` 补章节（D26 教训：只同步 api-spec 不算完整闭环）
+8. **功能登记**：新功能 → `.agents/reference/feature-reference.md` 补章节（D26 教训：只同步 api-spec 不算完整闭环）
 
 ## 约束与规则
 
@@ -51,5 +51,5 @@ tags: [skill, build, api]
 ## 参考资料
 
 - 后端检查清单：`../checklists/code-backend-reviewer.md`
-- 契约：`../../docs/architecture/api-spec.md`
+- 契约：`../../.agents/reference/api-spec.md`
 - 规范：`../assets/conventions.md`；边界：`../assets/boundaries.md`；已知坑：`../assets/pitfalls.md`

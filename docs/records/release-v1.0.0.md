@@ -1,0 +1,83 @@
+# v1.0.0 — AdaiOS 第一版（首个正式发布）
+
+> **版本定调**：v1.0.0 是 AdaiOS 首个正式发布。v0.1.0 / v0.2.0 / v0.3.0 为内部开发里程碑，不作为独立版本发布（见 `.agents/direction/product-roadmap.md` §二）。
+> 发布规则见 `.agents/rfc/20260801-release-versioning.md`。
+
+发布日期：待定（验证通过，tag + 部署待用户确认）
+
+> **⚠️ 发布前核对（2026-09-16，对 HEAD `d060841`）——本文件写于 2026-08，已与代码严重脱节，不能直接用于发布。**
+> 2026-09-16 晚间批按用户「发布只做核对，不发 tag」的要求逐项对拍，实测差距如下：
+>
+> | 本节位置 | 文中写的 | 实测（2026-09-16） |
+> |:---|:---|:---|
+> | 工程基建/测试数 | 后端 433 · 前端 171 | **后端 1926 · app 357 · web 302 · admin 69** |
+> | 数据/文件格式变更 | api-spec **v3.18** · 51 端点 | **v3.69 · 152 端点** |
+> | 已知问题 | 「REVIEW.md P1/P2 已清零」 | 未修 **20 条**（**口径**：REVIEW 未修 13 + 搁置 5 + 复核 2 = 20，可用 `bash .agents/guards/ai-guard-unfixed.sh` 复算；含硬期限：公安联网备案最迟 **2026-09-30** —— ✅ **2026-09-24 已办结**）。**2026-09-26 补口径留痕**：2026-09-17 docs 深审质疑「三种算法都得不到 20、未找到留痕」，系当时未写口径所致，非数字错误 |
+> | 已知问题 | 「#179 登录体系（v1.0.1 立项）」 | **2026-09-01 已上线**（账号密码 + 服务端会话 + role=admin 门禁） |
+> | 功能 | 无 learn / 无 APNs / 无 iOS 分发 | 缺整块：learn 插件（消化·复习·卡片流·**iOS 分享扩展**）· trading 账实一致性/批次跟踪/案例库/认知层 · **APNs 自有推送** · **TestFlight 分发** · 外部入口（Siri / 快捷指令 / `adai://`） |
+>
+> **结论**：发布前必须重写「功能 / 修复 / 已知问题 / 数据格式变更」四节（建议单独立一个批次，
+> 不要和修复批混做——混装会让「这次出的问题是谁引起的」说不清）。**本轮不发 tag、不部署。**
+
+## 定位
+
+AdaiOS 不是传统 CRUD App，而是一套 **Personal AI Operating System**：以 Kernel（Context + Memory + Knowledge）为核心、个人文件为资产、Domain OS 为能力边界的个人智能系统。v1.0.0 是这条路的第一个里程碑式交付——**核心闭环稳定 + 数据格式冻结**。
+
+## 功能
+
+### 五层产品架构
+- **L1 AI 问答** ✅：意图识别（STATEMENT/QUESTION）· Context Engine（六组件 + ContextContributor 插件机制）· 卡片对话状态机 · Memory 回读 · Knowledge 注入
+- **L2 主动推送** ✅：今日简报 + **行情异动主动推送**（`MarketAlertService` 交易时段轮询：止损预警/放飞提示/跌破成本线 → `type=push` 入 Feed，阈值配置化）
+- **L3 身份+记忆** ✅：Identity / Record / Timeline / Context / Memory / Knowledge 六大 Kernel 组件 + **记忆进化 Phase 1-5**（类型 kind / 主题合并 superseded / actionable 闭环 / 时效淘汰 / 筛选降噪）
+- **L4 通用记录** ✅：文字记录 + 意图路由 + **多模态图片记录**（GLM-4.1V 视觉理解 → 文本化进现有闭环，VLM 失败降级不丢数据）
+- **L5 外部信息** ✅：腾讯行情接入 Phase 1（上下文注入）+ Feed 行情嵌入（`type=market`）+ Phase 2 主动推送
+- **L6 交易闭环** ✅：持仓管理 · 复盘生成（走 ContextEngine 注入规则/知识/行情）· 知识反哺（promote/conflicts）
+
+### Domain OS
+- **Trading OS** ✅：87 课知识库 → 11-context → KnowledgeSource → Context Engine 全链路
+- **Project OS** ✅：Status API（git 自举 + RFC 索引）+ 轻量任务系统（Phase 1-4）
+- **Life OS** 🏗：骨架就绪（快速记录 + LifeContextContributor）；情绪/习惯/周报待数据积累后触发
+
+### 工程与产品基建
+- **adai-admin 管理后台** ✅：账号管理（多账号载体）+ 数据/系统/知识管理（`X-Admin-Token` 鉴权；2026-09-02 REVIEW #178 后退役，管理口并入统一登录——账号密码 + role=admin）
+- **多账号（v1.0.0 提前）** ✅：全链路 userId 分层（`data/{userId}/`）+ adai-admin 账号管理 + **前端选号/切换**（`GET /api/v1/accounts/available` 无鉴权选号——2026-09-01 登录体系起需登录、产品端遗留选号，2026-09-02 #178 保持不变；+ 记住上次账号 [web localStorage / io shared_preferences] + adai-app World B「切换账号」/ adai-web 底部 `@userId` 点击切换）；**wasm 白屏修复**（shared_preferences web 插件不注册 → UserStore 条件导出 localStorage）+ **切换账号崩溃修复**（Navigator.of null → GlobalKey navigatorKey）
+- **最小封闭鉴权（#127）** ✅：admin/accounts 端点令牌拦截（fail-closed）+ CORS 收窄为配置化 origin 白名单（2026-09-02 REVIEW #178 后令牌机制退役，并入统一登录）
+- **Domain=插件模型（RFC 20260814）** ✅：Account.plugins（adai-admin 账号卡开关）+ 知识源/贡献者门控 + D5 domain 收敛 + `GET /me/plugins` 前端模块显隐 + Feed/promote/行情轮询读写侧门控（S-3/S-4）
+- **展示层聚合（S-2 产品决策「一次输入 = 一个事件」）** ✅：时间线/Feed 图文一体（`image_qa` 引用图合并为图文事件、缩略图取首图）+ 多轮 chat 每会话单条；数据层整体化排入 v1.0.1（RFC `20260815-media-event-unification`）
+- **前端双端** ✅：adai-app（移动端入口）+ adai-web（独立桌面端，两套 UI 非适配）
+- **工程基建** ✅：版本机制 · 审核流程（/review 三档 + guard.sh）· deploy.sh · 测试全覆盖（后端 433 · 前端 171 [adai-app 92 · adai-web 47 · adai-admin 32]）
+
+## 修复
+
+- **记忆系统**：沉淀断裂（AI 失败降级原文 + 洞察升级覆盖）、rebuild 幂等、时效/降噪
+- **对话与卡片**：Feed 状态机修复、对话内容刷新不一致（JSON 剥离，#13/#11）、结束对话失败可重试（#10）
+- **阿呆系统页 CanvasKit 必现崩溃（v1.0.0 验证修复）**：点击「阿呆系统」release 必现 `PictureRecorder` wasm 崩溃（该页首帧 + 路由动画并发 + spinner 无限重绘触发 CanvasKit 不稳定，非项目 bug）→ 入口改无动画跳转 + 加载占位换静态（`launcher_page.dart` / `project_status_page.dart`）
+- **Feed 首屏与时间基准（v1.0.0 验证修复）**：卡片时间/日期按最后更新时间 `updatedAt` 为准（跨日续接对话归最后活跃日，`findTodayCards` 按 updatedAt 过滤）；分页 page 0 返回完整 `size` 条最新核心、余数放末页（#175）
+- **复盘生成语义（v1.0.0 验证修复）**：复盘走 `AiClient.generate` 生成语义（新增方法），不再复用 `understand` 的 JSON 摘要——修复 AI 只回"交易复盘，持仓不变"一句话的问题，产出完整 5 节结构化复盘且对照交易系统规则
+- **数据卫生**：卡片文件混入 AI 原始 JSON（#13）、Feed ai_note 跨日归属错日（#148）、删除记录残留（#8）、emoji 代理对解码、Unicode utf8
+- **质量锁定**：批 E/F/G/H/I——错误态人话、状态机测试锁定、6 页面测试、中文化、桌面残留清理
+- **守护检查**：数据安全（原子写/毫秒 ID）、正则健壮性、mounted 守卫、契约一致性
+
+## 数据/文件格式变更
+
+> **v1.0.0 数据格式冻结**：`.agents/reference/data-format-freeze.md` 定义 `data/` 全部文件格式契约 + 变更规则。发布后破坏性变更必须迁移。
+
+- **Memory 条目**：`kind` / `topic` / `superseded` / `evolvedTo` / `doneAt` / `lastConfirmed` 字段（向后兼容，旧条目默认解析）
+- **FeedEntry**：新增 `type=action` / `type=market` / `type=push` / `date` / `mediaPath`
+- **api-spec v3.18**：51 端点全量契约（含 `PATCH /memory/{id}/done`、`/records/media`、`/records/media/ask-batch`、`/accounts`、`/admin/**`、`/me/plugins`）
+- **账号 `createdAt`**：统一序列化为 ISO 字符串（freeze #3，读取兼容旧 `[年,月,日]` 数组）
+- **freeze #1/#2**：positions.md 手写注释 / profile.md body 说明挪入 `data-format-freeze.md`（§2.5/§2.6 手动维护），磁盘归一化为代码 writer 格式
+
+## 已知问题
+
+- **REVIEW.md P1/P2 已清零**（批 J/Q/R + 展示层聚合：插件门控读写侧对称、账号迁移/健壮性、前端稳定性、图文一体）
+- **偶发 CanvasKit 渲染崩溃（Web，非阻塞）**：wasm `Picture._cullRect` / `PictureRecorder` 偶发崩溃，已观测触发点——AI 回复 markdown 渲染（`MarkdownBody selectable`）、图片卡渲染、**文本输入光标动画**（editable_text 光标闪烁重绘，如交易表单输入时）——**阿呆系统入口在 v1.0.0 验证期间必现，已修复**（无动画跳转 + 静态加载占位）；其余为偶发、**刷新即恢复**、不丢已提交数据（卡片 active 状态落盘，刷新后续 [结束] 可补生成 summary/tags）；⚠️ **输入中崩溃会丢未提交的表单内容**（TextField 在内存，刷新清空）；建议后续版本评估渲染降级（去 selectable / 换 SelectionArea / 输入去光标动画）或升级 Flutter
+- **战略未修（不阻塞）**：#179 用户层登录体系（v1.0.1 立项）· S-2 数据层整体化（v1.0.1，展示层已修）
+- **有意搁置**：#19 Feed 全量遍历 · #22 kernel 反向依赖 infrastructure（已重构部分）
+- **Life OS 无闭环**：情绪/习惯/周报待数据积累（非 v1.0.0 硬门槛）
+- **音频多模态**：方案待定
+
+## 部署
+
+- `services/adai-core/deploy.sh`（scp + 重启 + 验证）
+- **tag + 部署由用户确认后手动触发**（外向动作，不自动执行）

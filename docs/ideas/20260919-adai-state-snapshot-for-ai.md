@@ -3,16 +3,13 @@ title: 阿呆最新状态快照——面向外部 AI 的交接件
 description: 某时刻（2026-09-19）的状态交接——阿呆是什么/最近变什么/为什么变/真实架构/当前真问题/未决问题/方向候选；供已长期参与阿呆讨论的外部 AI 快速重新接上，不是项目介绍
 version: 1
 created: 2026-09-19
-updated: 2026-09-19
+updated: 2026-10-04
 status: active
-lines: 368
+lines: 365
 depends-on:
-  - ../reference/status.md
 related:
   - 20260919-external-briefing-for-ai.md
   - 20260916-plugin-and-cold-start-discussion.md
-  - ../review/REVIEW.md
-  - ../rfc/20260918-trading-app-restructure.md
   - ../../ARCHITECTURE.md
 tags: [ideas, snapshot, handover, external]
 ---
@@ -21,7 +18,7 @@ tags: [ideas, snapshot, handover, external]
 
 > **用途**：把阿呆的最新状态交给另一个长期参与过讨论的 AI，让它能快速重新接上——**阿呆现在是什么 → 最近发生了什么变化 → 为什么这样变化 → 当前真正的问题是什么 → 未来可能往哪里走**。**这不是项目介绍**。
 >
-> **数据截止**：2026-09-19。数字真相源：`status.md`（测试/端点/版本）、`REVIEW.md`（未修项）、`docs/rfc/20260918-trading-app-restructure.md`（进行中的结构改动）、`20260919-external-briefing-for-ai.md`（用户同日自写的外部简报）。文中【事实】= 可在仓库核查；【判断】= 主观倾向，可被反对。
+> **数据截止**：2026-09-19。数字真相源：`status.md`（测试/端点/版本）、`REVIEW.md`（未修项）、`.agents/rfc/20260918-trading-app-restructure.md`（进行中的结构改动）、`20260919-external-briefing-for-ai.md`（用户同日自写的外部简报）。文中【事实】= 可在仓库核查；【判断】= 主观倾向，可被反对。
 
 ---
 
@@ -57,7 +54,7 @@ tags: [ideas, snapshot, handover, external]
 **① 插件模型被自己削平（09-17）**：撤掉整个 `project` 插件（6 个端点 breaking 下线、`domain/project` 整包删除），待办收归 Kernel builtin（`/api/v1/todos` 5 端点、无插件门控）。三层定位落定：core 内核 / builtin 内置（待办·搜索·时间线·简报）/ optional 插件（trading·learn）。
 → *意味着：对"插件"这个形态的信心在下降。project 的死因是"一半通用一半自用"——恰好证明通用需求不该做成插件。*
 
-**② 开始为"递给别人"做准备（09-15~09-17）**：TestFlight 打通（构建 8，VALID 至 2026-12-16）→ 新增 `docs/deployment/testflight-external-testing.md`（内测/外测怎么选、Beta 审核备注、测试账号）→ 新增 `docs/legal/privacy-policy.md`（外测必填的隐私政策）→ 建好 `applereview` 测试账号（`role=user`、只开 learn）。
+**② 开始为"递给别人"做准备（09-15~09-17）**：TestFlight 打通（构建 8，VALID 至 2026-12-16）→ 新增 `.agents/deployment/testflight-external-testing.md`（内测/外测怎么选、Beta 审核备注、测试账号）→ 新增 `docs/legal/privacy-policy.md`（外测必填的隐私政策）→ 建好 `applereview` 测试账号（`role=user`、只开 learn）。
 → *意味着：项目第一次出现"分发、合规、初次见面"这类非功能工作。*
 
 **③ 冷启动升级为独立议题（09-16 "第一次见面"批）**：新用户插件默认全关 → 第一眼只能看内核；空态改成阿呆先开口 + 3 个可点开场问句；档案页新增"阿呆对你的了解"（长期观察 + 置信度 + 确认回流）；头像只做预设。
@@ -74,7 +71,7 @@ tags: [ideas, snapshot, handover, external]
 
 **⑦ 被推翻 / 放弃的判断**：PWA 当手机方案（再次否决）· `project` 插件（退役）· 分享入口"靠关键词猜动作"（改"靠动作说"）· "完美图匹配度"（搁置）· 静默推送/角标/小组件（搁置）· B站有字幕链（放弃，一律转写）· **"learn 是存量型插件"的误判**（修正）· 交易页"纵向堆叠卡片"的 UI 范式（09-18 RFC 改数据列表 + 首屏聚焦 + **金额默认打码**）· iOS 分享扩展"用户手点一次签发令牌"（判为设计缺口，未修）。
 
-**⑧ AI 工作方式的变化**：规则固化为「每日巡检」触发词与「讨论与实施分离」；审查官体系扩到 12 角色 + 3 外部视角（陌生人/社会性/支持台）；多会话并发 + worktree；出现跨项目通用产出（`docs/guides/qoder-parallel-workflow.md`，550 行、不含任何项目信息）。
+**⑧ AI 工作方式的变化**：规则固化为「每日巡检」触发词与「讨论与实施分离」；审查官体系扩到 12 角色 + 3 外部视角（陌生人/社会性/支持台）；多会话并发 + worktree；出现跨项目通用产出（`.agents/guides/qoder-parallel-workflow.md`，550 行、不含任何项目信息）。
 
 ---
 
@@ -358,7 +355,7 @@ flowchart LR
 
 1. **不要把它当"带记忆的 AI 聊天 App"**。它的主体是文件资产（`data/{userId}/**` + `os/**`），不是对话；模型是可替换零件。理解阿呆要从"资产怎么长"入手，不是从"模型多强"入手。
 2. **"测试 2033 / 端点 154 / 三端对齐"≠ 产品成熟**。真实用户 = 1；数据密度极低（records 219、对话卡 9、learn 卡片 11）。工程完备与用户数为 1 是同一事实的两面——这套工程体系首先是"单人用 AI 写代码"的脚手架。
-3. **文档极完备，但会漂移**。数字真相源只有 `docs/reference/status.md`；`AGENTS.local.md` 快照数字已滞后；`memory-frameworks-borrow` 仍写"E-A 是 draft"而实际 09-15 已落地。**引用数字前先核对源文件**。
+3. **文档极完备，但会漂移**。数字真相源只有 `.agents/reference/status.md`；`AGENTS.local.md` 快照数字已滞后；`memory-frameworks-borrow` 仍写"E-A 是 draft"而实际 09-15 已落地。**引用数字前先核对源文件**。
 4. **项目有硬规则**：讨论不等于开工（规则 7，未获"开工"不改代码与数据）；部署/推送/外发请求必须人确认（B8）；审查只报告不直接修（B7）。**不要建议"我直接帮你改"。**
 5. **已否决的方向不要再提**：PWA/网页版当手机方案（用户明确反感）· 微服务 · project 项目管理插件 · 给 AI 改名 · 头像上传 · 用户自助开插件（暂缓）· 完美图匹配 · B站 Cookie 登录 · 静默推送/角标/小组件 · 追求"全自动零出错"。
 6. **"无第三视角"是硬红线**：任何用户可见面都不得出现系统标签或系统口吻。设计建议里不要出现"系统消息""提示：""已为您…"这类形态。

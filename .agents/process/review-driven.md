@@ -12,18 +12,18 @@ related:
   - review.md
   - ship.md
   - ../roles/docs-design-writer.md
-  - ../../docs/architecture/ai-context-engineering.md
+  - ../assets/ai-context-engineering.md
 tags: [ai, process]
 ---
 
 # 审核驱动开发流程（review-driven）
 
-> 主链：**需求 → 设计 → 编码**，**文档先行 + 双角色真对打**。定了需求文稿之后**人基本不参与**——全程只在 **4 个点**被叫。全图见 `docs/architecture/ai-context-engineering.md` §4.6。
+> 主链：**需求 → 设计 → 编码**，**文档先行 + 双角色真对打**。定了需求文稿之后**人基本不参与**——全程只在 **4 个点**被叫。全图见 `.agents/assets/ai-context-engineering.md` §4.6。
 
 ## 1. 入口条件：需求已由人拍板定稿
 
 - `workspace/requirements/<需求id>.md` 的「**定稿记录**」已由**人**填写。**没定稿不启动**（人的介入点 ①）。
-- 定稿时**同时归档**到 `docs/rfc/` 或 `docs/features/`——`workspace/` 只留在制品。
+- 定稿时**同时归档**到 `.agents/rfc/` 或 `.agents/features/`——`workspace/` 只留在制品。
 
 ## 2. 设计阶段（两角色真对打）
 
@@ -74,8 +74,8 @@ v1: 编写者（读需求定稿）→ 审核者（读 design-v1）→ 判定
 
 | 阶段 | 出口条件 |
 |:--|:--|
-| **需求** | 人的「定稿记录」已填 + 已归档 `docs/rfc/` 或 `docs/features/` |
-| **设计** | 审核报**无 P0/P1** → 出 `design-final.md` → 归档 `docs/architecture/` + ADR → 删 `designs/<id>/` |
+| **需求** | 人的「定稿记录」已填 + 已归档 `.agents/rfc/` 或 `.agents/features/` |
+| **设计** | 审核报**无 P0/P1** → 出 `design-final.md` → 归档 `.agents/reference/` + ADR → 删 `designs/<id>/` |
 | **编码** | 测试通过 + 审核无 P0/P1 + `pre-commit` **11 层**全过 |
 | **收尾** | `task-cadence.sh ship`（显式路径提交）+ 任务账本「待归档」搬进全局账本（change-log / REVIEW / `_index`）|
 
