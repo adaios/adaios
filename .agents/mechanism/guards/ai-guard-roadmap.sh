@@ -21,7 +21,6 @@ import re, sys, pathlib, datetime
 ROOT = pathlib.Path(sys.argv[1])
 ROADMAP = ROOT / '.agents/direction/product-roadmap.md'
 STATUS = ROOT / '.agents/knowledge/reference/status.md'
-TASKLOG = ROOT / '.agents/records/task-log.md'
 
 today = datetime.date.today()
 out = []
@@ -75,16 +74,9 @@ if sel_lines and any(('顺延' in l or '⏸' in l) and '已实现' not in l and 
 for kw, note in (('双主页', '08-20 体检 S-1：双主页形态违背 DESIGN「一个页面」'), ('launcher', '08-20 体检 S-5'), ('搜索形态', '08-20 体检 S-5')):
     if kw.lower() not in text.lower():
         checks.append(("ℹ️", f"「{kw}」未入 roadmap——{note}，需补条目或显式决策"))
-# 3c. 通用：roadmap 里「顺延 v1.0.1」条目 vs task-log 是否有对应任务（行级，排除修正/已实现语境）
-tl_text = TASKLOG.read_text(encoding='utf-8', errors='ignore') if TASKLOG.exists() else ''
-for l in text.splitlines():
-    m2 = re.search(r'([^|]{2,20}?)\s*[|｜].*?顺延 v1\.0\.1', l)
-    if not m2 or '修正' in l or '已实现' in l:
-        continue
-    item = m2.group(1).strip()
-    if item and tl_text and item not in tl_text:
-        checks.append(("ℹ️", f"顺延项「{item}」在 task-log 无可追溯任务（路线驱动规则：任务必须能回溯到路线，反之亦然）"))
-
+# 3c. （2026-10-04 撤）原检查「roadmap 顺延项 ↔ task-log 任务」的可追溯性。
+#     撤除原因：task-log.md 已退役为「历史任务档案」，不再是任务源；
+#     路线→任务的追溯改由 **REVIEW.md 的编号**承担（ai-guard-feature F6 已强制对拍）。
 if not checks:
     out.append("- （无已知漂移）")
 for sev, msg in checks:

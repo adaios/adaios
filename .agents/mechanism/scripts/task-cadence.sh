@@ -370,19 +370,55 @@ cmd_weekly() {
     printf '  · 到期红线：python3 .agents/mechanism/scripts/task-check-deadlines.py\n'
 }
 
-# ── todo：当前待办 ─────────────────────────────────────────────────────
-# 源取 ai-guard-context.sh 的 C2 段（REVIEW 未修项，已统一格式化且带条数上限）。
-# 不自己解析 REVIEW.md：那是历史流水文档（条目嵌在引用块里），另写一套解析＝造第二个真相源。
+# ── todo：待办总览（2026-10-04 扩展：1 权威 + 5 相关位置）──────────────
+# 判据：**要「欠着什么」只看 REVIEW.md**；其余位置要么是它的视图（features 欠着），
+#       要么是别的东西（rfc 待决策 / ideas 想法 / workspace 在制品 / task-log 历史）。
+# 不自己解析 REVIEW 的条目正文（那是历史流水），只按段计数 + 复用 context 的 C2 段。
+seg_count() {   # $1=文件 $2=段标题片段 → 该段内**未修**条目数（不含「✅ 已修」，扣表头）
+    # ⚠️ 两个坑：① 不用 `awk -v pat="中文"`——BSD awk 的 -v 传多字节参数会损坏（实测恒为 0）；
+    #    ② REVIEW 的表格里**已修条目仍留在表内**（行内含 `✅ 已修(...)`），不排掉就会把历史当待办。
+    local n pat="${2//\//\\/}"      # 段名可能含 /（如「P0 / P3」）→ 转义，否则 sed 地址解析失败
+    n=$(sed -n "/^## .*$pat/,/^## /p" "$1" 2>/dev/null \
+        | grep -E '^\| *[^-|: ]' | grep -vc '✅ 已修')
+    n=${n:-0}
+    if [ "$n" -gt 0 ]; then echo $((n - 1)); else echo 0; fi
+}
 cmd_todo() {
-    printf '%s═══ 当前待办（%s）═══%s\n' "$BOLD" "$(date +%F)" "$RST"
-    printf '  %s源：REVIEW.md 未修项 · 全量看 %sbash .agents/mechanism/guards/ai-guard-unfixed.sh%s\n\n' "$DIM" "$CYN" "$RST"
+    local R=".agents/records/REVIEW.md"
+    printf '%s═══ 待办总览（%s）═══%s\n' "$BOLD" "$(date +%F)" "$RST"
+    printf '  %s唯一权威 = REVIEW.md（未修项）；其余为视图 / 待决策 / 在制品 / 历史%s\n\n' "$DIM" "$RST"
+
+    printf '%s【① 未修项】REVIEW.md%s  %s战略 %s · P1 %s · P2 %s · P0/P3 %s%s\n' \
+        "$BOLD" "$RST" "$DIM" \
+        "$(seg_count "$R" '战略缺口')" "$(seg_count "$R" 'P1（未修复）')" \
+        "$(seg_count "$R" 'P2（未修复）')" "$(seg_count "$R" 'P0')" "$RST"
+
+    local OWE; OWE=$(awk -F'|' '/^\| `/ { v=$7; gsub(/ /,"",v); if (v != "" && v != "—") n++ } END { print n+0 }' \
+        .agents/knowledge/features/_index.md 2>/dev/null)
+    printf '%s【② 功能欠着】%sfeatures 主轴  %s%s 个功能标了「欠着」（编号已由 F6 核对存在于 REVIEW）%s\n' \
+        "$BOLD" "$RST" "$DIM" "${OWE:-0}" "$RST"
+
+    local DR; DR=$(grep -l 'status: draft' .agents/direction/rfc/*.md 2>/dev/null | wc -l | tr -d ' ')
+    printf '%s【③ 待决策】%srfc/  %s%s 份 draft（**等你拍板才能改码**）%s\n' \
+        "$BOLD" "$RST" "$DIM" "${DR:-0}" "$RST"
+
+    local PT; PT=$(grep -cE '^\|.*\| *(⏳|❌|⚠️)' .agents/rules/assets/pitfalls.md 2>/dev/null || echo 0)
+    printf '%s【④ 未修坑】%spitfalls  %s%s 条状态非「已修」%s\n' \
+        "$BOLD" "$RST" "$DIM" "${PT:-0}" "$RST"
+
+    local WS; WS=$(find .agents/workspace -name '*.md' -not -name '_*' 2>/dev/null | wc -l | tr -d ' ')
+    printf '%s【⑤ 在制品】%sworkspace/  %s%s 份%s' "$BOLD" "$RST" "$DIM" "${WS:-0}" "$RST"
+    [ "${WS:-0}" = "0" ] && printf '  %s（空 = 当前无进行中的任务 ✅）%s' "$DIM" "$RST" || printf '  %s（有进行中的任务）%s' "$DIM" "$RST"
+    printf '\n'
+
+    local TL; TL=$(grep -c '^### M' .agents/records/task-log.md 2>/dev/null || echo 0)
+    printf '%s【⑥ 历史】%stask-log.md  %s%s 个模块任务（**已退役为历史档案**，不再是待办源）%s\n' \
+        "$BOLD" "$RST" "$DIM" "${TL:-0}" "$RST"
+
+    hr "未修项明细（前 12 条，全量见 ai-guard-unfixed.sh）"
     bash .agents/mechanism/guards/ai-guard-context.sh 2>/dev/null \
         | awk '/^## C2 未修项/{f=1;next} /^## C[0-9]/{f=0} f' \
-        | grep -v '^$' | cut -c1-150 | head -16
-    local insp; insp="$(cadence_get inspection.covered_through)"
-    hr "节奏"
-    printf '  巡检游标 %s · 任务表 .agents/records/task-log.md · 产品蓝图 .agents/direction/product-roadmap.md\n' \
-        "${insp:-未建立}"
+        | grep -v '^$' | cut -c1-150 | head -12
 }
 
 # ── mark：手工补记游标 ─────────────────────────────────────────────────

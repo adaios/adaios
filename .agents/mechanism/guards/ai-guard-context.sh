@@ -7,13 +7,13 @@
 #        bash .agents/mechanism/guards/ai-guard-context.sh --write-local  # 收尾：写 AGENTS.local.md 快照（DSH 等新会话自动注入）
 # 说明:  每次开工前跑一次，自动汇总 AI 该知道的上下文，不用人提醒：
 #         C0 产品心跳（用户是否还在用 — 最高优先级信号，2026-09-13 新增）
-#         C1 当前状态（state/_index 指针 → status/REVIEW/task-log）
+#         C1 当前状态（state/_index 指针 → status/REVIEW）
 #         C1.5 主题手册导航（.agents/knowledge/reference/*-features.md 深度文档直读索引）
 #         C2 未修项（REVIEW 战略/P1/P2 中与本批相关的）
 #         C3 边界（boundaries 原则级）
 #         C4 坑（pitfalls 复发信号）
 #         C5 相关规范（conventions 按主题）
-#         C6 待办（task-log 当前任务）
+#         C6 在制品（workspace/）
 #        输出 = 一份 Markdown 清单，喂给 AI 作为开工上下文
 # ─────────────────────────────────────────────────────────────
 set -u
@@ -326,25 +326,20 @@ else:
         out.append(f'> （ai-guard-cost 调用失败: {_e}）')
 out.append("")
 
-# C6 待办（task-log 当前任务区）
-out.append("## C6 待办（task-log.md 当前任务）")
-tl = ROOT/'.agents/records/task-log.md'
-if tl.exists():
-    lines = tl.read_text(encoding='utf-8').splitlines()
-    count = 0
-    for l in lines:
-        if l.startswith('|') and '|' in l[1:] and not l.startswith('|:'):
-            cells = [x.strip() for x in l.strip('|').split('|')]
-            if len(cells) >= 3 and cells[0] and (cells[0][0].isalpha() or cells[0][0].isdigit()):
-                if WRITE_LOCAL and cells[1] in ('模块名', '含义', '说明'):
-                    continue  # 表头行，不进快照
-                row = f"- {cells[0]}: {cells[1][:70]}"
-                if TOPIC and TOPIC not in row: continue
-                out.append(row)
-                count += 1
-                if count >= LIM_C6:
-                    out.append(f"- …（快照精简，共 {count} 条，详见 task-log.md）")
-                    break
+# C6 在制品（workspace/）
+# 2026-10-04：task-log.md 退役为「历史任务档案」（待办职能归口 REVIEW.md），
+# C6 改报**在制品**——它反映「正在发生什么」，比历史任务表有用。
+out.append("## C6 在制品（workspace/）")
+_ws = ROOT/'.agents/workspace'
+if _ws.is_dir():
+    _items = [q for q in sorted(_ws.rglob('*.md')) if not q.name.startswith('_')]
+    if _items:
+        for q in _items[:LIM_C6]:
+            out.append(f"- {q.relative_to(_ws)}")
+        if len(_items) > LIM_C6:
+            out.append(f"- …（共 {len(_items)} 份，详见 .agents/workspace/）")
+    else:
+        out.append("- （空 —— 当前无进行中的任务）")
 out.append("")
 
 body = '\n'.join(out)

@@ -8,11 +8,12 @@
 #
 # 聚合来源（REVIEW.md 是唯一真相源，其余为补充与对账）:
 #   ① .agents/records/REVIEW.md        战略 + P0/P1/P2 未修复（表内状态列非已修的）
-#   ② .agents/records/task-log.md   待办迁移区（P3/观察项/可排期）
+#   ② （2026-10-04 撤）原 task-log.md 待办迁移区——该文件已退役为历史档案，待办仅认 REVIEW
 #   ③ docs/records/audits/*.md      每期审查报告中的「未修」行——未归口 REVIEW 的标记为游离
 #   ④ 状态对账:已修复区声称出表、但 REVIEW 表状态未标 ✅ 的编号（下批 review 回填）
 #
 # 背景:2026-08-23 用户盘点发现未修项散在 REVIEW/audits/task-log 多处
+#      2026-10-04 用户再问「5 处必要么」→ 定案：**REVIEW 是唯一权威**，task-log 退役
 #      （launcher 排序等只在 08-20 体检报告里、REVIEW 查无）→ 建本命令兜底。
 # ─────────────────────────────────────────────────────────────
 set -u
@@ -36,7 +37,6 @@ TOPIC = sys.argv[2]
 DRIFT_ONLY = len(sys.argv) > 3 and sys.argv[3] == '1'
 
 REVIEW = ROOT / '.agents/records/REVIEW.md'
-TASKLOG = ROOT / '.agents/records/task-log.md'
 AUDITS_DIR = ROOT / 'docs/records/audits'
 
 def topic_ok(*texts):
@@ -108,30 +108,10 @@ if REVIEW.exists():
             review_unfixed.append((section, cid, row_txt, st))
             review_ids.add(cid)
 
-# ══════════════ ② task-log.md：可排期/观察待办 ══════════════
+# ══════════════ ② （2026-10-04 撤）原聚合 task-log.md 的可排期/观察待办 ══════════════
+# task-log.md 已退役为**历史任务档案**（待办职能归口 REVIEW.md）→ 不再作为聚合来源。
+# 判据：要「欠着什么」只看 REVIEW.md（唯一权威）。
 task_todos = []
-if TASKLOG.exists():
-    tlines = TASKLOG.read_text(encoding='utf-8', errors='ignore').splitlines()
-    in_mig = False
-    for l in tlines:
-        if l.startswith('## 待办迁移') or l.startswith('## 全维度走查'):
-            in_mig = True
-            continue
-        if in_mig and l.startswith('## ') and not l.startswith('### '):
-            break
-        if not in_mig:
-            continue
-        if not (l.startswith('|') and '|' in l[1:]):
-            continue
-        if re.match(r'^\|?\s*:?-', l):
-            continue
-        c = [x.strip() for x in l.strip('|').split('|')]
-        if len(c) >= 4 and c[0] and c[0] != '#':
-            # c[0]=编号 c[1]=任务 c[-1]=优先级
-            task = c[1][:90] + ('…' if len(c[1]) > 90 else '')
-            row_txt = f"{c[0]}｜{task}（{c[-1]}）"
-            if topic_ok(l):
-                task_todos.append(row_txt)
 
 # ══════════════ ③ audits/*.md：未修行 → 未归口即游离 ══════════════
 # unfixed-gate：REVIEW.md 中登记的「报告 → 已归口编号」映射（防旧报告反复报游离）
