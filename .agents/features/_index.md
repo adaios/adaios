@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-01
 updated: 2026-10-04
 status: active
-lines: 135
+lines: 139
 depends-on:
   - ../_index.md
   - ../reference/feature-reference.md
@@ -29,11 +29,13 @@ tags: [meta, index, feature, 功能主轴]
 > **设计**：方案见 [RFC 20261001](../rfc/20261001-feature-index-and-authoring-gate.md)。本层**只放一行 + 链接，不做内容副本**：需求和设计在 `rfc/`、架构在 `architecture/`、实现明细在 `feature-reference.md`、缺陷在 `REVIEW.md`。
 > **维护（如实降格，2026-10-01 对抗审查 A2）**：**状态列仍然由人填**——`ai-guard-feature.sh` 只做「枚举合法 + 一条关键词粗对拍（shipped 不得配『待建/未做』）」，**不是**「状态与证据一致」的真对拍（那需要每行带可机器验证的证据字段，尚未做）。**需求出处只做存在性校验，不做相关性校验**（「链接可达但内容无关」机器抓不到，靠审查官抽检——本表已有 2 行被抽检出填错并修正）。意图卡按需生长（见下）。
 
-## 文件清单（1 项）
+## 文件清单（3 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
-| `kernel.md` | 功能意图卡（kernel 插件）——**只写意图，禁写实现细节**（≤12 行） | active |
+| `kernel.md` | 功能意图卡（kernel 插件，**5 张**）——**只写意图，禁写实现细节**（≤12 行） | active |
+| `learn.md` | 功能意图卡（learn 插件，1 张）——同上 | active |
+| `trading.md` | 功能意图卡（trading 插件，3 张）——同上 | active |
 
 ## 一、状态枚举（唯一写法）
 
@@ -118,13 +120,15 @@ tags: [meta, index, feature, 功能主轴]
 
 **规则**：只有被用户提出修改、或本批次要动的功能才补卡；每张 ≤12 行（**口径：含 `##` 标题行、不含空行**）、只 4 项（干什么用 / 不做什么 / 选型理由 / 验收标准）。**卡内禁写实现细节**（字段名 / 方法名 / 端点 / 路径 / 请求响应）——实现一律链接出去。
 
+**时机（2026-10-04 补）**：**决定要动某功能时，先补 / 更新它的卡，再动手**——卡是「**改动前的意图契约**」，不是「改动后的记录」。若是动完才补，则**第一次改这个功能时无卡可看**（不知道「不做什么」），卡的价值只对第二次以后有效。
+
 **卡标题格式（守卫靠它认卡，写歪会被 F10 拦下）**：`` ## `ID` · 名称 ``——**标题里必须含反引号包裹的 ID**，否则该段落不被当卡、F7/F8 对它静默失效。
 
 | 插件 | 卡文件 | 已生长的卡 |
 |:-----|:-------|:-----------|
-| kernel | [kernel.md](kernel.md) | `record` |
-| trading | 待生长 | — |
-| learn | 待生长 | — |
+| kernel | [kernel.md](kernel.md) | `record` · `memory` · `ask` · `feed` · `brief` |
+| trading | [trading.md](trading.md) | `trade.ledger` · `trade.holdings` · `trade.case` |
+| learn | [learn.md](learn.md) | `learn.digest` |
 | platform | 待生长 | — |
 | admin | 待生长 | — |
 
