@@ -5,12 +5,12 @@ version: 1
 created: 2026-09-04
 status: active
 depends-on:
-  - trading-features.md
-  - api-spec.md
+  - ../manuals/trading-features.md
+  - ../contracts/api-spec.md
 related:
-  - trading-features.md
-  - status.md
-  - ../../records/change-log.md
+  - ../manuals/trading-features.md
+  - ../status.md
+  - ../../../records/change-log.md
 tags: [trading, market-stage, timing, architecture]
 updated: 2026-10-04
 lines: 105

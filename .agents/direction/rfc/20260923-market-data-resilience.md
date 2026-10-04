@@ -6,7 +6,7 @@ status: implemented
 decided-by: adai（2026-09-23「ABD 一起，你做，我休息」）
 tags: [trading, 行情, 韧性, 可观测性, RFC]
 related:
-  - ../../knowledge/reference/trading-features.md
+  - ../../knowledge/reference/manuals/trading-features.md
   - ../../records/REVIEW.md
   - ../../knowledge/reference/status.md
   - ../../../services/adai-core/src/main/java/com/adaiadai/core/application/KlineService.java

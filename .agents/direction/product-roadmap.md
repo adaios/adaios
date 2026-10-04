@@ -140,7 +140,7 @@ SemVer（规则见 `.agents/direction/rfc/20260801-release-versioning.md`）：`
 
 | 项 | 状态 | 说明 |
 |:--|:--|:--|
-| 数据格式冻结 | ✅ 定稿（2026-08-07）| `.agents/knowledge/reference/data-format-freeze.md` v1.0.0 数据契约（W-P2-12 2026-08-17 修正状态漂移）|
+| 数据格式冻结 | ✅ 定稿（2026-08-07）| `.agents/knowledge/reference/contracts/data-format-freeze.md` v1.0.0 数据契约（W-P2-12 2026-08-17 修正状态漂移）|
 | 发布跑通 | 📋 待做 | tag v1.0.0（annotated）+ `docs/records/release-v1.0.0.md` + deploy.sh 部署 + 生产验证 |
 | 残留 P1 质量 | ✅ 已清（2026-08-17）| #144 rebuild 幂等 / #106 api-spec 契约 / #112 CANCELLED 任务可见性 均已修复出表（W-P2-12 修正漂移，见 change-log）|
 | 用户体系前端选号 | ✅ 已实现 | 前端选号/切换链路已落地（2026-08-23 S-5 对拍修正原「顺延 v1.0.1」）；v1.0.0 单用户先行策略不变 |
@@ -193,11 +193,11 @@ SemVer（规则见 `.agents/direction/rfc/20260801-release-versioning.md`）：`
 | 文档 | 角色 | 位置 |
 |:-----|:-----|:-----|
 | VISION.md | **为什么**——理念、五层架构原则 | `.agents/direction/VISION.md` |
-| product-architecture.md | **是什么**——五层架构详解 | `.agents/knowledge/reference/product-architecture.md` |
+| product-architecture.md | **是什么**——五层架构详解 | `.agents/knowledge/reference/designs/product-architecture.md` |
 | 本文件 | **去哪里**——版本蓝图（唯一路线）| `.agents/direction/product-roadmap.md` |
 | task-log.md | **做什么**——任务拆分（从路线拆出）| `.agents/records/task-log.md` |
 | issue-log.md | **遇到什么**——问题记录 | `docs/records/issue-log.md` |
 | rfc/ | **怎么决定**——决策记录 | `.agents/direction/rfc/` |
 | REVIEW.md | **质量如何**——审核状态 | `.agents/records/REVIEW.md` |
-| api-spec.md | **契约是什么**——接口真相源 | `.agents/knowledge/reference/api-spec.md` |
+| api-spec.md | **契约是什么**——接口真相源 | `.agents/knowledge/reference/contracts/api-spec.md` |
 | releases/ | **发布过什么**——Release Notes（存档） | `docs/records/` |

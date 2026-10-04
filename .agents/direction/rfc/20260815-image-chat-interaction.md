@@ -8,7 +8,7 @@ depends-on:
   - 20260802-multimodal-image-glm.md
   - 20260815-media-event-unification.md
 related:
-  - ../../knowledge/reference/api-spec.md
+  - ../../knowledge/reference/contracts/api-spec.md
 tags: [ui, interaction, media, adai-app]
 ---
 

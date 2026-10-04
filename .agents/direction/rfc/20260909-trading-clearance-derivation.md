@@ -7,7 +7,7 @@ decided-by: 用户（2026-09-09 拍板：P1 只填空白 symbol / P2 只挂三�
 tags: [trading, 清仓股, sold, 历史成交, 双轨真相源, File First]
 related:
   - 20260905-trading-cognition-layer.md
-  - ../../knowledge/reference/trading-features.md
+  - ../../knowledge/reference/manuals/trading-features.md
   - ../../records/REVIEW.md
 ---
 

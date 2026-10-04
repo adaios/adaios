@@ -11,7 +11,7 @@ related:
   - 20260801-memory-system-evolution.md
   - 20260727-memory-upgrade.md
   - 20260718-context-memory-knowledge-loop.md
-  - ../../knowledge/reference/feature-reference.md
+  - ../../knowledge/reference/manuals/feature-reference.md
   - ../../records/REVIEW.md
 ---
 

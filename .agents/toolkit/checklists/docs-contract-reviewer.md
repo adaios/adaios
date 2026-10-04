@@ -19,7 +19,7 @@ tags: [review, checklist, docs]
 
 | # | 检查方法 | 上次发现 |
 |:-:|:---------|:---------|
-| D1 | 每个 Controller 端点 ↔ `.agents/knowledge/reference/api-spec.md` ↔ 前端调用 三方对齐 | api-spec 缺 7 个端点（P1，已修 v3.1）|
+| D1 | 每个 Controller 端点 ↔ `.agents/knowledge/reference/contracts/api-spec.md` ↔ 前端调用 三方对齐 | api-spec 缺 7 个端点（P1，已修 v3.1）|
 | D2 | `docs/README.md` 索引指向的文件都存在；新增文档是否登记入口 | — |
 
 ## 架构图与代码一致
@@ -77,7 +77,7 @@ tags: [review, checklist, docs]
 | D34 | frontmatter `lines` 字段 /ship 回写门禁（按 wc -l 校准）| lines 未校准（走查 P3，2026-08-15）|
 | D35 | status.md 内部交叉校验：端点数 vs endpoints.txt、Controller 计数 vs 测试覆盖描述 | status 失真（走查 P1-W16，2026-08-15）|
 
-| D36 | 契约同步目标存在性断言：ship 引用的 api-spec/feature-reference/data-format-freeze 路径必须 grep 断言目标存在 | ship.md 指向不存在的 .agents/knowledge/reference/feature-reference.md（自伤自查 8 官，2026-08-15）|
+| D36 | 契约同步目标存在性断言：ship 引用的 api-spec/feature-reference/data-format-freeze 路径必须 grep 断言目标存在 | ship.md 指向不存在的 .agents/knowledge/reference/manuals/feature-reference.md（自伤自查 8 官，2026-08-15）|
 | D37 | RFC 索引状态对拍：.agents/direction/rfc/_index.md 每行状态必须等于对应 RFC frontmatter 的 status（取值 draft/approved/implemented）| ai-engineering-layer 索引 draft vs 文件 approved（自伤自查，2026-08-15）|
 | D38 | 迁移完整性三件套：目录物理迁移 = ①文件移动 ②全库旧路径 grep 零残留（含自身目录/docs 索引/子项目 AGENTS.md）③_index/README 同步，三步全过才算完成 | docs/ai→ai-engineering 只完成第①步、16 处残留（自伤自查 6 官 ⭐，2026-08-15）|
 | D39 | RFC 验收标准核验：approved RFC 的「验收标准」在 ship 时逐条 PASS/FAIL 并留痕（写回 RFC 或 change-log）| AI 工程层 RFC #1-#5 无人核验（自伤自查 3 官，2026-08-15）|

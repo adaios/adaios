@@ -8,7 +8,7 @@ tags: [trading, app, UI/UX, 结构重排, 口径, RFC]
 related:
   - 20260902-trading-memory-positioning.md
   - 20260912-trading-ledger-integrity.md
-  - ../../knowledge/reference/trading-features.md
+  - ../../knowledge/reference/manuals/trading-features.md
   - ../../records/REVIEW.md
   - ../../../apps/adai-app/AGENTS.md
 ---

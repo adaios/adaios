@@ -5,15 +5,15 @@ version: 1
 created: 2026-09-06
 status: active
 depends-on:
-  - api-spec.md
+  - ../contracts/api-spec.md
   - feature-reference.md
-  - status.md
-  - ../../rules/assets/projects/adai-admin.md
+  - ../status.md
+  - ../../../rules/assets/projects/adai-admin.md
 related:
   - feature-reference.md
   - trading-features.md
-  - ../../direction/rfc/20260802-adai-admin.md
-  - ../../direction/rfc/20260901-auth-login.md
+  - ../../../direction/rfc/20260802-adai-admin.md
+  - ../../../direction/rfc/20260901-auth-login.md
 tags: [admin, reference]
 updated: 2026-10-04
 lines: 151
@@ -23,7 +23,7 @@ lines: 151
 
 > **定位：** AdaiOS「管理后台」（`adai-admin`，Flutter Web，深色主题）的完整功能参考——纯系统治理端，非个人使用端（个人用 app/web）。
 > **用途：** 问题定位、新功能开发、重构与审查时的基准对照（代码实测口径，页面/功能以本文件为准；模块职责与边界以 `.agents/rules/assets/projects/adai-admin.md` 为准）。
-> **真相源：** 端点契约以 `.agents/knowledge/reference/api-spec.md` 为准；本手册以 `apps/adai-admin/lib/` 实测为准。生产访问：`https://adaiadai.com/admin/`。
+> **真相源：** 端点契约以 `.agents/knowledge/reference/contracts/api-spec.md` 为准；本手册以 `apps/adai-admin/lib/` 实测为准。生产访问：`https://adaiadai.com/admin/`。
 
 ## 〇、模块定位与边界
 
@@ -103,7 +103,7 @@ lines: 151
 
 ## 七、端点总表（admin 前端实际调用）
 
-> 全部需 `Authorization: Bearer`；管理端点另需会话 role=admin。契约详见 `.agents/knowledge/reference/api-spec.md`。
+> 全部需 `Authorization: Bearer`；管理端点另需会话 role=admin。契约详见 `.agents/knowledge/reference/contracts/api-spec.md`。
 
 | 方法 | 路径 | 用途 |
 |:---|:---|:---|
@@ -146,6 +146,6 @@ lines: 151
 
 ## 九、变更规则
 
-- 新增治理功能 → 更新本手册 + `.agents/knowledge/reference/feature-reference.md`（§15）+ `.agents/rules/assets/projects/adai-admin.md` 资产卡 + `_index.md`。
+- 新增治理功能 → 更新本手册 + `.agents/knowledge/reference/manuals/feature-reference.md`（§15）+ `.agents/rules/assets/projects/adai-admin.md` 资产卡 + `_index.md`。
 - **任何个人内容编辑入口新增前先问「这该在 app/web 还是 admin」**（边界原则，见 §〇）。
 - 部署：admin 前端重建走 `serve_web.sh`（`--base-href=/admin/` + API_BASE_URL）+ tar 原子替换 `/opt/adaios/admin`（详见 `.agents/rules/deployment/backend-deployment.md`）。

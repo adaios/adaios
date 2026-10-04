@@ -9,9 +9,9 @@ related:
   - 20260918-trading-app-restructure.md
   - 20260902-trading-memory-positioning.md
   - 20260912-trading-ledger-integrity.md
-  - ../../knowledge/reference/trading-features.md
+  - ../../knowledge/reference/manuals/trading-features.md
   - ../../records/REVIEW.md
-  - ../../knowledge/reference/api-spec.md
+  - ../../knowledge/reference/contracts/api-spec.md
 ---
 
 # 交易插件目标形态——决策时点的对话式提醒与四要素铁证

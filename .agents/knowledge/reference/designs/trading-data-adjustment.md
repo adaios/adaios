@@ -7,8 +7,8 @@ status: draft
 depends-on:
   - trading-case-library-design.md
 related:
-  - api-spec.md
-  - trading-features.md
+  - ../contracts/api-spec.md
+  - ../manuals/trading-features.md
 tags: [trading, 数据正确性, 复权, 除权, TDX]
 updated: 2026-10-04
 lines: 178
@@ -174,5 +174,5 @@ TdxFileKlineSource.kline/klineRange → 前复权结果（与腾讯 qfq 同口�
 ## 附：与现有文档的关系
 
 - `trading-case-library-design.md`（案例库设计）——本文是其数据底座修复（§三 数据源盘点：TDX 已接入，本文补复权口径）
-- `.agents/knowledge/reference/trading-features.md` §三——K 线数据源行将标注「TDX 前复权口径」
+- `.agents/knowledge/reference/manuals/trading-features.md` §三——K 线数据源行将标注「TDX 前复权口径」
 - `data-format-freeze.md`——`data/market/` 契约（TDX .day + adj 因子表）

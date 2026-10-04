@@ -5,9 +5,9 @@ status: draft
 depends-on:
   - 20260814-domain-plugin-model.md
 related:
-  - ../../knowledge/reference/framework-plus-plugin-model.md
-  - ../../knowledge/reference/memory-os-design.md
-  - ../../knowledge/reference/feature-reference.md
+  - ../../knowledge/reference/designs/framework-plus-plugin-model.md
+  - ../../knowledge/reference/designs/memory-os-design.md
+  - ../../knowledge/reference/manuals/feature-reference.md
 tags: [rfc, memory, plugin, isolation]
 ---
 

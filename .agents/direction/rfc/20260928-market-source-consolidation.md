@@ -7,7 +7,7 @@ decided-by: adai（2026-09-28「1 落盘，2 做，3 看我心情吧，我基本
 tags: [trading, 行情, 数据源, 稳定性, RFC]
 related:
   - 20260923-market-data-resilience.md
-  - ../../knowledge/reference/trading-features.md
+  - ../../knowledge/reference/manuals/trading-features.md
   - ../../records/REVIEW.md
   - ../../knowledge/reference/status.md
   - ../../../services/adai-core/src/main/java/com/adaiadai/core/application/KlineService.java

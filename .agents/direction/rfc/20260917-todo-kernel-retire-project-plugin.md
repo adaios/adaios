@@ -8,9 +8,9 @@ tags: [待办, 插件门控, project插件, Kernel, 定位拨正, 形态总纲]
 related:
   - 20260814-domain-plugin-model.md
   - 20260916-first-meeting.md
-  - ../../knowledge/reference/framework-plus-plugin-model.md
-  - ../../knowledge/reference/framework-plugin-gap.md
-  - ../../knowledge/reference/feature-reference.md
+  - ../../knowledge/reference/designs/framework-plus-plugin-model.md
+  - ../../knowledge/reference/designs/framework-plus-plugin-model.md
+  - ../../knowledge/reference/manuals/feature-reference.md
   - ../../../docs/archive/project-os-usage.md
   - ../../../docs/records/audits/2026-08-20-app-health-check.md
   - ../../records/REVIEW.md
@@ -38,7 +38,7 @@ related:
 |:-----|:-----|:-----|
 | 前端 app | 「任务 = Kernel 基础服务（待办人人都有），不按插件门控」；2026-09-16 用户拍板「算原生能力，不要挪进插件组」 | `apps/adai-app/lib/pages/launcher_page.dart:290-292`、`:533` |
 | 前端 web | 导航项 `_NavEntry('任务', …, null, …)`——`plugin = null` 即常驻基础服务（「项目」才是 `'project'`） | `apps/adai-web/lib/desktop_shell.dart:36,51-52` |
-| Kernel 文档 | 「Kernel 基础服务（记录/问答/记忆/档案/时间线/搜索/**待办**）不是插件，人人都有」 | `kernel/plugin/PluginRegistry.java:12-13`、`.agents/knowledge/reference/feature-reference.md:1047` |
+| Kernel 文档 | 「Kernel 基础服务（记录/问答/记忆/档案/时间线/搜索/**待办**）不是插件，人人都有」 | `kernel/plugin/PluginRegistry.java:12-13`、`.agents/knowledge/reference/manuals/feature-reference.md:1047` |
 | RFC 决策 | D1：「**待办 = Kernel 基础能力**」，`RecordToTaskLinker` 去掉 domain 门槛 | `.agents/direction/rfc/20260814-domain-plugin-model.md:36` |
 | **后端实现** | **写端点要 project 插件，否则 403「project 插件未启用，无法管理任务」** | `interfaces/ProjectStatusController.java:38-44`（helper）、`:74`（POST）、`:92`（PUT）、`:110-112`（DELETE） |
 

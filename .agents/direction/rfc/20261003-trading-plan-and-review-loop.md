@@ -7,9 +7,9 @@ decided-by: adai（2026-10-03 拍板：**计划用一句话发**（复用现有�
 tags: [trading, 计划, 复盘, 纪律, 规则检查, 轮次识别, 执行率, File First]
 related:
   - 20261003-trading-cash-position-linkage.md
-  - ../../knowledge/reference/trading-features.md
+  - ../../knowledge/reference/manuals/trading-features.md
   - ../../../docs/records/audits/2026-10-03-trading-cash-stocktake.md
-  - ../../knowledge/reference/data-format-freeze.md
+  - ../../knowledge/reference/contracts/data-format-freeze.md
   - ../../records/REVIEW.md
 ---
 

@@ -15,7 +15,7 @@ tags: [fact, reference]
 
 > **状态：v1.0.0 数据契约（定稿）** ｜ 2026-08-07
 > 本文档冻结 AdaiOS 个人数据层（`data/`）的全部文件格式。**v1.0.0 发布后**，格式变更必须遵循 §三「变更规则」；破坏性变更需写迁移说明。
-> 关联：`.agents/knowledge/reference/api-spec.md`（API 契约）· `.agents/direction/VISION.md` §File First · `.agents/direction/rfc/20260801-release-versioning.md`（版本机制）
+> 关联：`.agents/knowledge/reference/contracts/api-spec.md`（API 契约）· `.agents/direction/VISION.md` §File First · `.agents/direction/rfc/20260801-release-versioning.md`（版本机制）
 
 ---
 
@@ -356,10 +356,10 @@ updatedAt: 2026-09-17
 
 | 文档 | 角色 |
 |:--|:--|
-| `.agents/knowledge/reference/api-spec.md` | API 契约（字段与数据格式互为表里）|
+| `.agents/knowledge/reference/contracts/api-spec.md` | API 契约（字段与数据格式互为表里）|
 | `.agents/direction/rfc/20260802-multi-account-prep.md` | 多账号路径分层（userId 预留）|
 | `.agents/direction/rfc/20260801-release-versioning.md` | 版本机制 + 数据格式变更流程 |
-| `.agents/knowledge/reference/system-architecture.md` | File First 存储原则 |
+| `.agents/knowledge/reference/designs/system-architecture.md` | File First 存储原则 |
 
 ### 2.13 交易逐笔流水 `trading/trades/{yyyy-MM}.json`
 

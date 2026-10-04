@@ -7,7 +7,7 @@ updated: 2026-10-03
 status: active
 lines: 190
 depends-on:
-  - ../../knowledge/reference/trading-features.md
+  - ../../knowledge/reference/manuals/trading-features.md
 related:
   - development.md
   - ../deployment/icp-filing.md
@@ -184,7 +184,7 @@ python3 .agents/mechanism/scripts/task-check-deadlines.py --ics          # 生�
 
 ## 相关
 
-- 交易模块完整功能与定时任务：`../../knowledge/reference/trading-features.md`
+- 交易模块完整功能与定时任务：`../../knowledge/reference/manuals/trading-features.md`
 - ICP / 公安备案步骤：`../deployment/icp-filing.md`
 - 成本纪律：`../../toolkit/checklists/ai-cost-checklist.md`
 - 收尾流程：`../../rules/process/ship.md`

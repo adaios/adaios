@@ -8,12 +8,12 @@ status: active
 lines: 139
 depends-on:
   - ../_index.md
-  - ../reference/feature-reference.md
+  - ../reference/manuals/feature-reference.md
 related:
   - kernel.md
   - ../reference/status.md
-  - ../reference/trading-features.md
-  - ../reference/admin-features.md
+  - ../reference/manuals/trading-features.md
+  - ../reference/manuals/admin-features.md
   - ../../records/REVIEW.md
   - ../../../docs/records/audits/2026-10-01-feature-index-adversarial.md
   - ../../direction/rfc/20261001-feature-index-and-authoring-gate.md
@@ -136,4 +136,4 @@ tags: [meta, index, feature, 功能主轴]
 
 - [x] **批 2**（2026-10-01 完成）：新增守卫脚本 `ai-guard-feature.sh`（F0 表非空防假绿 / F1 字段齐 / F2 链接可达（剥锚点）/ F3 ⚠️需写缺因 / F4 状态枚举 + 关键词粗对拍 / F5 新 RFC status 枚举（缺 date 也强制）/ F6 欠着编号存在（词边界）/ F7 卡内无实现细节 / F8 卡 ≤12 行 / F9 卡文件以链接登记 / F10 防「格式写歪 → 检查静默失效」）+ 已挂 pre-commit「2b」（带未就绪防御）；**反例回归 `tests/guard-feature-fixture.py` 18 条 FAIL 全触发**。⚠️ **与方案的偏差见 RFC §十**（F3/F6 改写、F4 降格、A3 防御等 9 条）。
 - [x] **批 3**（2026-10-01 完成）：编写侧判据前置（`workflow/develop.md` 入口条：清单编写/审查双用 + 对抗闭环限三处 ≤2 轮 + 无外部信号不派官）+ **对抗官独立审查 1 轮**（P1×3 / P2×6 / P3×8，逐条处置见 `docs/records/audits/2026-10-01-feature-index-adversarial.md`）。
-- [x] **幽灵引用已处置（2026-10-01）**：`push` / `entry` 的需求出处在本表如实标「无 RFC 文件」；**现行文档已加注**——`.agents/knowledge/reference/api-spec.md` §19 与 `.agents/knowledge/reference/feature-reference.md` §18/§19 的标题注明「该编号无实体文件，2026-10-01 核实」；**历史记录（change-log / status / REVIEW / deployment）按原样保留**（历史如实，不篡改）。**遗留**：若要补一份真正的决策记录（凭 change-log + 实现倒推），仍需用户拍板——**AI 不编造历史**。
+- [x] **幽灵引用已处置（2026-10-01）**：`push` / `entry` 的需求出处在本表如实标「无 RFC 文件」；**现行文档已加注**——`.agents/knowledge/reference/contracts/api-spec.md` §19 与 `.agents/knowledge/reference/manuals/feature-reference.md` §18/§19 的标题注明「该编号无实体文件，2026-10-01 核实」；**历史记录（change-log / status / REVIEW / deployment）按原样保留**（历史如实，不篡改）。**遗留**：若要补一份真正的决策记录（凭 change-log + 实现倒推），仍需用户拍板——**AI 不编造历史**。

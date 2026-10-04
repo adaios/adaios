@@ -39,7 +39,7 @@ AI 工程层**方向正确、骨架已成**：三层结构（assets/workflow/sta
 |:-:|:-----|:-------|:------:|
 | C1 | **docs/ai 迁移残留未清零**（process 门禁命令断链：ship.md:46-47/audit.md:30/review.md:34,38 + frontmatter-spec §四/§六 + _index.md 标题 + docs-contract-reviewer）| 6 官 | 战略/P1 |
 | C2 | **ai-guard-meta 只校验 frontmatter 边，正文路径引用无机器防线**（M1 盲区）——迁移残留因此全绿 PASS | 6 官 | 战略/P1 |
-| C3 | **ship.md 契约同步指向不存在的 `.agents/knowledge/reference/feature-reference.md`**（实际在 .agents/knowledge/reference/）| 3 官 | P1 |
+| C3 | **ship.md 契约同步指向不存在的 `.agents/knowledge/reference/manuals/feature-reference.md`**（实际在 .agents/knowledge/reference/）| 3 官 | P1 |
 | C4 | **六段闭环名实不符**：develop 无文件、验收无程序、「六段」只具名 5 段 | 3 官 | 战略/P2 |
 | C5 | **ADR 覆盖不足**：首批 3/5-10 条，28 篇 RFC 历史决策大多无索引 | 3 官 | P2 |
 | C6 | **workflow/ vs process/ 目录边界未定义**：review/audit/ship 实际在 process/，与 RFC 目标结构（全在 workflow/）偏离且无 ADR 记录 | 3 官 | P2 |

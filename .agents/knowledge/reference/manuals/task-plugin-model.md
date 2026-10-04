@@ -13,7 +13,7 @@ tags: [fact, reference]
 
 # Plugin 模型实施任务拆分
 
-> ⚠️ **历史台账（2026-08-15 批次，仅供追溯）**：RFC `20260917-todo-kernel-retire-project-plugin` 已撤除 project 插件、待办改归 Kernel builtin——文中 `project` 插件、`RecordToTaskLinker`、`/api/v1/project/tasks*`、`data/project/tasks/` 等**均为当时事实，现已不存在**（现行口径以 `.agents/knowledge/reference/api-spec.md` 与 `.agents/direction/rfc/20260917-todo-kernel-retire-project-plugin.md` 为准）。保留全文是为追溯当时的门控全通道落地过程。
+> ⚠️ **历史台账（2026-08-15 批次，仅供追溯）**：RFC `20260917-todo-kernel-retire-project-plugin` 已撤除 project 插件、待办改归 Kernel builtin——文中 `project` 插件、`RecordToTaskLinker`、`/api/v1/project/tasks*`、`data/project/tasks/` 等**均为当时事实，现已不存在**（现行口径以 `.agents/knowledge/reference/contracts/api-spec.md` 与 `.agents/direction/rfc/20260917-todo-kernel-retire-project-plugin.md` 为准）。保留全文是为追溯当时的门控全通道落地过程。
 
 > **依据**：`.agents/direction/rfc/20260814-domain-plugin-model.md`（5 决策 + 门控全通道 + 两步走）
 > **执行顺序**（adai 定）：① 任务拆分（本文档）→ ② 同步实现（多项目）→ ③ 自测通过 → ④ 前后端连调测试
@@ -55,7 +55,7 @@ tags: [fact, reference]
 | T2.5 | **新端点 `GET /api/v1/me/plugins`**：返回当前用户启用插件（前端门控用）| 新 Controller 方法 / WebConfig | 测试：adai=2 插件 / 新用户=空 |
 | T2.6 | **Feed 行情卡门控**：`type=market` 只注入启用 trading 插件用户（D5 连带）| `FeedAppService` | 测试：无插件用户 Feed 无 market 卡 |
 | T2.7 | **多用户插件隔离测试**（§九 验收）：新用户无知识注入 / 启用后有 / 数据不串 / promote 仅作者 / Feed 无行情卡 | 后端测试 | `gradlew test` 全绿 |
-| T2.8 | **api-spec 同步**：`/me/plugins`、Account.plugins、domain 判定规则更新 | `.agents/knowledge/reference/api-spec.md` | 契约一致 |
+| T2.8 | **api-spec 同步**：`/me/plugins`、Account.plugins、domain 判定规则更新 | `.agents/knowledge/reference/contracts/api-spec.md` | 契约一致 |
 
 ### adai-app / adai-web
 

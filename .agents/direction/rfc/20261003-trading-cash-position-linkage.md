@@ -9,8 +9,8 @@ related:
   - 20260912-trading-ledger-integrity.md
   - 20260816-trading-data-model.md
   - 20260825-trading-lot-tracking-behavior.md
-  - ../../knowledge/reference/trading-features.md
-  - ../../knowledge/reference/data-format-freeze.md
+  - ../../knowledge/reference/manuals/trading-features.md
+  - ../../knowledge/reference/contracts/data-format-freeze.md
   - ../../records/REVIEW.md
 ---
 

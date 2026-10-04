@@ -9,7 +9,7 @@ related:
   - 20260918-trading-app-restructure.md
   - 20260922-trading-decision-copilot.md
   - 20260912-trading-ledger-integrity.md
-  - ../../knowledge/reference/trading-features.md
+  - ../../knowledge/reference/manuals/trading-features.md
   - ../../records/REVIEW.md
 ---
 
@@ -238,7 +238,7 @@ LLM 只在需要成句时才碰；**取不到数据就说取不到，不编**（
 | `20260918-trading-app-restructure.md`（draft） | **承接**：三层（记录 → 对账 → 照见）与两条铁律（写账必回执、展示必标口径）不变；其 A1/A2/B/C 批次**并入本件 §七**。本件不推翻前件，只把「首屏形态」与「截图入账主线」具体化。前件获批部分以本件为最新排期依据 |
 | `20260922-trading-decision-copilot.md`（approved） | **复用**：①那句判断复用其 `TradingDecisionNarrator` 的「先结论 + 四要素」渲染口径；②推送形态（默认只露结论、依据收在「看依据」之后）已落地，本件不重复 |
 | `20260912-trading-ledger-integrity.md`（implemented） | **依赖**：§5.3 的即时对账用其 `GET /trading/integrity`；回执文案遵循其「三真源 + 锚定日」口径 |
-| `../../knowledge/reference/trading-features.md` §五/§六 | **需同步**：本件落地后，手册 §五（手机 App 端功能）与 §六（双端能力对照）须按新形态重写 |
+| `../../knowledge/reference/manuals/trading-features.md` §五/§六 | **需同步**：本件落地后，手册 §五（手机 App 端功能）与 §六（双端能力对照）须按新形态重写 |
 
 ---
 

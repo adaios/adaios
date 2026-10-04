@@ -4,7 +4,7 @@ date: 2026-08-16
 status: approved
 ---
 
-> **提位记录（2026-08-16）**：本 RFC 已提升为正式架构文档 `.agents/knowledge/reference/framework-plus-plugin-model.md`（status: active）——总纲是形态级定义，不留在 RFC draft 层。本文件保留为**决策记录**（当时的提出与方向确认），正文以正式文档为准。
+> **提位记录（2026-08-16）**：本 RFC 已提升为正式架构文档 `.agents/knowledge/reference/designs/framework-plus-plugin-model.md`（status: active）——总纲是形态级定义，不留在 RFC draft 层。本文件保留为**决策记录**（当时的提出与方向确认），正文以正式文档为准。
 
 ---
 
@@ -80,7 +80,7 @@ status: approved
 | 大模型/AI 集成 | **框架内置分析引擎**（infrastructure 层，非业务层）|
 | 交易三阶段模型 | **插件叠加的具体实例**（见 `20260816-trading-agent-plugin-model.md`）|
 
-## 五、现状对照（详见 `.agents/knowledge/reference/framework-plugin-gap.md`）
+## 五、现状对照（详见 `.agents/knowledge/reference/designs/framework-plus-plugin-model.md`）
 
 | 层面 | 现状 | 判定 |
 |:-----|:-----|:----:|
@@ -108,5 +108,5 @@ status: approved
 |:-:|:---------|:-----|
 | 1 | 本 RFC（总纲）| 定形态方向 |
 | 2 | `20260816-trading-agent-plugin-model.md`（交易 Agent 三阶段）| 总纲在交易的实例化 |
-| 3 | `.agents/knowledge/reference/framework-plugin-gap.md`（差距与迁移）| 对账现状，列动刀点 |
+| 3 | `.agents/knowledge/reference/designs/framework-plus-plugin-model.md`（差距与迁移）| 对账现状，列动刀点 |
 | 4 | VISION / product-architecture 收敛 | 增量加「形态总纲」，不重写 |

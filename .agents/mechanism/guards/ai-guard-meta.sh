@@ -34,7 +34,7 @@ files = [ROOT/'AGENTS.md', DOCS/'_index.md', AI/'_index.md', AI/'README.md', AI/
 files += sorted(DOCS.glob('*/_index.md'))        # docs 各子目录索引（目录治理）
 # ── .agents/ 新增五区（2026-10-04 二批）──
 files += sorted((AI/'direction').glob('*.md'))   # ① 方向（VISION / roadmap）
-files += sorted((AI/'knowledge/reference').glob('*.md'))   # ② 事实（架构设计 / 手册 / 状态）
+files += sorted((AI/'knowledge/reference').rglob('*.md'))  # ② 事实（含子目录——glob 不递归会静默漏检，pitfalls 二十三）
 files += sorted((AI/'knowledge/features').rglob('*.md'))   # ② 事实（功能主轴 + 意图卡，含子目录）
 files += sorted((AI/'direction/rfc').glob('*.md'))         # ① 决策记录（67 份）
 # 账本三份是 append-only 历史（正文含"当时"的路径），**按文件豁免**——

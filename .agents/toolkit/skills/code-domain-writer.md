@@ -11,7 +11,7 @@ depends-on:
   - ../../rules/assets/boundaries.md
   - ../../rules/workflow/design.md
 related:
-  - ../../knowledge/reference/product-architecture.md
+  - ../../knowledge/reference/designs/product-architecture.md
   - ../../direction/rfc/20260814-domain-plugin-model.md
 tags: [skill, build, domain]
 ---
@@ -50,5 +50,5 @@ tags: [skill, build, domain]
 
 - 六维模板与 RFC 骨架：`../../rules/workflow/design.md`
 - 插件模型：`../../direction/rfc/20260814-domain-plugin-model.md`
-- 产品架构：`../../knowledge/reference/product-architecture.md`
+- 产品架构：`../../knowledge/reference/designs/product-architecture.md`
 - 边界：`../../rules/assets/boundaries.md`；红线：`../../../ARCHITECTURE.md`

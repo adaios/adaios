@@ -34,7 +34,7 @@ tags: [meta, index, docs]
 
 | 你手上的东西 | AI 干活时读吗 | 去向 |
 |:--|:--:|:--|
-| 端点契约表 | ✅ 写接口必查 | `.agents/knowledge/reference/api-spec.md` |
+| 端点契约表 | ✅ 写接口必查 | `.agents/knowledge/reference/contracts/api-spec.md` |
 | 未修项清单 | ✅ 每次开工读 | `.agents/records/REVIEW.md` |
 | 项目愿景 | ✅ 每次会话首读 | `.agents/direction/VISION.md` |
 | Git 工作规范 | ✅ 提交前查 | `.agents/rules/guides/git-workflow.md` |

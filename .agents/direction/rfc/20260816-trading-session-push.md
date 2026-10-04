@@ -89,6 +89,6 @@ PushChannel（接口，新）
 
 ## 七、关联
 
-- 总纲：`.agents/knowledge/reference/framework-plus-plugin-model.md`（渠道 = 插件，能力按用户叠加——推送渠道也随账号配置）
+- 总纲：`.agents/knowledge/reference/designs/framework-plus-plugin-model.md`（渠道 = 插件，能力按用户叠加——推送渠道也随账号配置）
 - 真止损预警：`MarketAlertService` stop-loss（2026-08-16 已落地）
 - 交易知识：`os/trading-engine/knowledge/context/current.md`（早盘计划的择时状态来源）

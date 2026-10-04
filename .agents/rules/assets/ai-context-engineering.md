@@ -40,7 +40,7 @@ flowchart TB
     end
     subgraph L3["L3 事实层（事实类）｜ 事实是什么（关于代码的事实，不是代码本身）"]
         D1["ARCHITECTURE.md（技术栈 · 五层 · 红线）"]
-        D2[".agents/knowledge/reference/api-spec.md · .agents/knowledge/reference/status.md"]
+        D2[".agents/knowledge/reference/contracts/api-spec.md · .agents/knowledge/reference/status.md"]
         D3["领域 wiki os/*/11-context/"]
     end
     subgraph TOOL["横跨 · 工具层（机制）：同样是文件、同样走 git"]
@@ -93,7 +93,7 @@ flowchart TB
 | 资产 | 位置 | 保真 |
 |:--|:--|:--|
 | 架构事实（技术栈 · 五层 · 红线）| `ARCHITECTURE.md` | `ai-guard-meta` |
-| 接口事实（端点表）| `.agents/knowledge/reference/api-spec.md` | **`ai-guard-align` A1：与源码 `@Mapping` 逐一对拍** |
+| 接口事实（端点表）| `.agents/knowledge/reference/contracts/api-spec.md` | **`ai-guard-align` A1：与源码 `@Mapping` 逐一对拍** |
 | 状态事实（测试数 · 端点 · 环境 · 发布态）| `.agents/knowledge/reference/status.md` | **`ai-guard-align` A2：与实测对拍** |
 | 契约与设计（**13 份**：api-spec / data-format-freeze / 五层架构 / 插件模型 / 记忆设计 / 交易设计…）| `.agents/knowledge/reference/*.md` | `ai-guard-meta` · `ai-guard-align` |
 | 功能手册（**6 份**：status / feature-reference / trading-features / admin-features / framework-plugin-gap / task-plugin-model）| `.agents/knowledge/reference/*.md` | `ai-guard-meta` |

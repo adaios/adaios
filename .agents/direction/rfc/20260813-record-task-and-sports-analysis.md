@@ -60,7 +60,7 @@ idea: 20260812-record-task-association.md（R2）+ 20260812-camera-sports-analys
 | 后端·存储 | `infrastructure/storage/ProjectFileRepository.java` | `ENTRY_PATTERN`（`:46`）加**可选 group** `sourceRecordId` + `formatTaskEntry` 输出 + `parseEntries` 解析 | 中 |
 | 后端·应用 | 新 `RecordToTaskLinker`（application 层）| 查重 + 调 createTask，best-effort | 低 |
 | 后端·接口 | `interfaces/RecordController.java` | `handleStatem` 保存后（`:211` 后）挂 linker 调用；注入 1 依赖 | 低 |
-| 后端·契约 | `.agents/knowledge/reference/data-format-freeze.md` §2.11 | 任务格式加 `sourceRecordId`（可空）说明 + 变更记录 | 低 |
+| 后端·契约 | `.agents/knowledge/reference/contracts/data-format-freeze.md` §2.11 | 任务格式加 `sourceRecordId`（可空）说明 + 变更记录 | 低 |
 | 前端·看板 | `apps/adai-app` / `apps/adai-web` task_page | **零改动**（Flutter fromJson 忽略未知键；看板照常渲染）| 无 |
 | 测试 | `ProjectFileRepositoryTest` 9 个 | 加字段需补断言；新增 linker 查重测试 | 中 |
 

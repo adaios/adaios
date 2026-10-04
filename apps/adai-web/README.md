@@ -4,8 +4,8 @@ AdaiOS 的**桌面端产品入口**（参考元宝电脑端：左侧常驻导航
 **各做各的 UI**，只共享 API 契约与状态机模型（值复制，不跨工程 import）。
 
 - **定位与边界**：`AGENTS.md`（本目录）
-- **功能与界面参考**：`../../.agents/knowledge/reference/frontend-reference.md`
-- **API 契约（唯一真相源）**：`../../.agents/knowledge/reference/api-spec.md`
+- **功能与界面参考**：`../../.agents/knowledge/reference/designs/frontend-reference.md`
+- **API 契约（唯一真相源）**：`../../.agents/knowledge/reference/contracts/api-spec.md`
 
 ## 构建与运行
 

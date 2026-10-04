@@ -13,7 +13,7 @@ depends-on:
 related:
   - ./ux-interaction-reviewer.md
   - ./ux-visual-reviewer.md
-  - ../../knowledge/reference/product-architecture.md
+  - ../../knowledge/reference/designs/product-architecture.md
 tags: [review, product, skill]
 ---
 
@@ -47,6 +47,6 @@ P0 → 战略 → P1 → P2/P3 中文问题清单，每条含位置/问题/建�
 ## 参考资料
 
 - 检查清单：`../checklists/docs-product-reviewer.md`
-- 产品架构：`../../knowledge/reference/product-architecture.md`
+- 产品架构：`../../knowledge/reference/designs/product-architecture.md`
 - 蓝图：`../../direction/product-roadmap.md`
 - 边界：`../../rules/assets/boundaries.md`

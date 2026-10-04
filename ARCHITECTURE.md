@@ -9,8 +9,8 @@ lines: 62
 depends-on: []
 related:
   - AGENTS.md
-  - .agents/knowledge/reference/product-architecture.md
-  - .agents/knowledge/reference/system-architecture.md
+  - .agents/knowledge/reference/designs/product-architecture.md
+  - .agents/knowledge/reference/designs/system-architecture.md
   - .agents/rules/assets/boundaries.md
 tags: [ai, architecture, governance]
 ---
@@ -34,7 +34,7 @@ AdaiOS 是 **Personal AI Operating System**：以 Kernel（Context + Memory + Kn
 
 ## 五层产品架构
 
-L1 AI 问答 / L2 主动推送 / L3 数字身份 / L4 通用记录 / L5 外部信息 / L6 交易反哺——**任何新功能必须明确归属某层**（详见 `.agents/knowledge/reference/product-architecture.md`）。
+L1 AI 问答 / L2 主动推送 / L3 数字身份 / L4 通用记录 / L5 外部信息 / L6 交易反哺——**任何新功能必须明确归属某层**（详见 `.agents/knowledge/reference/designs/product-architecture.md`）。
 
 ## 分层依赖（红线）
 

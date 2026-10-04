@@ -60,7 +60,7 @@ AdaiOS 不是传统 CRUD App，而是一套 **Personal AI Operating System**：�
 
 ## 数据/文件格式变更
 
-> **v1.0.0 数据格式冻结**：`.agents/knowledge/reference/data-format-freeze.md` 定义 `data/` 全部文件格式契约 + 变更规则。发布后破坏性变更必须迁移。
+> **v1.0.0 数据格式冻结**：`.agents/knowledge/reference/contracts/data-format-freeze.md` 定义 `data/` 全部文件格式契约 + 变更规则。发布后破坏性变更必须迁移。
 
 - **Memory 条目**：`kind` / `topic` / `superseded` / `evolvedTo` / `doneAt` / `lastConfirmed` 字段（向后兼容，旧条目默认解析）
 - **FeedEntry**：新增 `type=action` / `type=market` / `type=push` / `date` / `mediaPath`

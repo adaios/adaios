@@ -111,4 +111,4 @@
 - `.agents/direction/rfc/20260730-health-management-scenario.md` — 健康场景设计（"不独立"结论待换判据）
 - `os/trading-os/CLAUDE.md` — 四通道 + 收敛循环的成熟实现（生长律的实证来源）
 - `os/life-os/`、`os/project-os/` — 种子 / 骨架标本
-- `.agents/direction/VISION.md` §5.3、`.agents/knowledge/reference/product-architecture.md` — Domain OS 层定位
+- `.agents/direction/VISION.md` §5.3、`.agents/knowledge/reference/designs/product-architecture.md` — Domain OS 层定位

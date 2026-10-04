@@ -178,8 +178,8 @@ NL parse 扩展：「买了 X 股 Y @价，止损 Z，B1」→ 结构化含 stop
 
 | 变更 | 文件 |
 |:-----|:-----|
-| freeze §2.6 加列 + §2.13 新增 trades 流水 | .agents/knowledge/reference/data-format-freeze.md |
-| api-spec POST /trades + parse 契约 | .agents/knowledge/reference/api-spec.md |
+| freeze §2.6 加列 + §2.13 新增 trades 流水 | .agents/knowledge/reference/contracts/data-format-freeze.md |
+| api-spec POST /trades + parse 契约 | .agents/knowledge/reference/contracts/api-spec.md |
 | 项目资产卡 adai-core/adai-app/adai-web 更新 | .agents/rules/assets/projects/ |
 
 ## 七、验收标准

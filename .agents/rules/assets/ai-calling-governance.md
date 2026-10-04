@@ -7,9 +7,9 @@ updated: 2026-08-24
 status: draft
 lines: 135
 depends-on:
-  - ../../knowledge/reference/system-architecture.md
+  - ../../knowledge/reference/designs/system-architecture.md
 related:
-  - ../../knowledge/reference/api-spec.md
+  - ../../knowledge/reference/contracts/api-spec.md
   - ../../records/change-log.md
   - ../../toolkit/checklists/ai-cost-checklist.md
 tags: [architecture, ai, performance, design]

@@ -114,7 +114,7 @@ cd apps/adai-app && flutter test
 
 ## API 依赖
 
-前端需要后端 `services/adai-core` 运行中。API 契约见 `.agents/knowledge/reference/api-spec.md`。
+前端需要后端 `services/adai-core` 运行中。API 契约见 `.agents/knowledge/reference/contracts/api-spec.md`。
 
 | 前端操作 | API 调用 |
 |:---------|:---------|

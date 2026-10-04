@@ -5,13 +5,13 @@ version: 1
 created: 2026-09-04
 status: draft
 depends-on:
-  - ../../records/task-log.md
-  - trading-features.md
-  - ../../records/REVIEW.md
+  - ../../../records/task-log.md
+  - ../manuals/trading-features.md
+  - ../../../records/REVIEW.md
 related:
-  - trading-features.md
-  - api-spec.md
-  - ../../records/change-log.md
+  - ../manuals/trading-features.md
+  - ../contracts/api-spec.md
+  - ../../../records/change-log.md
 tags: [trading, pending, decisions]
 updated: 2026-10-04
 lines: 114

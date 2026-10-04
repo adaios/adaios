@@ -32,7 +32,7 @@ tags: [ai, context, superseded]
 
 - [VISION.md](../../.agents/direction/VISION.md) — ⚡ 项目愿景与核心理念（每个 AI 会话必须首先阅读）
 - [AGENTS.md](../../AGENTS.md) — 完整架构与开发规则
-- [.agents/knowledge/reference/system-architecture.md](../../.agents/knowledge/reference/system-architecture.md) — v0.2 系统架构
+- [.agents/knowledge/reference/designs/system-architecture.md](../../.agents/knowledge/reference/designs/system-architecture.md) — v0.2 系统架构
 
 ## 架构摘要
 

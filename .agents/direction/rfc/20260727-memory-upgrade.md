@@ -2,7 +2,7 @@
 title: Memory 升级路线 — 从复读机到真记忆
 date: 2026-07-27
 status: revised
-relation: 详见 [memory-os-design.md](../../knowledge/reference/memory-os-design.md) 定义 Memory OS 长期架构
+relation: 详见 [memory-os-design.md](../../knowledge/reference/designs/memory-os-design.md) 定义 Memory OS 长期架构
 ---
 
 > Memory 是 AdaiOS 的长期记忆层，是 Layer 3（数字身份 + 记忆持久化）的核心。
@@ -10,7 +10,7 @@ relation: 详见 [memory-os-design.md](../../knowledge/reference/memory-os-desig
 >
 > 本 RFC 定义从"修复复读机"到"建设真正的 Memory OS"的完整路线，分 5 个 Phase 渐进落地。
 >
-> **架构总纲**：[memory-os-design.md](../../knowledge/reference/memory-os-design.md) 定义了 Memory OS 的职责边界、7 种数据类型、与 Context Engine / Domain OS 的关系。本 RFC 是它的实现路线图。
+> **架构总纲**：[memory-os-design.md](../../knowledge/reference/designs/memory-os-design.md) 定义了 Memory OS 的职责边界、7 种数据类型、与 Context Engine / Domain OS 的关系。本 RFC 是它的实现路线图。
 
 ---
 
@@ -177,7 +177,7 @@ Context Engine 已有的 `loadMemorySummary()` 方法——把近 7 天记忆按
 
 ## 与 Memory OS Design 的关系
 
-[Memory OS Design](../../knowledge/reference/memory-os-design.md) 是长期架构纲领。它与本 RFC 的关系：
+[Memory OS Design](../../knowledge/reference/designs/memory-os-design.md) 是长期架构纲领。它与本 RFC 的关系：
 
 | 层面 | Memory OS Design | 本 RFC |
 |:-----|:-----------------|:-------|

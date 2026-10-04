@@ -9,7 +9,7 @@ related:
   - 20260823-trading-history-tab-backfill.md
   - 20260825-trading-lot-tracking-behavior.md
   - 20260909-trading-clearance-derivation.md
-  - ../../knowledge/reference/trading-features.md
+  - ../../knowledge/reference/manuals/trading-features.md
   - ../../records/REVIEW.md
 ---
 
@@ -226,7 +226,7 @@ related:
 | 2 | **部署后自检** | `.agents/mechanism/scripts/code-deploy-gate.sh` 增一步：部署后调 `GET /api/v1/trading/integrity` | `anchor.known=false` **或** `drift` 非空 → **显式告警输出**（不许只打日志静默通过） |
 | 3 | **坑位登记** | `.agents/rules/assets/pitfalls.md` 增条目「**隐性 fail-open 防重机制**」 | 复发信号：**机制读不到状态就降级继续**，且**没有自检/告警** |
 | 4 | **REVIEW 更正** | `.agents/records/REVIEW.md`：P2-交易34 由「已修」改为「**复发（2026-09-12）**」+ 根因三层结构；并登记本次新增未修项（存量数据修正、负持仓清理等） | 条目含根因一句话 + 指向本 RFC |
-| 5 | **文档补章** | `.agents/knowledge/reference/trading-features.md` 增「**三条真源与锚点语义**」章节 + `.agents/knowledge/reference/api-spec.md` 登记三个端点 | 写清锚点定义、`snapshot-anchor.json` 字段、`mode`/`dryRun`/`rejected`/自检端点与运维动作 |
+| 5 | **文档补章** | `.agents/knowledge/reference/manuals/trading-features.md` 增「**三条真源与锚点语义**」章节 + `.agents/knowledge/reference/contracts/api-spec.md` 登记三个端点 | 写清锚点定义、`snapshot-anchor.json` 字段、`mode`/`dryRun`/`rejected`/自检端点与运维动作 |
 | 6 | **测试先行** | §九 回归矩阵 R1~R12 | 全部先写测试到红，再改实现到绿；golden 夹具**必须合成** |
 
 ## 五、相邻机制与红线自查

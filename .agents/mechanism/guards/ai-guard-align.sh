@@ -24,7 +24,7 @@ warns = []
 
 # ── A1 端点对齐：源码 @Mapping ↔ api-spec 标题 ──
 interfaces = ROOT / 'services/adai-core/src/main/java/com/adaiadai/core/interfaces'
-spec = (ROOT / '.agents/knowledge/reference/api-spec.md').read_text(encoding='utf-8')
+spec = (ROOT / '.agents/knowledge/reference/contracts/api-spec.md').read_text(encoding='utf-8')
 
 endpoints = []  # (method, full_path)
 for ctrl in sorted(interfaces.glob('*Controller.java')):

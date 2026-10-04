@@ -75,7 +75,7 @@ tags: [review, backend, audit]
 - **证据（3）A 形态卡模板确含 status**：`.agents/toolkit/skills/data-learn-writer/SKILL.md:79`
   > **frontmatter**：learn 卡片模板（title/type/source/created/**status**/trade_related/tags）
   同文件 24 行进一步明确：「**产品卡带 `origin: product` 标记（用于区分可写性）**」——区分键是 origin，不是 status。
-- **证据（4）文档把错判据写成「产品独有键」**：`.agents/knowledge/reference/api-spec.md`（v3.70 restore-origin 段）
+- **证据（4）文档把错判据写成「产品独有键」**：`.agents/knowledge/reference/contracts/api-spec.md`（v3.70 restore-origin 段）
   > 判据 = 正文含 `## 卡片页` 段，或 frontmatter 带产品独有键（`status` / `review_at` / `reminded_at`）
 - **证据（5）测试反例恰好回避了这条**：`LearnCardFileRepositoryTest.java:1043-1062` 的「别人的卡」样本 frontmatter 只有 `title/type/topic/created`，**故意没有 status** → 测绿，但真实 A 形态卡带 status 的路径无覆盖。
 - **建议**：判据改为与 `hasProductOrigin` 同款「只在 `---…---` 前言块内匹配」，并**删掉 `status:` 这一条**（它对两类卡都成立，无区分力）；`review_at/reminded_at` 也限定前言块。反例测试补一条「frontmatter 带 `status: new` 但没有产品痕迹」的外部卡必须被拒。
@@ -101,7 +101,7 @@ tags: [review, backend, audit]
 ### P2-1：令牌轮换回滚失败抛 `AuthException` → 401 → 前端全局登出；api-spec 未记该状态码
 
 - **问题**：`rotate` 在「旧令牌撤不掉」时回滚新令牌并 `throw new AuthService.AuthException(...)`。`GlobalExceptionHandler` 把 `AuthException` 一律映射为 **401**，而客户端（app/web）对 401 的既定行为是**清 token 回登录页**。用户只是换钥匙失败，却被登出；同时该失败没有任何区分于「会话失效」的表达。api-spec 的 rotate 段只声明了 200/404。
-- **位置**：`services/adai-core/src/main/java/com/adaiadai/core/application/ApiTokenService.java:220-224`；`services/adai-core/src/main/java/com/adaiadai/core/interfaces/GlobalExceptionHandler.java:81-84`；`.agents/knowledge/reference/api-spec.md`（`POST /auth/tokens/{idOrPrefix}/rotate` 段）
+- **位置**：`services/adai-core/src/main/java/com/adaiadai/core/application/ApiTokenService.java:220-224`；`services/adai-core/src/main/java/com/adaiadai/core/interfaces/GlobalExceptionHandler.java:81-84`；`.agents/knowledge/reference/contracts/api-spec.md`（`POST /auth/tokens/{idOrPrefix}/rotate` 段）
 - **证据**：
   ```java
   if (!revoke(userId, old.tokenHash())) {                      // ApiTokenService:220

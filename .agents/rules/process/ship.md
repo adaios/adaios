@@ -42,9 +42,9 @@ tags: [ai, process, ship]
 
 ### 2. 契约同步
 
-- 新增/修改 API → 同步 `.agents/knowledge/reference/api-spec.md`（含版本 + 变更记录）
-- data/ 文件格式变更 → 同步 `.agents/knowledge/reference/data-format-freeze.md`
-- 新功能落地 → 同步 `.agents/knowledge/reference/feature-reference.md`（功能真相源）
+- 新增/修改 API → 同步 `.agents/knowledge/reference/contracts/api-spec.md`（含版本 + 变更记录）
+- data/ 文件格式变更 → 同步 `.agents/knowledge/reference/contracts/data-format-freeze.md`
+- 新功能落地 → 同步 `.agents/knowledge/reference/manuals/feature-reference.md`（功能真相源）
 
 ### 3. 文档登记
 

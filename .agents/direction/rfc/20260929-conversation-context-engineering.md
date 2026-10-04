@@ -11,7 +11,7 @@ related:
   - 20260801-memory-system-evolution.md
   - 20260923-rhythm-and-memory-temporality.md
   - 20260814-domain-plugin-model.md
-  - ../../knowledge/reference/system-architecture.md
+  - ../../knowledge/reference/designs/system-architecture.md
   - ../../records/REVIEW.md
 ---
 

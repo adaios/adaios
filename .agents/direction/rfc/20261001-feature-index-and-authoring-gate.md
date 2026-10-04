@@ -6,9 +6,9 @@ status: approved
 decided-by: adai（2026-10-01「开始吧」→「别再问我了，继续，直到完成」——授权按推荐执行 D1/D3/D4/D5；D5 保留复核权）
 tags: [ai-engineering, 文档体系, 功能索引, 审查, 流程, RFC]
 related:
-  - ../../knowledge/reference/feature-reference.md
-  - ../../knowledge/reference/trading-features.md
-  - ../../knowledge/reference/admin-features.md
+  - ../../knowledge/reference/manuals/feature-reference.md
+  - ../../knowledge/reference/manuals/trading-features.md
+  - ../../knowledge/reference/manuals/admin-features.md
   - ../../knowledge/reference/status.md
   - ../../records/REVIEW.md
   - ../product-roadmap.md
@@ -223,7 +223,7 @@ related:
 `push` / `entry` 两个功能的原始编号「20260913」**无实体文件**（全仓库 **6 个文件 / 12 处**引用）。按目标「如实标注 + 改指实现出处、不编造历史」执行：
 
 - **索引层如实标注**：`.agents/knowledge/features/_index.md` 两行的需求出处写「⚠️ 无 RFC 文件（2026-09-13 批直接实施）」。
-- **现行文档加注**（3 处）：`.agents/knowledge/reference/api-spec.md` §19 · `.agents/knowledge/reference/feature-reference.md` §18 与 §19 的标题注明「原编号 RFC 20260913 ⚠️ 无实体文件，2026-10-01 核实」。
+- **现行文档加注**（3 处）：`.agents/knowledge/reference/contracts/api-spec.md` §19 · `.agents/knowledge/reference/manuals/feature-reference.md` §18 与 §19 的标题注明「原编号 RFC 20260913 ⚠️ 无实体文件，2026-10-01 核实」。
 - **历史记录不动**（4 处：change-log / status / REVIEW / deployment）：历史如实保留，不篡改。
 - **未做**：不新建一份「补记型」RFC——那会把今天的推断伪装成当时的决策。
 

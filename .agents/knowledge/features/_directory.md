@@ -17,7 +17,7 @@ tags: [meta, directory]
 
 ## 职责边界
 - **放**：`_index.md`（功能主轴，一行一功能）· `<插件>.md`（**意图卡**：只写意图，禁写实现细节）
-- **不放**：实现细节 → 代码 · API 定义 → `../reference/api-spec.md` · 功能手册 → `../reference/trading-features.md` / `../reference/admin-features.md`
+- **不放**：实现细节 → 代码 · API 定义 → `../reference/contracts/api-spec.md` · 功能手册 → `../reference/manuals/trading-features.md` / `../reference/manuals/admin-features.md`
 
 ## 依赖关系
 

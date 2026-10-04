@@ -8,12 +8,12 @@ status: draft
 lines: 647
 depends-on:
   - framework-plus-plugin-model.md
-  - framework-plugin-gap.md
+  - framework-plus-plugin-model.md
 related:
-  - trading-features.md
-  - task-plugin-model.md
-  - ../../direction/rfc/20260814-domain-plugin-model.md
-  - ../../direction/rfc/20260816-trading-agent-plugin-model.md
+  - ../manuals/trading-features.md
+  - ../manuals/task-plugin-model.md
+  - ../../../direction/rfc/20260814-domain-plugin-model.md
+  - ../../../direction/rfc/20260816-trading-agent-plugin-model.md
 tags: [architecture, trading, plugin, rules, multi-user]
 ---
 
@@ -641,7 +641,7 @@ Step 10 /ship 收尾（ai-guard-meta/align + change-log + status 更新 + api-sp
 ## 附：与现有文档的关系
 
 - `framework-plus-plugin-model.md`（形态总纲）——本文是 trading 插件的具体化
-- `framework-plugin-gap.md`（G-1~G-6）——已完成的插件机制，本文在其上叠加规则层
+- `framework-plus-plugin-model.md`（G-1~G-6）——已完成的插件机制，本文在其上叠加规则层
 - `trading-features.md`（功能手册）——现状事实，第三阶段实施后同步更新
 - `task-plugin-model.md`（插件任务拆分）——第二阶段的落地记录，本文是第三阶段蓝图
 - `memory-frameworks-borrow.md`（记忆借鉴）——同款「调研对标 → 差距清单 → 分档建议」方法论

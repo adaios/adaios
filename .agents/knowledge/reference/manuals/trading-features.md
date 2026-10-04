@@ -5,21 +5,21 @@ version: 1
 created: 2026-08-22
 status: active
 depends-on:
-  - api-spec.md
-  - framework-plus-plugin-model.md
-  - data-format-freeze.md
+  - ../contracts/api-spec.md
+  - ../designs/framework-plus-plugin-model.md
+  - ../contracts/data-format-freeze.md
 related:
   - feature-reference.md
-  - status.md
-  - ../../direction/rfc/20260902-trading-memory-positioning.md
-  - ../../../docs/archive/20260815-trading-interaction-redesign.md
-  - ../../direction/rfc/20260816-trading-data-model.md
-  - ../../direction/rfc/20260816-trading-data-intelligence.md
-  - ../../direction/rfc/20260816-trading-session-push.md
-  - ../../direction/rfc/20260817-trading-push-image-trade-log.md
-  - ../../direction/rfc/20260822-trading-trade-time-review.md
-  - ../../direction/rfc/20260823-trading-history-tab-backfill.md
-  - ../../direction/rfc/20260814-domain-plugin-model.md
+  - ../status.md
+  - ../../../direction/rfc/20260902-trading-memory-positioning.md
+  - ../../../../docs/archive/20260815-trading-interaction-redesign.md
+  - ../../../direction/rfc/20260816-trading-data-model.md
+  - ../../../direction/rfc/20260816-trading-data-intelligence.md
+  - ../../../direction/rfc/20260816-trading-session-push.md
+  - ../../../direction/rfc/20260817-trading-push-image-trade-log.md
+  - ../../../direction/rfc/20260822-trading-trade-time-review.md
+  - ../../../direction/rfc/20260823-trading-history-tab-backfill.md
+  - ../../../direction/rfc/20260814-domain-plugin-model.md
 tags: [trading, plugin, reference]
 updated: 2026-10-04
 lines: 404
@@ -29,7 +29,7 @@ lines: 404
 
 > **定位：** AdaiOS「trading 插件」的完整功能参考。覆盖模块定位、后端端点总表与定时任务、Web 管理端 / 手机端功能清单、交易知识底座、已知缺陷。
 > **用途：** 问题定位、新功能开发、重构与审查时的基准对照。
-> **真相源：** 端点契约以 `.agents/knowledge/reference/api-spec.md` 为准；功能总览与 `.agents/knowledge/reference/feature-reference.md` §9 互为补充（本手册更细、以代码实测为准）。
+> **真相源：** 端点契约以 `.agents/knowledge/reference/contracts/api-spec.md` 为准；功能总览与 `.agents/knowledge/reference/manuals/feature-reference.md` §9 互为补充（本手册更细、以代码实测为准）。
 
 ---
 
@@ -324,7 +324,7 @@ lines: 404
 
 ## 十、完美买点案例库（第四阶段，2026-08-30 环 1-2）
 
-> 定位与详细设计：`.agents/direction/rfc/20260830-trading-perfect-case-library.md`（方向）+ `.agents/knowledge/reference/trading-case-library-design.md`（设计）。**案例是手段，判定当下是价值**——修复 S7（「完美图匹配度」从自称变为样本库支撑）。
+> 定位与详细设计：`.agents/direction/rfc/20260830-trading-perfect-case-library.md`（方向）+ `.agents/knowledge/reference/designs/trading-case-library-design.md`（设计）。**案例是手段，判定当下是价值**——修复 S7（「完美图匹配度」从自称变为样本库支撑）。
 
 **四环链路（当前实现环 1-2）**：
 
@@ -348,7 +348,7 @@ lines: 404
 
 ## 十一、账本真实性 · 清仓复盘 · 次日计划（2026-10-03，v3.94）
 
-> 设计真相源：[RFC 20261003-trading-cash-position-linkage](../../direction/rfc/20261003-trading-cash-position-linkage.md)（账本强关联）与 [RFC 20261003-trading-plan-and-review-loop](../../direction/rfc/20261003-trading-plan-and-review-loop.md)（计划与复盘闭环）。起因＝用户「资金和持仓是强关联的：转入后有现金才能买，卖出后才有现金才能转出」。
+> 设计真相源：[RFC 20261003-trading-cash-position-linkage](../../../direction/rfc/20261003-trading-cash-position-linkage.md)（账本强关联）与 [RFC 20261003-trading-plan-and-review-loop](../../../direction/rfc/20261003-trading-plan-and-review-loop.md)（计划与复盘闭环）。起因＝用户「资金和持仓是强关联的：转入后有现金才能买，卖出后才有现金才能转出」。
 
 ### 11.1 账本真实性（可用 / 可取分离）
 

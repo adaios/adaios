@@ -147,9 +147,9 @@ implementation: 2026-08-25 已实施——后端批次推导（TradingLot/Tradin
 
 | 变更 | 文件 |
 |:--|:--|
-| 端点契约 | .agents/knowledge/reference/api-spec.md |
-| 功能手册 | .agents/knowledge/reference/trading-features.md |
-| 推送结构 | .agents/knowledge/reference/data-format-freeze.md |
+| 端点契约 | .agents/knowledge/reference/contracts/api-spec.md |
+| 功能手册 | .agents/knowledge/reference/manuals/trading-features.md |
+| 推送结构 | .agents/knowledge/reference/contracts/data-format-freeze.md |
 | 行为阈值登记 | os/trading-engine 规则文档 |
 | 变更登记 | .agents/records/change-log.md |
 

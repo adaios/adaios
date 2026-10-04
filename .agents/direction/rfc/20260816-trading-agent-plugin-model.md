@@ -6,7 +6,7 @@ status: approved
 
 # 交易 Agent 三阶段插件模型
 
-> **实施记录（2026-08-16，FP-P2f）**：方向已确认（approved），Phase A-D 对应 G-4/G-3/G-1/G-5 全部落地（见 `.agents/knowledge/reference/framework-plugin-gap.md`）：
+> **实施记录（2026-08-16，FP-P2f）**：方向已确认（approved），Phase A-D 对应 G-4/G-3/G-1/G-5 全部落地（见 `.agents/knowledge/reference/designs/framework-plus-plugin-model.md`）：
 > - Phase A（G-4）✅：`11-context` → `knowledge/context` 知识层内聚
 > - Phase B（G-3）✅：`engine/` 规则接口（TradingRuleEngine + rules-api.md），adai-core 改调用
 > - Phase C（G-1）✅：行情载体归 trading 插件域（`domain/trading/market/`）
