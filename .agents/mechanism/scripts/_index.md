@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-04
 status: active
-lines: 49
+lines: 50
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index]
@@ -15,10 +15,11 @@ tags: [meta, index]
 
 > 本文件只列**有什么**；**规则与依赖**见 [`_directory.md`](./_directory.md)。
 
-## 文件清单（22 项）
+## 文件清单（23 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
+| `ai-domain-view.py` | 域视图 —— 一条命令答「某个域现在怎么样 · 还欠什么 · 往哪走」 | active |
 | `ai-link-skills.sh` | 注册「用户直触发」技能到本机 AI 工具（换机器 clone 后执行一次） | active |
 | `ai-lint-shell-vars.py` | 为什么需要它 | active |
 | `ai-scan-secrets.py` | 为什么需要它 | active |

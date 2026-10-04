@@ -17,7 +17,7 @@ tags: [meta, index]
 
 **职责**：见 [`_directory.md`](./_directory.md)（此处不重复——S5 判据：同一知识只在一处详述）
 
-## 文件清单（38 项）
+## 文件清单（39 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -37,6 +37,7 @@ tags: [meta, index]
 | `guards/ai-guard-unfixed.sh` | 未修复问题总清单（聚合 4 个维护点）— 用户问「还有哪些未修」一条命令拿全 | active |
 | `guards/guard.sh` | 守护检查执行器 — /review 每次必跑，防 P0 复发（数据丢失/契约破坏） | active |
 | `guards/tests/guard-feature-fixture.py` | — | active |
+| `scripts/ai-domain-view.py` | 域视图 —— 一条命令答「某个域现在怎么样 · 还欠什么 · 往哪走」 | active |
 | `scripts/ai-link-skills.sh` | 注册「用户直触发」技能到本机 AI 工具（换机器 clone 后执行一次） | active |
 | `scripts/ai-lint-shell-vars.py` | 为什么需要它 | active |
 | `scripts/ai-scan-secrets.py` | 为什么需要它 | active |

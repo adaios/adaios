@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-10-04
 status: active
-lines: 83
+lines: 84
 depends-on:
   - .agents/README.md
 related:
@@ -63,6 +63,7 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 | 沉淀检查 | `.agents/mechanism/guards/ai-guard-sediment.sh` | ship 时检查沉淀/出表/登记（S1 坑/ADR、S2 REVIEW 出表、S3 change-log）|
 | 部署门禁 | `.agents/mechanism/scripts/code-deploy-gate.sh` | 部署前强制 review+guard，部署后自动 smoke（最硬闸门）；同时把「本次应更新哪几端」写进生产 `DEPLOYED` |
 | **发版体检（发布前随时问）** | `.agents/mechanism/guards/ai-guard-release.sh` | **发布前**一条命令答「现在欠着什么没发」：生产当前 commit/上批清单/待 push 数 + **逐端判定**（后端 · Web 桌面端 · 管理后台 · **iOS App**）要发还是不用发 + 下一步命令（jar+code-deploy-gate / flutter build web+tar / TestFlight 构建号 N→N+1）；`--json` 可喂 AI。路径映射唯一真相源 `.agents/mechanism/scripts/lib/release-units.sh`（code-deploy-gate 共用）|
+| **域视图 / 项目全景** | `.agents/mechanism/scripts/ai-domain-view.py` | **按领域取数**（补「按性质存」之外的一层）：`domain trading` 一条命令答「该域现状 / 未修项（带编号）/ RFC 与设计 / 关键文档」；`overview` 答「功能分布 / 规模 / 里程碑 / 未修 / 在制品」；无参数 = 全景 + 域总览。**纯聚合视图，现算不落盘**（落盘＝第 7 个数据源）。`--json` 可喂 AI（2026-10-04 用户压力测试暴露「按领域取」缺口）|
 | **协作默契（节奏总入口）** | `.agents/mechanism/scripts/task-cadence.sh` + `process/cadence.md` | **五条默契的唯一入口**（规则 8–11）：每日巡检（从上次覆盖日补看到今天）/ 收工（本批 diff + 刷快照 + 成本入账）/ **发布（只判定、不部署）** / 每周 / 待办；游标 `.agents/records/state/cadence.json`。无参数 = 状态总览（巡检·收工·发版·周审 + 欠账 + 到期红线 + 定时任务健康）；另 `check`（交付门禁一键）/ `cost`（成本）|
 | **生产日报（每日）** | `.agents/mechanism/guards/ai-guard-prod.sh` | 用户说「**每日巡检**」即触发（规则 8）。**生产日志 + 真实对话卡片**一条命令看全：服务/ERROR/告警人话/公网用量（4xx·5xx 自动分「扫描器/探针/设计语义/★待关注」）/用户之声/心跳；C0 心跳发现今日有新记录也会提示跑它 |
 | 每周审查 | `.agents/mechanism/scripts/task-weekly-audit.sh` | cron 每周自动审查（守护/结构/对齐/失真/未修项，防休眠）|

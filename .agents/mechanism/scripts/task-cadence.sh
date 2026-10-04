@@ -374,7 +374,8 @@ cmd_weekly() {
 # 判据：**要「欠着什么」只看 REVIEW.md**；其余位置要么是它的视图（features 欠着），
 #       要么是别的东西（rfc 待决策 / ideas 想法 / workspace 在制品 / task-log 历史）。
 # 不自己解析 REVIEW 的条目正文（那是历史流水），只按段计数 + 复用 context 的 C2 段。
-seg_count() {   # $1=文件 $2=段标题片段 → 该段内**未修**条目数（不含「✅ 已修」，扣表头）
+seg_count() {   # （2026-10-04 起 todo 已改用 ai-domain-view.py 的统一判据；此处保留供复用）
+             # $1=文件 $2=段标题片段 → 该段内**未修**条目数（不含「✅ 已修」，扣表头）
     # ⚠️ 两个坑：① 不用 `awk -v pat="中文"`——BSD awk 的 -v 传多字节参数会损坏（实测恒为 0）；
     #    ② REVIEW 的表格里**已修条目仍留在表内**（行内含 `✅ 已修(...)`），不排掉就会把历史当待办。
     local n pat="${2//\//\\/}"      # 段名可能含 /（如「P0 / P3」）→ 转义，否则 sed 地址解析失败
@@ -388,10 +389,14 @@ cmd_todo() {
     printf '%s═══ 待办总览（%s）═══%s\n' "$BOLD" "$(date +%F)" "$RST"
     printf '  %s唯一权威 = REVIEW.md（未修项）；其余为视图 / 待决策 / 在制品 / 历史%s\n\n' "$DIM" "$RST"
 
-    printf '%s【① 未修项】REVIEW.md%s  %s战略 %s · P1 %s · P2 %s · P0/P3 %s%s\n' \
-        "$BOLD" "$RST" "$DIM" \
-        "$(seg_count "$R" '战略缺口')" "$(seg_count "$R" 'P1（未修复）')" \
-        "$(seg_count "$R" 'P2（未修复）')" "$(seg_count "$R" 'P0')" "$RST"
+    # ① 未修项分档 —— **复用 ai-domain-view.py 的判据**（一个事实一个数；
+    #    原先这里另有 seg_count，与 overview 给出两个不同的数）。
+    #    ⚠️ 近似值：REVIEW 的状态是行内自由文本，没有结构化状态列（见该脚本注释）。
+    local _rv
+    _rv=$(python3 .agents/mechanism/scripts/ai-domain-view.py overview --json 2>/dev/null \
+        | python3 -c 'import json,sys; d=json.load(sys.stdin).get("review_open",{}); print(" · ".join(f"{k} {v}" for k,v in sorted(d.items())))' 2>/dev/null)
+    printf '%s【① 未修项】%sREVIEW.md  %s%s（≈，按段+排除已修文本）%s\n' \
+        "$BOLD" "$RST" "$DIM" "${_rv:-读取失败}" "$RST"
 
     local OWE; OWE=$(awk -F'|' '/^\| `/ { v=$7; gsub(/ /,"",v); if (v != "" && v != "—") n++ } END { print n+0 }' \
         .agents/knowledge/features/_index.md 2>/dev/null)

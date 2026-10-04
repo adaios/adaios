@@ -54,6 +54,10 @@ logs/
 .env.*.local
 *.secret
 
+# ── Python 运行时产物（脚本会生成，不入库）──
+__pycache__/
+*.pyc
+
 # ── Temp ──
 tmp/
 temp/

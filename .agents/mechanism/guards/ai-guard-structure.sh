@@ -72,8 +72,12 @@ def status_of(f):
 
 
 def actual_items(d):
+    # 排除「运行时产物」——`__pycache__/` 与 `*.pyc` 由脚本生成，不该进清单
+    # （2026-10-04：新增 .py 脚本后首次跑，S2 报「漏列 __pycache__/…pyc」，提交被 pre-commit 拦下）。
     return sorted(str(f.relative_to(d)) for f in d.rglob("*")
-                  if f.is_file() and f.name not in ("_index.md", "_directory.md"))
+                  if f.is_file() and f.name not in ("_index.md", "_directory.md")
+                  and "__pycache__" not in f.parts
+                  and not f.name.endswith((".pyc", ".pyo")))
 
 
 if not AG.is_dir():
