@@ -10,7 +10,8 @@
 #   ① .agents/records/REVIEW.md        战略 + P0/P1/P2 未修复（表内状态列非已修的）
 #   ② （2026-10-04 撤）原 task-log.md 待办迁移区——该文件已退役为历史档案，待办仅认 REVIEW
 #   ③ docs/records/audits/*.md      每期审查报告中的「未修」行——未归口 REVIEW 的标记为游离
-#   ④ 状态对账:已修复区声称出表、但 REVIEW 表状态未标 ✅ 的编号（下批 review 回填）
+#   ④ （2026-10-04 撤）原「已修复区 vs REVIEW 表」状态对账——「已修复区」已并入归档，
+#      REVIEW 只记未修项，此类矛盾**结构上不再可能**
 #
 # 背景:2026-08-23 用户盘点发现未修项散在 REVIEW/audits/task-log 多处
 #      2026-10-04 用户再问「5 处必要么」→ 定案：**REVIEW 是唯一权威**，task-log 退役
@@ -126,40 +127,11 @@ if AUDITS_DIR.exists():
                 hit = any(rid not in ('P0', 'P0/P3') and rid in l for rid in review_ids)
                 (reviewed_rows if hit else drift).append((f.name, txt[:110]))
 
-# ══════════════ ④ 状态对账：已修复区提及 vs REVIEW 表未标 ✅ ══════════════
+# ══════════════ ④ （2026-10-04 撤）原「已修复区 vs REVIEW 表」状态对账 ══════════════
+# 撤除原因：REVIEW 的「已修复区」段已并入 docs/archive/review-fixed-2026-10.md
+#   （该段本是 change-log 的重复：标题写「最近 10 条」实际 46 行）。
+#   REVIEW 现在**只记未修项** → 矛盾在结构上不可能再出现，判据失去对象。
 conflicts = []
-if REVIEW.exists():
-    rlines = REVIEW.read_text(encoding='utf-8', errors='ignore').splitlines()
-    fixed_zone = []
-    in_fixed = False
-    for l in rlines:
-        if l.startswith('## ✅ 已修复区'):
-            in_fixed = True
-            continue
-        if in_fixed:
-            fixed_zone.append(l)
-    fixed_text = '\n'.join(fixed_zone)
-    # 编号展开（只在声称「出表/已修」的行内提取，避免 D 批「待拍板跳过」误报）：
-    # P1-交易11/12/13 → 3 个；P2-推送4/5/6 同；P2-交易4/P2-交易20 各自独立。
-    pat = re.compile(r'(P\d+-[A-Za-z\u4e00-\u9fff]+?)(\d+)((?:/\d+)*)')
-    mentioned = set()
-    for line in fixed_zone:
-        if not any(m in line for m in ('出表', '已修', '已闭环', '✅')):
-            continue
-        # 按子句提取，排除「待拍板/跳过/不适用」句（如 D 批 P2-UI1 待拍板、P2-UX2 不适用）
-        for seg in re.split(r'[；;。]', line):
-            if any(w in seg for w in ('待拍板', '跳过', '不适用', '待用户')):
-                continue
-            for m in pat.finditer(seg):
-                base, first, rest = m.group(1), m.group(2), m.group(3)
-                nums = [int(first)] + [int(x) for x in rest.strip('/').split('/') if x.strip('/').isdigit()]
-                for n in nums:
-                    mentioned.add(f"{base}{n}")
-    for rid in sorted(review_ids):
-        if rid in ('P0', 'P0/P3'):
-            continue  # P0/P3 区无编号可对账（P0-交易A 已标已修，P3 打磨项在 P2-UI5/8/9 承接）
-        if rid in mentioned:
-            conflicts.append(rid)
 
 # 去重（同一问题在报告交叉印证表 + 角色清单各出现一次）
 def dedup(items, key=lambda x: x[1]):
@@ -179,10 +151,10 @@ out = []
 today = datetime.date.today().isoformat()
 if DRIFT_ONLY:
     out.append(f"# 未修项·游离与对账（{today}）")
-    out.append(f"> 来源聚合：REVIEW.md（{len(review_ids)} 条未修/搁置/复核）· audits（游离 {len(drift)}）· 对账矛盾（{len(conflicts)}）\n")
+    out.append(f"> 来源聚合：REVIEW.md（{len(review_ids)} 条未修/搁置/复核）· audits（游离 {len(drift)}）\n")
 else:
     out.append(f"# 未修复问题总清单（机器聚合 {today}）")
-    out.append(f"> 命令：`bash .agents/mechanism/guards/ai-guard-unfixed.sh` · REVIEW.md 是唯一真相源，task-log/audits 为补充与对账；已修复区声明与表状态冲突的在 ④。\n")
+    out.append(f"> 命令：`bash .agents/mechanism/guards/ai-guard-unfixed.sh` · REVIEW.md 是唯一真相源，task-log/audits 为补充与对账。\n")
 
 secs = {}
 for s, cid, txt, st in review_unfixed:
@@ -217,12 +189,6 @@ if gated:
         out.append(f"- `audits/{name}` → {note}")
 out.append("")
 
-out.append(f"## ④ 状态对账矛盾（已修复区提及、REVIEW 表未标 ✅，{len(conflicts)}）← 下批 review 回填")
-if not conflicts:
-    out.append("- （无矛盾）")
-for c in conflicts:
-    out.append(f"- {c}")
-out.append("")
 
 total = len(review_unfixed)
 # 快照新鲜度（P2-4）：AGENTS.local.md 早于真相源更新 → 提示刷新（快照每轮注入，过旧 = 喂陈旧未修项）
@@ -239,7 +205,6 @@ out.append(f"- REVIEW 未修/搁置/复核：**{total}** 条（未修 {sum(1 for
 out.append(f"- audits 游离未归口：{len(drift)} 条（建议归口 REVIEW 或补状态）")
 if gated:
     out.append(f"- audits 已归口（unfixed-gate）：{len(set(g[0] for g in gated))} 份报告豁免")
-out.append(f"- 对账矛盾：{len(conflicts)} 处（已修复区与 REVIEW 表状态不一致，下批 /review 时同步）")
 
 print('\n'.join(out))
 PYEOF
