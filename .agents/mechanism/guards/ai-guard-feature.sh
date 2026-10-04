@@ -25,6 +25,9 @@
 #   F8 单张意图卡 ≤12 行（口径：**含 `##` 标题行、不含空行**）
 #   F9 卡文件必须在 _index.md 里以链接形式登记（防孤儿卡文件）
 #   F10 防假绿：文件里有 `## ` 段落却识别不出任何「卡」（卡标题格式＝标题含反引号 ID）
+#   F11 与 feature-reference 单双向对拍（2026-10-04 用户拍板分工）：
+#        硬 —— 索引「实现出处」引用的 `feature-ref §N` 必须在 manuals/feature-reference.md 里真实存在
+#        提示 —— feature-reference 的节无人引用（列出来，不算 FAIL）
 #
 # 边界（如实声明，不假装覆盖）：
 #   · 需求出处只做**存在性**校验，**不做相关性校验**（「链接可达但内容无关」抓不到，靠人工/审查官）
@@ -192,12 +195,41 @@ for p in card_files:
         if n > CARD_MAX_LINES:
             fails.append(f'F8 {p.name} 「{title}」: {n} 行 > {CARD_MAX_LINES}（口径：含标题行、不含空行）')
 
+# ── F11 与 feature-reference 对拍（分工：_index 管「存在性与状态」，feature-reference 管「明细」）──
+REF = ROOT / '.agents/knowledge/reference/manuals/feature-reference.md'
+ref_secs, ref_title = set(), {}
+if REF.exists():
+    _lines = REF.read_text(encoding='utf-8', errors='ignore').splitlines()
+    _bounds = [(i, m.group(1)) for i, line in enumerate(_lines)
+               for m in [re.match(r'^## (\d+[a-z]?)\.', line)] if m]
+    for _k, (_i, _sec) in enumerate(_bounds):
+        _j = _bounds[_k + 1][0] if _k + 1 < len(_bounds) else len(_lines)
+        ref_secs.add(_sec)                       # ⚠️ 硬检查用**全部**节（短节也是真节，引用它不该报死链）
+        _body = '\n'.join(_lines[_i + 1:_j])
+        # 「指针节」= 短(<16 行) 且含指向他处的语义（已取代 / 见 …md / 详见）→ 不参与「未被引用」提示
+        if _j - _i < 16 and re.search(r'(已由.{0,12}取代|已并入|详见|见 \[|请读)', _body):
+            continue
+        if _j - _i < 10:
+            continue                             # 其余短节 = 占位 → 同样不提示
+        ref_title[_sec] = _lines[_i][3:].strip()[:40]
+cited = set()
+for ln, cells in rows:
+    for sec in re.findall(r'feature-ref\s*§\s*(\d+[a-z]?)', cells[4] if len(cells) > 4 else ''):
+        cited.add(sec)
+        if sec not in ref_secs:
+            fails.append(f'F11 {INDEX.name}:{ln} 「实现出处」引用 feature-ref §{sec}，但 {REF.name} 里没有该节（死引用）')
+hints = [f'§{s} {ref_title[s]}' for s in sorted(set(ref_title) - cited, key=lambda x: (len(x), x))]
+                    # ↑ 用 ref_title 的键（= 已排除「指针节/占位节」的内容节），不是 ref_secs（全部节）
+
 if fails:
     print(f'FEATURE-GUARD: {len(set(fails))} FAIL')
     for x in sorted(set(fails)):
         print('   ', x)
     sys.exit(1)
 
-print(f'FEATURE-GUARD: PASS ({len(rows)} 功能 · {len(card_files)} 卡文件 · {card_count} 张卡 · RFC status 存量跳过 {rfc_skipped})')
+print(f'FEATURE-GUARD: PASS ({len(rows)} 功能 · {len(card_files)} 卡文件 · {card_count} 张卡 · RFC status 存量跳过 {rfc_skipped} · feature-ref 对拍 {len(cited)}/{len(ref_secs)} 节)')
+if hints:
+    print(f'   [hint] feature-reference 有 {len(hints)} 节未被功能主轴引用（未纳入主轴，非错误）：')
+    for h in hints[:6]: print(f'          {h}')
 PYEOF
 exit $?
