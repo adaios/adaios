@@ -195,7 +195,7 @@ if feature_idx.exists():
 # 约定：.agents/knowledge/reference/*-features.md = 各主题功能手册（trading-features.md 等），
 #       新主题手册放入即自动纳入本导航；TOPIC 过滤时只留相关主题。
 out.append("## C1.5 主题手册导航（深度文档，按需直读）")
-handbook_dir = ROOT/'.agents/knowledge/reference'
+handbook_dir = ROOT/'.agents/knowledge/reference/manuals'   # 2026-10-04 reference 分层：手册在 manuals/ 子目录（glob 不递归会静默找不到——pitfalls 二十八）
 handbook_count = 0
 if handbook_dir.exists():
     for f in sorted(handbook_dir.glob('*-features.md')):
@@ -208,7 +208,7 @@ if handbook_dir.exists():
             dm = re.search(r'^description:\s*(.+)$', fm.group(1), re.M)
             if tm: title = tm.group(1).strip()
             if dm: desc = dm.group(1).strip()
-        row = f"- **{title}** → `.agents/knowledge/reference/{f.name}`"
+        row = f"- **{title}** → `.agents/knowledge/reference/manuals/{f.name}`"
         if desc:
             row += f"（{desc[:50]}…）" if len(desc) > 50 else f"（{desc}）"
         if TOPIC and TOPIC not in row: continue
