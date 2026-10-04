@@ -395,8 +395,13 @@ cmd_todo() {
     local _rv
     _rv=$(python3 .agents/mechanism/scripts/ai-domain-view.py overview --json 2>/dev/null \
         | python3 -c 'import json,sys; d=json.load(sys.stdin).get("review_open",{}); print(" · ".join(f"{k} {v}" for k,v in sorted(d.items())))' 2>/dev/null)
-    printf '%s【① 未修项】%sREVIEW.md  %s%s（≈，按段+排除已修文本）%s\n' \
+    local _pu
+    _pu=$(python3 .agents/mechanism/scripts/ai-domain-view.py overview --json 2>/dev/null \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin).get("review_pending_unstructured",0))' 2>/dev/null)
+    printf '%s【① 未修项】%sREVIEW.md  %s%s%s\n' \
         "$BOLD" "$RST" "$DIM" "${_rv:-读取失败}" "$RST"
+    [ "${_pu:-0}" != "0" ] && printf '        %s⚠️ 另有 ≈%s 项「列表形式」未修待结构化（**未计入**——当前数字是低估）%s\n' \
+        "$YEL" "$_pu" "$RST"
 
     local OWE; OWE=$(awk -F'|' '/^\| `/ { v=$7; gsub(/ /,"",v); if (v != "" && v != "—") n++ } END { print n+0 }' \
         .agents/knowledge/features/_index.md 2>/dev/null)

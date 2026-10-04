@@ -173,7 +173,9 @@ def review_for(kws):
             continue
         # 域归属只看**编号里的域词**（P1-交易15 → 域词「交易」），不看描述文本
         # ——否则 P1-分享7 的描述里出现「交易」二字就会串进 trading 域。
-        m2 = re.match(r'^P\d+-(.+?)\d*$', cid)
+        # 域词 = `-` 到**第一个数字**之间（编号可能带后缀，如 `P2-分享6 📋`——
+        # 用 `\d*$` 会因末尾 📋 匹配失败 → 整串当域词 → 误落「未归类」）。
+        m2 = re.match(r'^P\d+-(.+?)\d', cid) or re.match(r'^P\d+-(\D+)$', cid)
         tag = m2.group(1) if m2 else cid
         if not any(k in tag or k.lower() == tag.lower() for k in kws):
             continue
@@ -313,6 +315,7 @@ def overview(as_json=False):
 
     if as_json:
         return {'features': st, 'review_open': sev_count,
+                'review_pending_unstructured': pending_unstructured(),
                 'tests': dict(tests), 'endpoints': ep.group(1) if ep else None,
                 'controllers': ctrl.group(1) if ctrl else None,
                 'versions': [v.strip() for v in ver], 'workspace': len(ws)}
@@ -326,7 +329,9 @@ def overview(as_json=False):
     if ver:
         print(f"{B}【里程碑】{R}" + ' → '.join(v.strip() for v in ver[-4:]))
         print(f"   {D}进入 v1.0.0 的标准见 .agents/direction/product-roadmap.md §五{R}")
-    print(f"{B}【未修】{R}" + ' · '.join(f'{k} {v}' for k, v in sorted(sev_count.items())) or '（无）')
+    _pu = pending_unstructured()
+    print(f"{B}【未修】{R}" + ' · '.join(f'{k} {v}' for k, v in sorted(sev_count.items()))
+          + (f"  {Y}⚠️ 另有 ≈{_pu} 项「列表形式」未修待结构化（未计入）{R}" if _pu else ''))
     print(f"{B}【在制品】{R}workspace {len(ws)} 份" + ('   （空 = 当前无进行中的任务 ✅）' if not ws else ''))
     print(f"{B}【域】{R}" + ' · '.join(sorted(domains())))
     print()
@@ -358,12 +363,35 @@ def review_items():
             continue
         if DONE_PAT.search(line):
             continue
-        cid = cells[0]
+        # id 规范化：**去掉编号后的空格后缀**（如 `P2-分享6 📋` → `P2-分享6`）。
+        # ⚠️ 必须与 review_for() 的 `re.sub(r'\s.*$','',cid)` 一致——否则「未归类」差集算错，
+        #    把已归域的项误报成未归类（2026-10-04 实测：platform 匹配到了 P2-分享6，
+        #    但 allids 里是 `P2-分享6 📋`，两者不等 → 误报未归类）。
+        cid = re.sub(r'\s.*$', '', cells[0])
         st = '搁置' if ('⏸' in line or '搁置' in line) else ('复核' if ('⚠️' in line or '复核' in line) else '未修')
         desc = cells[1] if len(cells) > 1 else ''
         items.append({'section': cur, 'id': cid, 'status': st,
                       'text': (desc[:120] + ('…' if len(desc) > 120 else ''))})
     return items
+
+
+# 注：`S7` 这类**战略编号**没有域词（战略项本就跨领域）→ 留在「未归类」是**正确**的，不是缺陷。
+#     真正的缺陷是「有域词却因格式解析失败而落未归类」（如 `P2-分享6 📋`）。
+
+def pending_unstructured():
+    """REVIEW 里「### 待结构化」表的项数之和——**列表形式的未修**（每行把多项写在一起，
+    尚未拆成表格行）。它们**不计入 review_items()**，所以任何"未修数"都是**低估**；
+    工具必须把这一点说出来，否则就是**假精确**。"""
+    txt = read(REVIEW)
+    m = re.search(r'### 待结构化.*?(?=\n## |\Z)', txt, re.S)
+    if not m:
+        return 0
+    n = 0
+    for line in m.group(0).splitlines():
+        cells = [c.strip() for c in line.strip().strip('|').split('|')]
+        if len(cells) >= 2 and cells[1].isdigit():
+            n += int(cells[1])
+    return n
 
 
 def open_review_ids():
