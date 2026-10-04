@@ -48,7 +48,7 @@ tags: [ai, meta, engineering]
 | `features/` | **② 事实·功能主轴**——一功能一行（ID/插件/状态/出处/欠着） |
 | `guides/` | **工程与协作规则**——开发 · Git · 分支 · worktree · 固定动作 · 技能使用 |
 | `records/` | **④ 记录（活账本）**——未修项 / 批次历史 / 待办（**开工读、收尾写**） |
-| `guards/` | 守卫与自检脚本（13 个）：meta · align · feature · skills · structure · tools · unfixed · release · prod · roadmap · sediment · cost · context |
+| `guards/` | 守卫与自检脚本（**15** 个）：**health（健康总检）** · meta · align · feature · skills · structure · tools · unfixed · release · prod · roadmap · sediment · cost · context · guard（产品侧） |
 | `lib/` | 被复用的 shell 库（**不含业务判断**）|
 | `method/` | 元方法层——怎么从零搭一套 AI 工程（给新项目用，不是日常流程）|
 | `process/` | 流程定义：audit（走查）· review（深审）· ship（收尾）· cadence（节奏）· review-driven（需求→设计→编码主链）|

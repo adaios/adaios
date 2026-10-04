@@ -5,7 +5,7 @@
 # 用法:  bash .agents/scripts/task-weekly-audit.sh [--auto]
 # 说明:  每周自动执行：
 #         W1 守护检查（G1-G7 防 P0 复发）
-#         W2 结构门禁（ai-guard-meta）+ 内容对齐（ai-guard-align）
+#         W2 健康总检（ai-guard-health 六维：结构/元数据/命名/体积/契约/新鲜度）+ 内容对齐（ai-guard-align）
 #         W3 沉淀检查（ai-guard-sediment——change-log 是否连续）
 #         W4 失真扫描（端点数/测试数三方对拍报告）
 #         W5 未修项报告（REVIEW 战略/P1 清单）
@@ -32,10 +32,11 @@ echo "▸ W1 守护检查（G1-G7）..."
 G1=$(bash .agents/guards/guard.sh 2>&1 | tail -1)
 echo "   $G1"
 
-# W2 结构 + 内容
-echo "▸ W2 结构门禁..."
-META=$(bash .agents/guards/ai-guard-meta.sh 2>&1 | tail -1)
-echo "   $META"
+# W2 健康总检 + 内容对齐
+# 2026-10-04：结构门禁改走 ai-guard-health —— 它已含 ai-guard-meta（维度②），
+#   并额外覆盖命名 / 体积 / 契约 / 新鲜度四个内容规范维度（此前无人守）。
+echo "▸ W2 健康总检（六维）..."
+bash .agents/guards/ai-guard-health.sh 2>&1 | grep -E "总评|① |② |③ |④ |⑤ |⑥ " | head -7 | sed 's/^/   /'
 echo "▸ W2 内容对齐..."
 ALIGN=$(bash .agents/guards/ai-guard-align.sh 2>&1 | tail -1)
 echo "   $ALIGN"

@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-10-04
 status: active
-lines: 82
+lines: 83
 depends-on:
   - .agents/README.md
 related:
@@ -54,6 +54,7 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 | 架构红线 | `ARCHITECTURE.md` | 技术栈/五层架构/分层依赖/数据流/红线清单，AI 进项目直读 |
 | 检查清单 | `.agents/checklists/` | 逐条可执行（人也能用）：8 客观官 + 1 对抗官 + 3 外部视角官清单 + `ai-guard-checklist` |
 | 元数据规范 | `.agents/frontmatter-spec.md` | 文档 frontmatter 契约（图谱/治理/归档）|
+| **健康总检（一条命令）** | `.agents/guards/ai-guard-health.sh` | **「整个 `.agents/` 健不健康」的总入口**：六维体检（① 结构 · ② 元数据 · ③ 命名 · ④ 体积 · ⑤ 契约 · ⑥ 新鲜度）+ 健康分 + 子目录概览；① ② 直接调 structure/meta（**不重写已有判据**），③④⑤⑥ 是它们没有的内容规范层。`--json` 喂 AI · `--full` 看提示级明细 · `--fix` 先修再检（2026-10-04 用户「我需要一个脚本维持整个 `.agents/` 的健康」）|
 | 元治理自检 | `.agents/guards/ai-guard-meta.sh` | 一条命令：frontmatter 图谱断链/lines 漂移/孤儿（`--fix` 回写）|
 | **技能包质量** | `.agents/guards/ai-guard-skills.sh` | 官方 Agent Skills 规范硬约束：S3 `name` 字符集/长度/与目录名一致 · S4 `description` 长度 · S5 五段结构 · S7 偏离在案（git pre-commit 自动触发）|
 | 文档自动对齐 | `.agents/guards/ai-guard-align.sh` | 代码↔文档内容对齐：端点↔api-spec / 测试数↔status.md（git pre-commit 自动触发）|

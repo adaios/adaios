@@ -22,7 +22,7 @@ tags: [fact, reference]
 
 ---
 
-# 1. 文档目的
+## 1. 文档目的
 
 Memory OS 是 AI OS 的核心基础设施。
 
@@ -85,7 +85,7 @@ AI 个性化响应
 
 ---
 
-# 2. 核心架构定位
+## 2. 核心架构定位
 
 ADAI OS 包含：
 
@@ -121,12 +121,12 @@ ADAI OS 包含：
 
 ---
 
-# 3. Memory OS 与 Domain OS 的区别
+## 3. Memory OS 与 Domain OS 的区别
 
 这是整个系统最重要的边界。
 
 
-## Memory OS
+### Memory OS
 
 关注：
 
@@ -161,7 +161,7 @@ Memory。
 
 ---
 
-## Domain OS
+### Domain OS
 
 关注：
 
@@ -216,7 +216,7 @@ Life OS:
 
 ---
 
-# 4. 核心关系
+## 4. 核心关系
 
 
 一个用户输入可能同时影响：
@@ -257,7 +257,7 @@ Life OS:
 
 产生：
 
-## Project OS
+### Project OS
 
 记录：
 
@@ -268,7 +268,7 @@ AI Native 项目推进
 ```
 
 
-## Memory OS
+### Memory OS
 
 沉淀：
 
@@ -282,7 +282,7 @@ Pattern:
 
 ---
 
-# 5. Memory OS 数据类型
+## 5. Memory OS 数据类型
 
 
 第一阶段定义：
@@ -312,7 +312,7 @@ memory/
 
 ---
 
-# 5.1 Identity Memory
+### 5.1 Identity Memory
 
 用户是谁。
 
@@ -345,7 +345,7 @@ content:
 
 ---
 
-# 5.2 Preference Memory
+### 5.2 Preference Memory
 
 用户偏好。
 
@@ -375,7 +375,7 @@ content:
 
 ---
 
-# 5.3 Behavior Memory
+### 5.3 Behavior Memory
 
 用户行为。
 
@@ -407,7 +407,7 @@ trigger:
 
 ---
 
-# 5.4 Pattern Memory
+### 5.4 Pattern Memory
 
 长期规律。
 
@@ -437,7 +437,7 @@ Pattern 是 Memory OS 最重要资产。
 
 ---
 
-# 5.5 Experience Memory
+### 5.5 Experience Memory
 
 人生经历。
 
@@ -468,7 +468,7 @@ learning:
 
 ---
 
-# 5.6 Decision Memory
+### 5.6 Decision Memory
 
 重要决策。
 
@@ -505,7 +505,7 @@ active
 
 ---
 
-# 5.7 Goal Memory
+### 5.7 Goal Memory
 
 长期目标。
 
@@ -531,7 +531,7 @@ period:
 
 ---
 
-# 6. 每日输入处理流程
+## 6. 每日输入处理流程
 
 
 用户每天输入：
@@ -588,7 +588,7 @@ Memory Update
 
 ---
 
-# 7. Event 与 Memory 的区别
+## 7. Event 与 Memory 的区别
 
 
 Event:
@@ -628,7 +628,7 @@ Memory:
 
 ---
 
-# 8. Memory 生命周期
+## 8. Memory 生命周期
 
 
 Memory 不应该立即永久保存。
@@ -664,7 +664,7 @@ Memory         Memory
 
 ---
 
-# 9. Memory 评价机制
+## 9. Memory 评价机制
 
 
 Memory:
@@ -720,7 +720,7 @@ Memory Score
 
 ---
 
-# 10. AI 回复过程
+## 10. AI 回复过程
 
 
 每一次 AI 回复：
@@ -765,7 +765,7 @@ AI Response
 
 ---
 
-# 11. Memory 如何影响 AI 回复
+## 11. Memory 如何影响 AI 回复
 
 
 示例：
@@ -819,7 +819,7 @@ Trading OS:
 
 ---
 
-# 12. Memory 不直接暴露
+## 12. Memory 不直接暴露
 
 
 错误：
@@ -848,7 +848,7 @@ Memory 是 AI 内部认知。
 
 ---
 
-# 13. Domain OS 接入方式
+## 13. Domain OS 接入方式
 
 
 Domain OS 不直接修改 Memory。
@@ -896,7 +896,7 @@ Memory Engine 判断：
 
 ---
 
-# 14. Context Engine 职责
+## 14. Context Engine 职责
 
 
 Context Engine 是连接层。
@@ -931,7 +931,7 @@ Prompt Context
 
 ---
 
-# 15. MVP 实现范围
+## 15. MVP 实现范围
 
 
 第一阶段：
@@ -975,7 +975,7 @@ MemoryService
 
 ---
 
-# 16. 推荐目录结构
+## 16. 推荐目录结构
 
 
 ```
@@ -1007,7 +1007,7 @@ MemoryService
 
 ---
 
-# 17. 最终目标
+## 17. 最终目标
 
 
 Memory OS：
