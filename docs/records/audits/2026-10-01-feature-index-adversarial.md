@@ -10,15 +10,15 @@ depends-on: []
 related:
   - ../REVIEW.md
   - ../../features/_index.md
-  - ../../../.agents/roles/ai-adversarial-reviewer.md
-  - ../../../.agents/guards/ai-guard-feature.sh
+  - ../../../.agents/toolkit/roles/ai-adversarial-reviewer.md
+  - ../../../.agents/mechanism/guards/ai-guard-feature.sh
 tags: [review, adversarial, audit, feature-index]
 ---
 
 # 对抗审查：功能索引层 + ai-guard-feature 守卫（2026-10-01）
 
 > **性质**：只读对抗审查（B7）。**未改仓库任何文件**，夹具全部在 `/tmp/ffx`。
-> **范围**：RFC `20261001-feature-index-and-authoring-gate` 批 1 + 批 2 的产出——`.agents/features/_index.md` · `kernel.md` · `.agents/guards/ai-guard-feature.sh` · `.githooks/pre-commit` 的「2b」挂点 · 四处登记。
+> **范围**：RFC `20261001-feature-index-and-authoring-gate` 批 1 + 批 2 的产出——`.agents/knowledge/features/_index.md` · `kernel.md` · `.agents/mechanism/guards/ai-guard-feature.sh` · `.githooks/pre-commit` 的「2b」挂点 · 四处登记。
 > **外部信号（试点要求）**：审查官**自行运行**正例、自造 23 个夹具跑 `--root` 反例、独立复算 37 条链接、抽查 5 行出处真实性、实测守卫耗时——不是纸上审查。
 > **冻结快照**：`ai-guard-feature.sh` md5 `4636c806…`（169 行）· `_index.md` `956a24fc…` · `kernel.md` `3a399354…` · RFC `bf970d6b…` · `pre-commit` `53ee3307…`（审查期间作者仍在改这些文件，属并发写，见 C8）。
 
@@ -36,7 +36,7 @@ tags: [review, adversarial, audit, feature-index]
 |:--|:--:|:--|:--|
 | A1 | P1 | **索引真实性不达标**：5 行抽查 3 行错——`trade.equity` 的需求出处指向「清仓级联」RFC（正文 `grep 资金曲线` = 0）；`trade.case` 写 `—` 但 `20260830-trading-perfect-case-library.md` 确实存在且正文点名 REVIEW S7；另 2 例章节号错（自查已修）| ✅ **已修**：两行出处改正（`trade.case` 补上真实 RFC；`trade.equity` 如实写「无 RFC，2026-09-04 批次」）。**并如实降格**：`_index.md` 头部明写「需求出处只做存在性校验，**不做相关性校验**」——这条机器抓不到，靠审查官抽检 |
 | A2 | P1 | **F4 原承诺「状态与证据一致」未实现**，§十 只写「事后补强」未写「降级」；`_index.md:26` 还写「批 2 待做」与 §四「[x] 完成」冲突 | ✅ **已修（降格 + 消矛盾）**：`_index.md` 头部改为「**状态列仍然由人填**，守卫只做枚举 + 一条关键词粗对拍，**不是**状态与证据的真对拍」；RFC §十 补偏差第 7 条如实登记「原承诺未实现」 |
-| A3 | P1 | **pre-commit 2b 会拦死全仓 `.md` 提交**：脚本与 `.agents/features/` 若未随同批落地，`bash <缺失>` = 127 → `\|\| exit 1`；且近 12 个提交 10 个含 md | ✅ **已修**：hook 加三重防御 `[ -f 脚本 ] && [ -f 索引 ] && 有 md 变更` 才跑——**环境未就绪 ≠ 索引坏了**；并区分「索引 FAIL」与「守卫脚本自坏」（后者单独报，见 C3）。**提交时必须脚本 + 索引 + 卡 + hook 同批**（已写进完成报告） |
+| A3 | P1 | **pre-commit 2b 会拦死全仓 `.md` 提交**：脚本与 `.agents/knowledge/features/` 若未随同批落地，`bash <缺失>` = 127 → `\|\| exit 1`；且近 12 个提交 10 个含 md | ✅ **已修**：hook 加三重防御 `[ -f 脚本 ] && [ -f 索引 ] && 有 md 变更` 才跑——**环境未就绪 ≠ 索引坏了**；并区分「索引 FAIL」与「守卫脚本自坏」（后者单独报，见 C3）。**提交时必须脚本 + 索引 + 卡 + hook 同批**（已写进完成报告） |
 | B1 | P2 | **F6 子串匹配假绿**：REVIEW 只有 `P2-测试11`，索引写 `P2-测试1` → PASS | ✅ **已修**：改词边界正则 `re.escape(i)+(?![0-9A-Za-z])`；回归样本进 `tests/guard-feature-fixture.py` |
 | B2 | P2 | **F5 对新 RFC 两处静默跳过**：删掉 `date:` 字段、或 description 把 `date:` 顶到 900 字符之后 → 逃过 status 枚举 | ✅ **已修**：frontmatter 改按「第二个 `---`」解析（不用字符窗口）；**缺 date 一律按新文件强制**（先核实：存量 65 篇 RFC 全部有 date，故无误伤） |
 | B3 | P2 | **F2 把带锚点的合法链接误报死链**，而 RFC §3.1 恰好要求锚点链接 | ✅ **已修**：先剥 `#anchor` 再判文件存在 |

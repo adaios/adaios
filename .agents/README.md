@@ -5,16 +5,16 @@ version: 4
 created: 2026-08-15
 updated: 2026-10-04
 status: active
-lines: 77
+lines: 84
 depends-on:
   - frontmatter-spec.md
 related:
   - ../AGENTS.md
   - ../docs/README.md
-  - assets/_index.md
-  - guides/_index.md
-  - process/_index.md
-  - state/_index.md
+  - rules/assets/_index.md
+  - rules/guides/_index.md
+  - rules/process/_index.md
+  - records/state/_index.md
 tags: [ai, meta, engineering]
 ---
 
@@ -37,12 +37,19 @@ tags: [ai, meta, engineering]
 | `process/` · `workflow/` · `guides/` · `deployment/` | 过程与规则：审查 / 收尾 / 节奏 · 单任务生命周期 · 工程规则 · 运维规则 | 回答「现在怎么做」|
 | `state/` · `workspace/` | 动态真相：完成度 / 游标 / 在制品（指针化） | 回答「做到哪了」|
 
-## 目录（19 个子目录）
+## 目录（**6 个顶层**）
 
-| 目录 | 说明 |
-|:--|:--|
-| `assets/` | 规范 / 边界 / ADR / 已知坑 / **AI 上下文体系总览 + 中间层规范 + AI 调用治理** |
-| `checklists/` || `direction/` | **① 方向**——理念（VISION）与路线蓝图（roadmap）· **每次会话首读** |
+> **层级**：`.agents/<顶层>/<子目录>/`。顶层按**知识性质**分；每个顶层都有 `_index.md` + `_directory.md`。
+
+| 顶层 | 类 | 装什么 |
+|:--|:--:|:--|
+| `direction/` | ① | 方向与决策——VISION · roadmap · `rfc/`（68） |
+| `knowledge/` | ② | 事实——`reference/`（契约/状态/手册/设计）· `features/`（功能主轴） |
+| `rules/` | ③ | 规则——`assets/`（规矩）· `guides/`（操作）· `deployment/`（运维）· `process/`（流程）· `workflow/`（生命周期）· `method/`（元方法） |
+| `records/` | ④ | 记录——活账本（REVIEW/change-log/task-log）· `state/`（本机）· `workspace/`（在制品） |
+| `toolkit/` | ⑤ | AI 能力——`roles/`（审查官）· `skills/`（技能）· `checklists/`（清单） |
+| `mechanism/` | ⑤ | 执行机制——`guards/`（守卫·含 `tests/`）· `scripts/`（执行器·含 `lib/`） |
+
  检查清单（人也能用）：8 客观官 + 1 对抗官 + 3 外部视角官 + guard / cost / perf |
 | `deployment/` | **运维与发布规则**——后端部署 · iOS 发布 · ICP / 公安联网备案 |
 | `features/` | **② 事实·功能主轴**——一功能一行（ID/插件/状态/出处/欠着） |
@@ -63,7 +70,7 @@ tags: [ai, meta, engineering]
 
 ## 任何 AI 工具如何接入
 
-0. **先跑开工自举**：`bash .agents/guards/ai-guard-context.sh` —— 输出状态 / 未修项 / 边界 / 坑 / 规范 / 待办 / 成本
+0. **先跑开工自举**：`bash .agents/mechanism/guards/ai-guard-context.sh` —— 输出状态 / 未修项 / 边界 / 坑 / 规范 / 待办 / 成本
 1. 读本 `README.md`（定位）→ [`../AGENTS.md`](../AGENTS.md)（协作规则）→ `frontmatter-spec.md`（元数据契约）
 2. **动工前查资产**：`assets/boundaries.md` + `assets/pitfalls.md` + `assets/conventions.md`
 3. 开发：`workflow/`（讨论 → 方案 → 开发）
@@ -71,7 +78,7 @@ tags: [ai, meta, engineering]
 5. 审查：`process/audit.md`（全维度）或 `process/review.md`（增量），按 `roles/` 派官
 6. 沉淀：决策入 `assets/adr/`，坑入 `assets/pitfalls.md`，结果更新 `state/`
 
-> 工具侧入口（Claude / Qoder / DSH 的一行配置）在**工具自己的设置里**，不在本项目——换工具零迁移。接入状态用 `bash .agents/guards/ai-guard-tools.sh` 自检。
+> 工具侧入口（Claude / Qoder / DSH 的一行配置）在**工具自己的设置里**，不在本项目——换工具零迁移。接入状态用 `bash .agents/mechanism/guards/ai-guard-tools.sh` 自检。
 > **AI 资产的布局、多工具出口与维护规则**见 [`assets/ai-context-layer-spec.md`](assets/ai-context-layer-spec.md)；**体系总览**（L0–L3 + 工具层）见 [`assets/ai-context-engineering.md`](assets/ai-context-engineering.md)。
 
 > **跨项目方法论**：本层是可复制的实例；通用骨架在 [`method/`](method/README.md)。

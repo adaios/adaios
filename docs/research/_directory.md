@@ -17,7 +17,7 @@ tags: [meta, directory]
 
 ## 职责边界
 - **放**：外部方案借鉴 · 竞品调研 · 质量诊断 · 产品内容性的计划
-- **不放**：决策（→ `.agents/rfc/`）· 事实（→ `.agents/reference/`）· 记录（→ `../records/`）
+- **不放**：决策（→ `.agents/direction/rfc/`）· 事实（→ `.agents/knowledge/reference/`）· 记录（→ `../records/`）
 
 ## 约束
 - **一次性产物**：写的时候有用，之后是"当时怎么看"的证据，**不要求与现状一致**
@@ -29,5 +29,5 @@ tags: [meta, directory]
 
 ## 维护动作
 1. 新增研究材料 → 补 `_index.md`
-2. 结论被采纳 → 转成 `.agents/rfc/` 或 `.agents/reference/` 的正式文档，本区原件保留作证据
+2. 结论被采纳 → 转成 `.agents/direction/rfc/` 或 `.agents/knowledge/reference/` 的正式文档，本区原件保留作证据
 3. 时过境迁 → 移入 `../archive/`

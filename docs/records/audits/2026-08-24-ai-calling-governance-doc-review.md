@@ -1,24 +1,24 @@
 ---
 title: AI 调用治理方案文档审查报告 2026-08-24
-description: 对 .agents/assets/ai-calling-governance.md（新增方案稿）+ _index.md（登记）的跨域深审——docs/backend/frontend/adversarial 四官独立隔离并行，材料按角色裁剪、互不可见；汇总去重 + ⭐ 交叉加权
+description: 对 .agents/rules/assets/ai-calling-governance.md（新增方案稿）+ _index.md（登记）的跨域深审——docs/backend/frontend/adversarial 四官独立隔离并行，材料按角色裁剪、互不可见；汇总去重 + ⭐ 交叉加权
 version: 1
 created: 2026-08-24
 updated: 2026-08-24
 status: active
 lines: 83
 depends-on:
-  - ../../../.agents/process/review.md
+  - ../../../.agents/rules/process/review.md
 related:
   - ../../review/REVIEW.md
-  - ../../../.agents/roles/ai-adversarial-reviewer.md
+  - ../../../.agents/toolkit/roles/ai-adversarial-reviewer.md
 tags: [review, audit, ai-governance, design]
 ---
 
 # AI 调用治理方案文档审查报告 2026-08-24
 
-> 起因：用户要求先审核新写的 `.agents/assets/ai-calling-governance.md`（AI 调用治理方案设计稿，135 行）。
+> 起因：用户要求先审核新写的 `.agents/rules/assets/ai-calling-governance.md`（AI 调用治理方案设计稿，135 行）。
 > 方式：**docs-contract-reviewer + code-backend-reviewer + code-frontend-reviewer + ai-adversarial-reviewer** 四官独立子代理并行，材料按角色裁剪（frontmatter 规范/后端代码事实/前端代码事实/pitfalls+ux 清单）、官间互不可见、主会话只做汇总去重。审查范围仅本次两份文档（工作区其他会话的 os/ 交易研究改动与本审查无关）。
-> 守护：`ai-guard-meta.sh` PASS（109 文件）；`.agents/guards/guard.sh` G1-G7 **7 PASS / 0 HIT / 1 NOTE**。
+> 守护：`ai-guard-meta.sh` PASS（109 文件）；`.agents/mechanism/guards/guard.sh` G1-G7 **7 PASS / 0 HIT / 1 NOTE**。
 > 结果：**P0×1 + 战略×7 + P1×11 + P2×13（合并去重后）**。⭐ 交叉命中 3 处多官独立证据（超时矩阵自相矛盾 ⭐⭐⭐⭐ 四官全中 / SseEmitter async timeout ⭐⭐ / 调用点计数 ⭐⭐）。方案整体**方向可行**（backend 核实 9 项事实全部属实），但实施前必须修订战略级缺陷。审查只报告未改文档（B7）。
 
 ---

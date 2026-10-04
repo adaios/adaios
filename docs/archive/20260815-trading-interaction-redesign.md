@@ -12,7 +12,7 @@ supersededBy: 20260902-trading-memory-positioning.md
 > 类型：UI Flow（复杂交互方案）· 状态：draft · 日期：2026-08-15
 > 范围：adai-app（手机）记录/持仓/建议交互重设计 + adai-web 管理增强 + adai-core 配套端点
 > **核心定位（用户确认 2026-08-15）：不是模拟交易/记账工具，是「我的交易数据 ↔ trading domain 规则体系（os/trading-os R1-R120）→ 买卖/持仓建议」。记录是手段，建议是目的。**
-> 依据代码现状核对：`apps/adai-app/lib/pages/trading_page.dart`（499 行）、`apps/adai-app/lib/services/api_service.dart`、`apps/adai-web/lib/pages/trading_page.dart`、`.agents/reference/api-spec.md` §5、`services/adai-core` TradingController / TradingAppService / TradingReviewAppService、`.agents/reference/data-format-freeze.md` §2.6/§2.12
+> 依据代码现状核对：`apps/adai-app/lib/pages/trading_page.dart`（499 行）、`apps/adai-app/lib/services/api_service.dart`、`apps/adai-web/lib/pages/trading_page.dart`、`.agents/knowledge/reference/api-spec.md` §5、`services/adai-core` TradingController / TradingAppService / TradingReviewAppService、`.agents/knowledge/reference/data-format-freeze.md` §2.6/§2.12
 
 ---
 

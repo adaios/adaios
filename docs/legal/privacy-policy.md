@@ -8,7 +8,7 @@ status: active
 lines: 98
 depends-on: []
 related:
-  - ../../.agents/deployment/testflight-external-testing.md
+  - ../../.agents/rules/deployment/testflight-external-testing.md
 tags: [legal, privacy, ios]
 ---
 

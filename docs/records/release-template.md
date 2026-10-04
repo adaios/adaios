@@ -1,6 +1,6 @@
 # vX.Y.Z — 版本标题
 
-> 发布模板。规则见 `.agents/rfc/20260801-release-versioning.md`。发布时复制为 `docs/releases/vX.Y.Z.md`。
+> 发布模板。规则见 `.agents/direction/rfc/20260801-release-versioning.md`。发布时复制为 `docs/releases/vX.Y.Z.md`。
 
 发布日期：YYYY-MM-DD
 

@@ -15,7 +15,7 @@ tags: [review, docs, audit, api-spec, honesty]
 
 # 文档契约深审：晚间批 + 深夜第二批
 
-> 角色：docs-contract-reviewer（`.agents/roles/docs-contract-reviewer.md`）· 性质：**只读审查**（B7，未改任何代码/文档）
+> 角色：docs-contract-reviewer（`.agents/toolkit/roles/docs-contract-reviewer.md`）· 性质：**只读审查**（B7，未改任何代码/文档）
 > 范围：`git diff d060841..HEAD` 的**文档类改动**，主目标 `3dadfd9`（晚间批）与 `42dc0b5`（深夜第二批）。
 > `bc6656b`（另一会话）不在范围内，发现的问题单列于 §四。
 
@@ -25,7 +25,7 @@ tags: [review, docs, audit, api-spec, honesty]
 |:---|:---|
 | 基线 | `d060841`（2026-09-16，「把本批 8 项标为已修」） |
 | 审查对象 | `3dadfd9`（晚间批）+ `42dc0b5`（深夜第二批）的文档改动 |
-| 文件清单 | `.agents/reference/api-spec.md` · `.agents/reference/{status,change-log,task-log}.md` · `.agents/records/REVIEW.md` · `docs/records/release-v1.0.0.md` · `.agents/process/{audit,review,ship}.md` · `.agents/guards/ai-guard-prod.sh` |
+| 文件清单 | `.agents/knowledge/reference/api-spec.md` · `.agents/knowledge/reference/{status,change-log,task-log}.md` · `.agents/records/REVIEW.md` · `docs/records/release-v1.0.0.md` · `.agents/rules/process/{audit,review,ship}.md` · `.agents/mechanism/guards/ai-guard-prod.sh` |
 | 自动化门禁复核 | `ai-guard-align.sh` **PASS**（A1 154 端点全登记；A2 后端 1939 / app 359 / admin 69 / web 302）· `ai-guard-meta.sh` 审查开始时 **PASS**（143 文件）—— 均为独立重跑，非引用批次声明。⚠️ 三段报告落盘后 ai-guard-meta 变 **3 FAIL**（M3 孤儿），见 P2-6 |
 | 代码真相源对拍 | `LearnController` / `LearnCardFileRepository` / `AuthController` / `ApiTokenService` / `AccountController` / `TradingAppService` / `ApnsPushChannel` / `LocalFileStorage` / `GlobalExceptionHandler` 直接读源码 |
 
@@ -52,7 +52,7 @@ tags: [review, docs, audit, api-spec, honesty]
 3. **REVIEW 14 条「已修」声明：代码侧全部真实存在，无一条是空头 ✅**
    `P2-交易51`（`TradingAppService:1516-1525,1659-1667` 盘前改判 `quoteIsFromPreviousDay`）· `P2-learn21`（新端点+幂等）· `P2-learn25`（`VisualAiClient.ask(...,Integer)` + yml `image-max-tokens:4096`）· `P2-learn26`（yml `image-daily-limit:30` + `LearnDigestAppService:336-353` fail-closed）· `P2-learn28`（按决策关闭，无需改码）· `P2-分享2`（`ShareBridge.swift:47-58` 共享 Keychain）· `P2-分享3`（`ShareViewController.swift:239-248` 先读共享容器）· `P2-分享5`（`share_token_keeper.dart` 存在）· `P2-工程2`（`ship.md:102-105` 禁 `git add -A`）· `P2-文档2`（`audit.md:19/36`、`review.md:45`、`README.md:39/41` 均已是 12 官口径）· `P3-隐私1`（源码/测试已换 `A000000001`/`0000000000`，**但文档侧漏一处，见 P1-1**）· `P2-APNs1`（`ApnsPushChannel:274-277` root 级 `adaiDeepLink`）· `P2-APNs5`（`ai-guard-prod.sh:348-351` 三项倒数）· task-log #149（`AccountController` purge + `RESERVED_USER_IDS` 禁 `default`，`AccountController.java:51/104`）。
    → **结论：没有「标已修但代码里找不到」的条目；问题出在「标了已修但条目正文没同步」（P2-1）与一条清理不彻底（P1-1）。**
-4. **v1.0.0 发布核对差距表：文中写的一列全部与原文一致 ✅**（后端 433/前端 171 → v1.0.0:48；api-spec v3.18 · 51 端点 → :67；「REVIEW.md P1/P2 已清零」→ :73；「#179 … v1.0.1 立项」→ :75；全文无 learn/APNs/TestFlight → grep 零命中）。「实测」列的基线也可复现：`git show d060841:.agents/reference/status.md` = 1926 / 357 / 302 / 69 + 端点 152，`api-spec` = v3.69——**与表中数字逐字相符**。（唯一存疑：「未修 20 条」不可复现，见 P3-4。）
+4. **v1.0.0 发布核对差距表：文中写的一列全部与原文一致 ✅**（后端 433/前端 171 → v1.0.0:48；api-spec v3.18 · 51 端点 → :67；「REVIEW.md P1/P2 已清零」→ :73；「#179 … v1.0.1 立项」→ :75；全文无 learn/APNs/TestFlight → grep 零命中）。「实测」列的基线也可复现：`git show d060841:.agents/knowledge/reference/status.md` = 1926 / 357 / 302 / 69 + 端点 152，`api-spec` = v3.69——**与表中数字逐字相符**。（唯一存疑：「未修 20 条」不可复现，见 P3-4。）
 5. **frontmatter/门禁 ✅（有盲区）**：`ai-guard-meta.sh` 独立重跑 PASS（143 文件）。本次改动落在 ai-guard-meta 范围外的文件见 P3-5。
 
 ## 三、逐条问题
@@ -93,7 +93,7 @@ tags: [review, docs, audit, api-spec, honesty]
 
 ### P2-2 · restore-origin 判据：文档说 frontmatter、实现扫全文，可绕过只读保护（P1-learnA 同型）
 
-- **位置**：`.agents/reference/api-spec.md:2564` · `services/adai-core/.../infrastructure/storage/LearnCardFileRepository.java:737-742` · `interfaces/LearnController.java:244-249`
+- **位置**：`.agents/knowledge/reference/api-spec.md:2564` · `services/adai-core/.../infrastructure/storage/LearnCardFileRepository.java:737-742` · `interfaces/LearnController.java:244-249`
 - **证据**：
   - api-spec：判据 = 正文含 `## 卡片页` 段，或 **frontmatter 带产品独有键**（`status`/`review_at`/`reminded_at`）。
   - 实现：`content.contains("## 卡片页") || content.contains("review_at:") || content.contains("reminded_at:") || content.contains("\nstatus:")`——**对整份文件匹配，不限于前言块**（`\nstatus:` 只要求行首，正文里一行 `status: 已完成` 同样命中）。
@@ -103,14 +103,14 @@ tags: [review, docs, audit, api-spec, honesty]
 
 ### P2-3 · api-spec 变更记录声称的行为变化没进 § 正文（D22 同型）
 
-- **位置**：`.agents/reference/api-spec.md:14`（v3.70 变更记录）vs `.agents/reference/api-spec.md:2499-2515`（`POST /learn/digest/image` 正文）
+- **位置**：`.agents/knowledge/reference/api-spec.md:14`（v3.70 变更记录）vs `.agents/knowledge/reference/api-spec.md:2499-2515`（`POST /learn/digest/image` 正文）
 - **证据**：变更记录写「`POST /learn/digest/image` 加每日张数上限（`adai.learn.image-daily-limit`，默认 30，0=不限），**超限 400 人话**；账本读不出来 → **fail-closed 拒绝整理**」。正文的 400 清单（:2514）仍只有「没有图片 / 非图片类型 / 单张超 5MB / **超过 3 张** / type 非法 / 空图」，全文（除变更记录行）grep `image-daily-limit|日配额|30 张` **零命中**。
 - **影响**：前端拿到「今天图片整理额度用完了」这条 400 时，契约里查不到这个分支；下一个会话会以为日配额不存在（正是 checklist D22 记录过的既有 P1 形态）。
 - **建议**：在 :2514 的 400 行补「当日图片整理张数超上限（`adai.learn.image-daily-limit`，默认 30，0=不限）」+ 在 :2513 附近补「账本 `learn/_quota.json` 的 `images` 键读不出 → fail-closed 拒绝整理（403/400 择一与实现一致）」。
 
 ### P2-4 · 删号 `purge` 的括号注描述了不存在的 admin 流程，且 purge 无任何客户端入口
 
-- **位置**：`.agents/reference/api-spec.md:2069` · `.agents/records/task-log.md:317` · 对照 `apps/adai-admin/lib/pages/accounts/accounts_page.dart:245-284` · `apps/adai-admin/lib/services/api_service.dart:284-286`
+- **位置**：`.agents/knowledge/reference/api-spec.md:2069` · `.agents/records/task-log.md:317` · 对照 `apps/adai-admin/lib/pages/accounts/accounts_page.dart:245-284` · `apps/adai-admin/lib/services/api_service.dart:284-286`
 - **证据**：
   - 文档：「`true` = 连同该用户目录下的文件一起清理（**不可逆**，adai-admin 侧还要过一次『**输入账号名确认**』）」。
   - admin 实际：`_deleteAccount` 是普通二次确认对话框（文案里插值账号名：「确定删除账号「adai」？…此操作不可撤销」），**没有让人输入账号名**；且 `deleteAccount(userId)` 打的 URL 是 `DELETE /api/v1/accounts/$userId`——**不带 `purge` 参数**。全仓 `apps/adai-admin` grep `purge` **零命中**。
@@ -119,7 +119,7 @@ tags: [review, docs, audit, api-spec, honesty]
 
 ### P2-5 · rotate 的失败回滚分支实际返回 401，文档未登记且与提示语/客户端行为冲突
 
-- **位置**：`services/adai-core/.../application/ApiTokenService.java:220-224` · `interfaces/GlobalExceptionHandler.java:81-84` · `.agents/reference/api-spec.md:170-178`
+- **位置**：`services/adai-core/.../application/ApiTokenService.java:220-224` · `interfaces/GlobalExceptionHandler.java:81-84` · `.agents/knowledge/reference/api-spec.md:170-178`
 - **证据**：旧令牌撤不掉时 `rotate` 抛 `AuthService.AuthException("换钥匙没成功（旧的没撤掉），这次先不动它，稍后再试一次")`；`GlobalExceptionHandler` 对 `AuthException` **一律映射 401**。api-spec 的 rotate 段只登记 `200` / `404`。
 - **影响**：401 在本项目是「会话失效」语义——`status.md` 明确 app/web 的 `ApiService` 是「Bearer/401 **全局回登录页**」。于是一次服务端内部失败（撤销写盘失败）会把用户**踢回登录页**，而返回文案说「这次先不动它，稍后再试一次」；且「服务端没能完成动作」用 401 也不符合语义。
 - **建议**：回滚失败改用 500/503（或自定义业务异常映射 409），并在 api-spec 段补一行；若坚持复用 AuthException，至少让前端对 rotate 的 401 关掉全局登出。
@@ -127,7 +127,7 @@ tags: [review, docs, audit, api-spec, honesty]
 ### P2-6 · 同日三份审查报告未登记 → `ai-guard-meta` M3「孤儿」实测 FAIL（本轮审查自身引入，**非**两个 commit 造成）
 
 - **位置**：`docs/review/_index.md`（audits 清单表，:24 起）；涉及本文件与同日同轮其它审查报告（`docs/records/audits/2026-09-17-deep-review-*.md`——文件名随各会话产出变动，本次两次实测分别出现 backend/adversarial 与 adversarial/frontend）
-- **证据**：审查开始时 `bash .agents/guards/ai-guard-meta.sh` → `PASS (143 files)`；三段报告落盘后重跑 → **`META-GUARD: 3 FAIL`**，三条均为 `M3 …: 孤儿（无引用且不在 _index 清单）`（含本文件）。
+- **证据**：审查开始时 `bash .agents/mechanism/guards/ai-guard-meta.sh` → `PASS (143 files)`；三段报告落盘后重跑 → **`META-GUARD: 3 FAIL`**，三条均为 `M3 …: 孤儿（无引用且不在 _index 清单）`（含本文件）。
 - **影响**：commit 信息里「ai-guard-meta PASS」是当时的真话，但**当前工作树过不了门禁**；若照现状收尾，`/ship` 的 ai-guard-meta 闸会拦下（或更糟：有人为了过闸而把报告删掉）。
 - **建议**：收尾时把三段报告按 `_index.md` 既有格式登记一行（含一句话结论 + status），再跑一次 ai-guard-meta。（按约束本轮**未**代为登记，只报告。）
 
@@ -135,19 +135,19 @@ tags: [review, docs, audit, api-spec, honesty]
 
 | # | 位置 | 问题 | 证据 / 建议 |
 |:--|:-----|:-----|:-----------|
-| P3-1 | `.agents/reference/status.md:23` | 端点行有**重复残片**：`**+1（2026-09-16 晚间批）**+1（2026-09-16 晚间批）：POST /learn/cards/restore-origin…`（星号也未闭合） | 3dadfd9 时该行是干净的（`**+1（2026-09-16 晚间批）：…**`），42dc0b5 改写时引入。机械清理重复片段并把 `**` 配对 |
-| P3-2 | `.agents/reference/api-spec.md:2559-2566` | 新端点段未登记 `403`（learn 插件未启用）与 `400`（type 非法「type 仅支持 ai/trading/other」） | 同文件其它 learn 端点都写了这两条；`LearnController.java:256-260` 确实会返回 |
+| P3-1 | `.agents/knowledge/reference/status.md:23` | 端点行有**重复残片**：`**+1（2026-09-16 晚间批）**+1（2026-09-16 晚间批）：POST /learn/cards/restore-origin…`（星号也未闭合） | 3dadfd9 时该行是干净的（`**+1（2026-09-16 晚间批）：…**`），42dc0b5 改写时引入。机械清理重复片段并把 `**` 配对 |
+| P3-2 | `.agents/knowledge/reference/api-spec.md:2559-2566` | 新端点段未登记 `403`（learn 插件未启用）与 `400`（type 非法「type 仅支持 ai/trading/other」） | 同文件其它 learn 端点都写了这两条；`LearnController.java:256-260` 确实会返回 |
 | P3-3 | `.agents/records/REVIEW.md:1-8` | frontmatter 停在 `updated: 2026-09-16`、`last-review: 2026-09-14`、`baseline/mode` 仍是 09-14 批次，但文件已新增 `2026-09-17` 行 | frontmatter-spec §二：`updated` 由 /ship 回写；ai-guard-meta 范围不含 REVIEW.md，无门禁 |
 | P3-4 | `docs/records/release-v1.0.0.md:15` | 「未修 **20 条**」不可复现 | 基线 `d060841:REVIEW.md` 未修区「无 ✅ 行」= 25（战略 2 + P1 4 + P2 19）；剔掉自述「复核不成立/误报」的 P1-交易15/16 = 23；+P0/P3 区两条 bullet = 25。20 这个数没写出统计口径。建议改「未修项见 `REVIEW.md`」或写明规则（**待验证**：可能作者另有口径） |
-| P3-5 | `.agents/reference/api-spec.md` · `.agents/reference/{status,change-log,task-log}.md` · `docs/records/release-v1.0.0.md` | 本次均被编辑，但仍**无 frontmatter** | frontmatter-spec §四「渐进：存量 `docs/**` 文档下次编辑时顺手补」→ 本批正是「下次编辑」；ai-guard-meta 范围不含这五个文件（D44/D52 已登记的盲区），故无提示。建议至少给这五个文件补最小 frontmatter |
-| P3-6 | `.agents/guards/ai-guard-prod.sh:349` | 把「iOS 描述文件 / 付费账号」合成一条硬编码 `2027-09-13` | 两者到期机制不同（描述文件由 Xcode 重签、账号按购买周年续费），合并成一条后任一变化都会给出错误倒数。建议拆两行或注明「以较早者为准 + 来源」。**待验证**：实际两个日期是否真同为 2027-09-13 |
-| P3-7 | `.agents/reference/api-spec.md:591` | `/trading/positions/daily` 的 `notes` 字段说明仍只写「未计入项的人话说明」，未登记 v3.70 新增的第二种语义 | 实现（`TradingAppService.java:1521-1524`）会在盘前/非交易日把「今天还没开盘…下面是 X 的当日盈亏」写进 `notes` 首行——同一字段两种含义，消费端（app 用它决定是否显示橙色「有几笔我没算进去」）会误判 |
+| P3-5 | `.agents/knowledge/reference/api-spec.md` · `.agents/knowledge/reference/{status,change-log,task-log}.md` · `docs/records/release-v1.0.0.md` | 本次均被编辑，但仍**无 frontmatter** | frontmatter-spec §四「渐进：存量 `docs/**` 文档下次编辑时顺手补」→ 本批正是「下次编辑」；ai-guard-meta 范围不含这五个文件（D44/D52 已登记的盲区），故无提示。建议至少给这五个文件补最小 frontmatter |
+| P3-6 | `.agents/mechanism/guards/ai-guard-prod.sh:349` | 把「iOS 描述文件 / 付费账号」合成一条硬编码 `2027-09-13` | 两者到期机制不同（描述文件由 Xcode 重签、账号按购买周年续费），合并成一条后任一变化都会给出错误倒数。建议拆两行或注明「以较早者为准 + 来源」。**待验证**：实际两个日期是否真同为 2027-09-13 |
+| P3-7 | `.agents/knowledge/reference/api-spec.md:591` | `/trading/positions/daily` 的 `notes` 字段说明仍只写「未计入项的人话说明」，未登记 v3.70 新增的第二种语义 | 实现（`TradingAppService.java:1521-1524`）会在盘前/非交易日把「今天还没开盘…下面是 X 的当日盈亏」写进 `notes` 首行——同一字段两种含义，消费端（app 用它决定是否显示橙色「有几笔我没算进去」）会误判 |
 
 ## 四、范围外单列（`bc6656b` 会话产物，只标注不改）
 
 | # | 位置 | 问题 | 证据 |
 |:--|:-----|:-----|:-----|
-| O-1 | `.agents/guides/routine.md:1-14` | frontmatter `lines: 174` vs 实际 `wc -l` = **182** | `git log d060841..HEAD -- .agents/guides/routine.md` → 仅 `bc6656b` 改过；ai-guard-meta 范围不含 `docs/guides`，无人回写 |
+| O-1 | `.agents/rules/guides/routine.md:1-14` | frontmatter `lines: 174` vs 实际 `wc -l` = **182** | `git log d060841..HEAD -- .agents/rules/guides/routine.md` → 仅 `bc6656b` 改过；ai-guard-meta 范围不含 `docs/guides`，无人回写 |
 | O-2 | `docs/ideas/_index.md:23-27` | 「文件清单」未登记新增的 `20260916-plugin-and-cold-start-discussion.md`（也不含存量的 `20260816-personal-data-import.md`） | `docs/ideas/README.md` **已登记**新文件，`_index.md` 未登记；`_index.md` 自己写着「新增文档：补本索引 + frontmatter」。新文件本身 frontmatter 完整（`lines: 305` = `wc -l` 305 ✓，related 链接可解析 ✓），`docs/records/audits/2026-09-17-wiring-audit.md` 亦已在 `docs/review/_index.md:24` 登记、frontmatter `lines: 192` ✓ —— **两份产物的 frontmatter/断链治理是干净的，唯一缺口是 ideas 索引漏登** |
 
 ## 五、覆盖面声明
@@ -168,7 +168,7 @@ tags: [review, docs, audit, api-spec, honesty]
 - **未连生产**：`ai-guard-prod.sh` 倒数三项、`P2-工程5` 的 `deploy.sh` 真实执行、公安备案/描述文件真实到期日均未取证（P3-6 属待验证）。
 - **未审 `bc6656b` 的脚本内容**（`task-noon.sh` / `ai-setup-launchd.sh` / `ai-guard-prod.sh` 的午间部分），只看了它对文档治理的影响。
 - **未逐条核 REVIEW「已修复区」历史 ✅**（只核本批 14 条 + task-log #149）。
-- **未核 `.agents/reference/api-spec.md` 全量 2732 行的存量失真**（只针对本批 hunk 及其直接上下文）。
+- **未核 `.agents/knowledge/reference/api-spec.md` 全量 2732 行的存量失真**（只针对本批 hunk 及其直接上下文）。
 
 ## 六、不确定项（待验证）
 

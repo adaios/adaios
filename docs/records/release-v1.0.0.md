@@ -1,7 +1,7 @@
 # v1.0.0 — AdaiOS 第一版（首个正式发布）
 
 > **版本定调**：v1.0.0 是 AdaiOS 首个正式发布。v0.1.0 / v0.2.0 / v0.3.0 为内部开发里程碑，不作为独立版本发布（见 `.agents/direction/product-roadmap.md` §二）。
-> 发布规则见 `.agents/rfc/20260801-release-versioning.md`。
+> 发布规则见 `.agents/direction/rfc/20260801-release-versioning.md`。
 
 发布日期：待定（验证通过，tag + 部署待用户确认）
 
@@ -12,7 +12,7 @@
 > |:---|:---|:---|
 > | 工程基建/测试数 | 后端 433 · 前端 171 | **后端 1926 · app 357 · web 302 · admin 69** |
 > | 数据/文件格式变更 | api-spec **v3.18** · 51 端点 | **v3.69 · 152 端点** |
-> | 已知问题 | 「REVIEW.md P1/P2 已清零」 | 未修 **20 条**（**口径**：REVIEW 未修 13 + 搁置 5 + 复核 2 = 20，可用 `bash .agents/guards/ai-guard-unfixed.sh` 复算；含硬期限：公安联网备案最迟 **2026-09-30** —— ✅ **2026-09-24 已办结**）。**2026-09-26 补口径留痕**：2026-09-17 docs 深审质疑「三种算法都得不到 20、未找到留痕」，系当时未写口径所致，非数字错误 |
+> | 已知问题 | 「REVIEW.md P1/P2 已清零」 | 未修 **20 条**（**口径**：REVIEW 未修 13 + 搁置 5 + 复核 2 = 20，可用 `bash .agents/mechanism/guards/ai-guard-unfixed.sh` 复算；含硬期限：公安联网备案最迟 **2026-09-30** —— ✅ **2026-09-24 已办结**）。**2026-09-26 补口径留痕**：2026-09-17 docs 深审质疑「三种算法都得不到 20、未找到留痕」，系当时未写口径所致，非数字错误 |
 > | 已知问题 | 「#179 登录体系（v1.0.1 立项）」 | **2026-09-01 已上线**（账号密码 + 服务端会话 + role=admin 门禁） |
 > | 功能 | 无 learn / 无 APNs / 无 iOS 分发 | 缺整块：learn 插件（消化·复习·卡片流·**iOS 分享扩展**）· trading 账实一致性/批次跟踪/案例库/认知层 · **APNs 自有推送** · **TestFlight 分发** · 外部入口（Siri / 快捷指令 / `adai://`） |
 >
@@ -60,7 +60,7 @@ AdaiOS 不是传统 CRUD App，而是一套 **Personal AI Operating System**：�
 
 ## 数据/文件格式变更
 
-> **v1.0.0 数据格式冻结**：`.agents/reference/data-format-freeze.md` 定义 `data/` 全部文件格式契约 + 变更规则。发布后破坏性变更必须迁移。
+> **v1.0.0 数据格式冻结**：`.agents/knowledge/reference/data-format-freeze.md` 定义 `data/` 全部文件格式契约 + 变更规则。发布后破坏性变更必须迁移。
 
 - **Memory 条目**：`kind` / `topic` / `superseded` / `evolvedTo` / `doneAt` / `lastConfirmed` 字段（向后兼容，旧条目默认解析）
 - **FeedEntry**：新增 `type=action` / `type=market` / `type=push` / `date` / `mediaPath`

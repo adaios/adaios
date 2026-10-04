@@ -34,8 +34,8 @@ Project OS 与其他 Domain OS 不同——它的知识来源除了本目录，�
 
 | 来源 | 内容 | 用途 |
 |:-----|:-----|:-----|
-| `.agents/rfc/` | 设计决策记录 | 让 AI 了解架构决策史 |
-| `.agents/reference/` | 系统架构文档 | 让 AI 理解系统设计 |
+| `.agents/direction/rfc/` | 设计决策记录 | 让 AI 了解架构决策史 |
+| `.agents/knowledge/reference/` | 系统架构文档 | 让 AI 理解系统设计 |
 | `git log` | 提交历史 | 让 AI 追踪开发进度 |
 | `AGENTS.md` | 项目约定 | 让 AI 遵守规范 |
 

@@ -97,7 +97,7 @@ com.adaiadai.core/
 
 ## 代码约定
 
-> 代码/文档/协作规范**唯一真相源**：`.agents/assets/conventions.md`（本处只留指针）。
+> 代码/文档/协作规范**唯一真相源**：`.agents/rules/assets/conventions.md`（本处只留指针）。
 
 - Java 17 / 注入 / 日志 / 异常 → 见 conventions.md C1-C8
 - **测试（adai-core 特有）**：Controller 层用 `@WebMvcTest` + MockBean，Service 层用纯单元测试
@@ -137,7 +137,7 @@ com.adaiadai.core/
 
 ## 当前测试状态
 
-- **测试数/端点数唯一事实源：`../../.agents/reference/status.md`**（RFC `20260815-docs-governance`，/ship 时更新，本文件不复制数字）
+- **测试数/端点数唯一事实源：`../../.agents/knowledge/reference/status.md`**（RFC `20260815-docs-governance`，/ship 时更新，本文件不复制数字）
 - 测试在 `src/test/java/`，覆盖：全部 Controller 接口测试全覆盖 + 多模态 + 统一鉴权（#179/#178：Bearer 会话 + role=admin 门禁）+ 行情推送 + AI 日志 + 多用户隔离 + R2 记录↔待办 + 待办到期提醒 + 插件门控等
 - **新增功能必须配套测试。**
 
@@ -161,8 +161,8 @@ com.adaiadai.core/
 
 | 文档（根目录的需 CLI read 查看） | 位置 | 说明 |
 |:-------------------------------|:----|:------|
-| `api-spec.md` | `../../.agents/reference/` | API 接口契约（全局唯一真相源） |
-| `feature-reference.md` | `../../.agents/reference/` | 功能参考（含后端能力，唯一功能真相源） |
-| `system-architecture.md` | `../../.agents/reference/` | 系统架构、Kernel/Domain 分层 |
-| `product-architecture.md` | `../../.agents/reference/` | 五层产品架构详解 |
+| `api-spec.md` | `../../.agents/knowledge/reference/` | API 接口契约（全局唯一真相源） |
+| `feature-reference.md` | `../../.agents/knowledge/reference/` | 功能参考（含后端能力，唯一功能真相源） |
+| `system-architecture.md` | `../../.agents/knowledge/reference/` | 系统架构、Kernel/Domain 分层 |
+| `product-architecture.md` | `../../.agents/knowledge/reference/` | 五层产品架构详解 |
 | `VISION.md` | `../../docs/` | 项目愿景与核心理念 |

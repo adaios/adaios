@@ -2,7 +2,7 @@
 
 > **状态：未定型思考**（2026-08-07）。
 > 本文件是对"Domain OS 如何从无到有、从小到大、以及如何复用/演变/压缩"的一次架构讨论沉淀。
-> 具体形态尚未定稿，保留开放问题；成熟后升级为 `.agents/rfc/` 并移出 ideas 区。
+> 具体形态尚未定稿，保留开放问题；成熟后升级为 `.agents/direction/rfc/` 并移出 ideas 区。
 
 ## 1. 背景与动机
 
@@ -14,7 +14,7 @@
 | project-os | **骨架+自举** | 管道未动，多了"外部数据源融合"（docs/rfc、git log、CLAUDE.md） |
 | life-os | **种子** | 只有 definition/ + 11-context/identity.md，零结构 |
 
-近期 health-os 的考虑（见 `.agents/rfc/20260730-health-management-scenario.md`，该 RFC 结论为"健康不独立、属 Life Domain"）触发对通用问题的追问：
+近期 health-os 的考虑（见 `.agents/direction/rfc/20260730-health-management-scenario.md`，该 RFC 结论为"健康不独立、属 Life Domain"）触发对通用问题的追问：
 
 > Domain OS 到底怎么长出来？可复用的单元是什么？结构是否应当随数据演变？如何在变大后保持可用？
 
@@ -108,7 +108,7 @@
 
 ## 9. 相关文档
 
-- `.agents/rfc/20260730-health-management-scenario.md` — 健康场景设计（"不独立"结论待换判据）
+- `.agents/direction/rfc/20260730-health-management-scenario.md` — 健康场景设计（"不独立"结论待换判据）
 - `os/trading-os/CLAUDE.md` — 四通道 + 收敛循环的成熟实现（生长律的实证来源）
 - `os/life-os/`、`os/project-os/` — 种子 / 骨架标本
-- `.agents/direction/VISION.md` §5.3、`.agents/reference/product-architecture.md` — Domain OS 层定位
+- `.agents/direction/VISION.md` §5.3、`.agents/knowledge/reference/product-architecture.md` — Domain OS 层定位

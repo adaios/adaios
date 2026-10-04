@@ -43,7 +43,7 @@ flutter build web
 ```
 
 > 本地字体 `web/fonts/`（NotoSansSC-Subset.woff2 + Roboto.woff2）不入库，需手动放置。
-> NotoSansSC-Subset.woff2 为 Noto Sans SC 的 TrueType(glyf) 轮廓 GB2312 子集（63KB，OFL 开源）——**必须用 TrueType 轮廓**：原 HiraginoSansGB-Subset.woff2 是 CFF 轮廓，skwasm 引擎 FreeType 解析失败导致中文全框（2026-08-22 修复，Flutter issue #128485 同类）。由 `scripts/serve_web.sh` 的 fetch 补丁指向；重新生成见 `.agents/assets/projects/adai-web.md` 字体资产节。
+> NotoSansSC-Subset.woff2 为 Noto Sans SC 的 TrueType(glyf) 轮廓 GB2312 子集（63KB，OFL 开源）——**必须用 TrueType 轮廓**：原 HiraginoSansGB-Subset.woff2 是 CFF 轮廓，skwasm 引擎 FreeType 解析失败导致中文全框（2026-08-22 修复，Flutter issue #128485 同类）。由 `scripts/serve_web.sh` 的 fetch 补丁指向；重新生成见 `.agents/rules/assets/projects/adai-web.md` 字体资产节。
 > 后端需先启动：`cd services/adai-core && ./gradlew bootRun`（:8080）。
 
 ## 项目结构
@@ -82,11 +82,11 @@ lib/
 
 ## 当前测试状态
 
-- **测试数唯一事实源：`../../.agents/reference/status.md`**（RFC `20260815-docs-governance`，/ship 时更新，本文件不复制数字）
+- **测试数唯一事实源：`../../.agents/knowledge/reference/status.md`**（RFC `20260815-docs-governance`，/ship 时更新，本文件不复制数字）
 
 ```bash
 flutter analyze   # 0 issues
-flutter test      # 见 .agents/reference/status.md
+flutter test      # 见 .agents/knowledge/reference/status.md
 ```
 
 覆盖：DTO JSON 解析、ApiException、缓存参数感知、userId query 解析、桌面壳（导航/懒加载/保活）、桌面 FeedCard 渲染（idle/chatting/ended/回调/action/market，含中文化文案断言）、REVIEW 修复批回归（选号/上传/图片追问 + #234 分页终止口径 + #236 记忆页刷新保位 + #201/#229 溢出/tooltip）、S-1 多图 ask（askBatch 请求契约 imageRecordIds/question + 清标签缓存、AskBatchResponse log 兜底解析）、**图文一体多图一次投递（2026-09-22：`uploadImages` 打 `/records/media/batch` 的 multipart `files`×N + `text` + `Idempotency-Key`（重试复用同一 key 的断言）+ 上传/追问走 120s 长超时客户端（钉住 120/15 常量防回退）+ `mediaPaths` 多图消费与旧单值 `mediaPath` 降级兼容 + 一卡多图并排渲染）**。
@@ -120,6 +120,6 @@ DesktopShell({userId})
 
 | 文档 | 位置 | 说明 |
 |:-----|:-----|:-----|
-| `frontend-reference.md` | `../../.agents/reference/` | 前端统一参考（含 adai-web 桌面端章节） |
-| `api-spec.md` | `../../.agents/reference/` | API 接口契约（全局唯一真相源） |
+| `frontend-reference.md` | `../../.agents/knowledge/reference/` | 前端统一参考（含 adai-web 桌面端章节） |
+| `api-spec.md` | `../../.agents/knowledge/reference/` | API 接口契约（全局唯一真相源） |
 | `VISION.md` | `../../docs/` | 项目愿景与核心理念 |

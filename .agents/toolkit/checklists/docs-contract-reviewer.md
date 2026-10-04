@@ -1,0 +1,108 @@
+---
+title: 文档契约审查检查清单
+description: docs-contract-reviewer 逐条检查项（人也能用）——契约真相源/RFC 决策漂移/文档资产健康
+version: 1
+created: 2026-08-15
+updated: 2026-10-01
+status: active
+lines: 108
+depends-on: []
+related: [../roles/docs-contract-reviewer.md]
+tags: [review, checklist, docs]
+---
+
+# 文档审核检查点清单
+
+> 格式：`[检查方法]` — 检查什么。`上次发现` 记录历史命中。新发现模式追加到底部。
+
+## 契约真相源
+
+| # | 检查方法 | 上次发现 |
+|:-:|:---------|:---------|
+| D1 | 每个 Controller 端点 ↔ `.agents/knowledge/reference/api-spec.md` ↔ 前端调用 三方对齐 | api-spec 缺 7 个端点（P1，已修 v3.1）|
+| D2 | `docs/README.md` 索引指向的文件都存在；新增文档是否登记入口 | — |
+
+## 架构图与代码一致
+
+| # | 检查方法 | 上次发现 |
+|:-:|:---------|:---------|
+| D3 | 根 ARCHITECTURE.md + adai-core AGENTS.md 声明的组件/依赖/红线是否真实存在 | 根 CLAUDE.md 描述曾过期（DECISION/正则兜底/B Phase4 待做）（P2，已修）|
+| D4 | AGENTS.md 审查体系表 vs .agents/_index.md 是否同步（「当前焦点」已迁 change-log.md）| — |
+
+## RFC 决策漂移
+
+| # | 检查方法 | 上次发现 |
+|:-:|:---------|:---------|
+| D5 | 新增 RFC 声称的决策 vs 其后代码实现是否一致；RFC 里 `status: draft` 是否被遗忘未更新；文件结构节/角色数/报告路径是否与实现一致 | RFC 20260801-review-skill 未随落地滚动（draft/4角色/报告路径旧）（P2 #35）|
+
+## 文档资产健康
+
+| # | 检查方法 | 上次发现 |
+|:-:|:---------|:---------|
+| D6 | `docs/` 下是否有孤儿/过期/重复文档；`docs/records/issue-log.md` 是否持续更新 | issue-log 唯一在 reference/（P2 #38）|
+| D7 | `data/identity/profile.sample.md` 等 git 追踪的 sample 与真实文件格式是否一致（隐私文件不进 git）| 缺 identity/trading 目录（P2，已修）|
+| D8 | **skill/agent 自身可执行性**：SKILL.md/agent 引用的 bash 命令、grep 路径必须在仓库实测可执行，不 silent-fail | ship SKILL grep 路径不存在 → api-spec 同步跳过（P1 #34）|
+| D9 | **审核体系自审**：diff 触及 `.claude/**` 时，deep 必须派 docs-contract-reviewer 复核 skill/agent 的路径、清单引用、路由表覆盖一致性 | 路由表缺 `.claude/**` 无角色覆盖（战略 #33）|
+| D10 | 文件合并/移动/删除后，grep 全库对旧路径的引用（排除 inbox/历史），确保无断链、无重复 | 2026-08-02 文档精简：inbox 归位 17 文件 + frontend-reference 合并 + data-flow 并入 system-arch；曾现 ai-native 双份/AI_CONTEXT 孤儿 |
+| D11 | 新增子项目 AGENTS.md 的运行参数（端口/构建命令）与 `apps/adai-web/scripts/serve_web.sh` 跨文档对齐 | adai-web AGENTS.md `:8081` vs serve 脚本 `:8082`（P3，待修）|
+| D12 | api-spec Response 示例字段名直接对照后端 record/@JsonGetter 序列化名 + 前端 DTO fromJson 读取 key，三方对拍 | adai-web `positionCount` 后端无此字段 + portfolio 示例 `totalMarketValue` 失真（P1，待修）|
+| D13 | RFC frontmatter 一致性：`.agents/direction/rfc/*.md` 必须有 YAML frontmatter，缺则污染 `/project/status` rfcItems 状态 | 多模态 RFC 无 frontmatter → status=unknown（P1 #143，待修）|
+| D14 | 外部模型名/版本号跨文档对拍：roadmap/VISION/子项目 AGENTS.md 提及的外部模型与 `application.yml` 配置逐一对拍 | roadmap 仍写 GLM-4.6V-Flash（P1 #142，待修）|
+| D15 | README 索引完整性脚本化：`for f in .agents/direction/rfc/*.md; do grep -q "$(basename $f .md)" docs/README.md || echo 未登记` | README 缺 3 篇 RFC（P1 #141，待修）|
+| D16 | 「当前状态」类真相源联动：VISION §7 / product-architecture 状态表 / system-architecture §七 三处 ✅❌ 须与 change-log.md 批次同步 | 五层状态表过期（战略 #130，待修）|
+| D17 | 数据用户层迁移/rename 后 grep 残留旧层路径引用（`data/default` 等）：冻结契约/代码注释/迁移脚本/前端默认 userId/子项目 AGENTS.md 四处 | default→adai 迁移后 freeze/MarketAlert/前端默认值全残留（P1 #180）|
+| D18 | api-spec 版本/变更记录强同步：diff 触及任一 § 内容必须升版 + 追加变更记录行 | 3 处改动未升版 v3.7（P3 #191）|
+| D19 | Release Notes 发布日期门禁：只在用户确认 tag/部署后定稿，「验证通过」≠「已发布」| v1.0.0.md 过早定稿 2026-08-09（P3 #192）|
+| D20 | 测试数三方对拍：REVIEW 已修复区行内测试数 vs status.md 测试状态 vs 实测 @Test 计数 | 批 J 行 302 vs 实测 300（P3 #193）|
+| D21 | 速查表反造假：前端参考 API 速查表每行——方法动词（GET/POST…）在后端 annotation 实测存在 + 返回类型在 api-spec/代码真实定义 + 前端 api_service 有对应调用 | frontend-reference 虚构 `GET /trading/trades` + TradeResponse（P1 #237，2026-08-12）|
+| D22 | api-spec changelog 声称的每个行为变化必须反向 grep 对应 § 正文（状态码/字段表）确认已同步，升版不只记 changelog | v3.14 声明 413 但 § records/media 正文仍写 400（P1 #238，2026-08-12）|
+| D23 | 新增 Controller/端点后必须同步子项目 AGENTS.md 的「X Controller Y 端点」计数——读 `build/resources/main/META-INF/endpoints.txt` 对拍（根 CLAUDE.md 已删；D20 扩展）| MeController 新增后 15/50 未更新为 16/51（P2-7，2026-08-15）|
+| D24 | README 索引完整性脚本须扫 `.agents/knowledge/reference/` 与 `.agents/direction/rfc/` 两个目录（D15 只扫 rfc/ 有盲区）| `task-plugin-model.md` 未登记即因 D15 漏扫 reference/（P1-8，2026-08-15）|
+| D25 | RFC 修订新增决策时，frontmatter 的「X 决策」计数须与正文决策表行数一致 | RFC 20260814 frontmatter「四决策」vs 正文 D1-D5（P3，2026-08-15）|
+| D26 | 重大新能力落地只同步 api-spec + freeze 不算完整闭环——feature-reference（唯一功能真相源）须补对应章节 | 插件模型全文 feature-reference 零登记（P2-8，2026-08-15）|
+
+---
+**追加方式**：新发现文档类问题 → 追加一行，注明日期。
+| D27 | 目录/文件移出仓库（到同级外部目录）后，grep 旧路径范围必须覆盖 `.claude/agents/*`、`.claude/skills/*`、子项目 AGENTS.md——D10 只描述 docs/ 内有盲区；合并/改名文件也要同步 | ai-context-reviewer.md 引用已移出 research/ 路径（P1-D1，2026-08-15）|
+| D28 | RFC frontmatter 转 approved（含 decided-by）后，正文「等你拍板/待确认」等未决策措辞必须同步清理，否则后续会话误读为未决策 | media-event-unification §七决策点遗留（P2-D2，2026-08-15）|
+| D29 | 子项目 AGENTS.md 目录树瘦身/拼接后核对排版：目录重复出现（apps/ ×2）、表格头与正文段落粘连同行 | 原根文档曾 apps 重复 + 131 行表格头粘连（P3，2026-08-15）|
+
+---
+**追加方式**：新发现文档类问题 → 追加一行，注明日期。
+
+| D30 | frontmatter 出边可解析性脚本化：解析 depends-on/related 相对路径断言目标存在（roles/ 首次实现 16 处断链）| docs/ai 断链（走查 P1-W16，2026-08-15）|
+| D31 | 审查官数量单一声明：新增角色同步 README/audit/review 路由表「N 官」计数 | 7 vs 8（走查 P1-W16，2026-08-15）|
+| D32 | RFC 正文禁止测试数/端点数数字快照（引用写「见 status.md」）| RFC 硬编码数字（走查 P2，2026-08-15）|
+| D33 | README 索引扫描扩为 rfc/ + reference/ + releases/ | releases 未登记（走查 P2，2026-08-15）|
+| D34 | frontmatter `lines` 字段 /ship 回写门禁（按 wc -l 校准）| lines 未校准（走查 P3，2026-08-15）|
+| D35 | status.md 内部交叉校验：端点数 vs endpoints.txt、Controller 计数 vs 测试覆盖描述 | status 失真（走查 P1-W16，2026-08-15）|
+
+| D36 | 契约同步目标存在性断言：ship 引用的 api-spec/feature-reference/data-format-freeze 路径必须 grep 断言目标存在 | ship.md 指向不存在的 .agents/knowledge/reference/feature-reference.md（自伤自查 8 官，2026-08-15）|
+| D37 | RFC 索引状态对拍：.agents/direction/rfc/_index.md 每行状态必须等于对应 RFC frontmatter 的 status（取值 draft/approved/implemented）| ai-engineering-layer 索引 draft vs 文件 approved（自伤自查，2026-08-15）|
+| D38 | 迁移完整性三件套：目录物理迁移 = ①文件移动 ②全库旧路径 grep 零残留（含自身目录/docs 索引/子项目 AGENTS.md）③_index/README 同步，三步全过才算完成 | docs/ai→ai-engineering 只完成第①步、16 处残留（自伤自查 6 官 ⭐，2026-08-15）|
+| D39 | RFC 验收标准核验：approved RFC 的「验收标准」在 ship 时逐条 PASS/FAIL 并留痕（写回 RFC 或 change-log）| AI 工程层 RFC #1-#5 无人核验（自伤自查 3 官，2026-08-15）|
+| D40 | 状态真相源三方对拍：REVIEW 未修项 vs 审核摘要 vs change-log 出表记录三方一致 | P1-W16 已修/未修矛盾 + P2 计数 11 vs 14 vs 15（自伤自查，2026-08-15）|
+| D41 | 规范单一事实源对拍：conventions.md 声称单一的条目在 AGENTS.md/子项目文档只允许指针引用、无全文副本 | 代码规范三处副本表述微漂移（自伤自查 2 官，2026-08-15）|
+| D42 | 审查官计数四对拍：roles/*.md 文件数 ↔ AGENTS.md 名单（含名字枚举）↔ README「N 官」↔ audit 路由表 | AGENTS.md 7 名称 8 官（自伤自查 2 官，2026-08-15）|
+| D43 | 工作流段完整性：宣称的「N 段闭环」必须与具名段、定义文件一一对应（每段有文件、无空段、计数一致）| 六段只具名 5 段、develop 无文件（自伤自查 3 官，2026-08-15）|
+| D44 | 新建 docs/**（含 reference/architecture）文档必须带 frontmatter——ai-guard-meta scope 只覆盖 _index/.agents/rfc，reference/*.md 是盲区 | gap 无 frontmatter（框架+插件审查 P2，2026-08-16）|
+| D45 | 目录 rename/git mv 后 grep 范围须含 application.yml 默认路径 + .agents/checklists + roles（D38 只覆盖 docs/ 与子项目 AGENTS.md）| yml 残留 11-context（G-4 审查 P1，2026-08-16）|
+| D46 | status: active 正式文档内的「现状对照」表必须与同批 gap/change-log 结果一致或标注快照日期 | 总纲 §五 自相矛盾（框架+插件审查 S1，2026-08-16）|
+| D47 | RFC 落地即滚动：实现批次合入时同步刷新 RFC 实施记录/现状表（「待做」列不得残留已实现项）| data-intelligence RFC 待做列全是已实现（交易 A-E 审查 P2，2026-08-17）|
+| D48 | api-spec 变更记录版本行同步：新增端点批次必须在变更记录补版本行（v3.22+）| 15 端点无版本行（交易 A-E 审查 P2，2026-08-17）|
+| D49 | api-spec 响应示例=真实输出：示例 JSON 字段值/量纲/文案须与代码实际返回一致（score 量纲 0-100 等）| buy-points 示例 score:0.8 量纲错（交易 A-E 审查 P1，2026-08-17）|
+| D50 | ai-guard-align A1 盲区：裸 @GetMapping/@PostMapping（无 path 属性的 Mapping 注解）不计入端点对齐，需人工对拍 endpoints.txt | A1 报 60 vs 真相源 71（交易 A-E 审查 P2，2026-08-17）|
+| D51 | 参数声明与接线同步：文档标注「参数可配」必须有 yml 配置接线；「待用户确认」的参数不得以硬编码默认值进生产 | 买点参数三处硬编码 0.5/0.7/20/1.5/20（交易 A-E 审查战略，2026-08-17）|
+| D52 | reference/ 目录纳入 frontmatter lines 校验（ai-guard-meta scope 当前不含）| gap frontmatter lines 漂移（交易 A-E 审查 P3，2026-08-17）|
+| D53 | 定时任务表述对拍：文档「定时收市后更新为后续」等表述须与实际 cron 实现一致 | api-spec account 节与 15:05 cron 矛盾（交易 A-E 审查 P3，2026-08-17）|
+| D54 | guard 脚本自身盲区排查：正则只匹配部分写法（裸注解/多行写法）即漏数，守卫脚本改动必须实测对拍真相源 | ai-guard-align A1 漏 11 裸注解（走查 8 官 P2-20，2026-08-17）|
+| D55 | 契约「待确认」标记闭环：标注「待用户确认」的规格在用户拍板后必须立即更新文档状态（划掉/定稿），不得长期悬挂 | S6 买点 5 参数悬挂（走查 8 官战略，2026-08-17）|
+| D56 | 已修出表声明与 REVIEW 表状态一致：注记行（「当前清零」等）不得与实际未修项矛盾 | REVIEW「P1/P2 清零」contradiction（走查 8 官 S-3，2026-08-17）|
+| D57 | 知识目录与 data/ 生成物双源对拍：后端写 data/trading/reviews 与 os/08-review 必须同路径或声明同步机制 | 复盘闭环断链（走查 8 官 S9，2026-08-17）|
+| D58 | 行为模式统计回写闭环：前端展示的行为模式必须回写知识库（mistakes.md）形成反哺 | 行为模式无回写（走查 8 官 S10，2026-08-17）|
+| D59 | 术语/关键词单一真相：glossary 术语重复/漂移时以正式目录为准并清理 | glossary 术语重复 6 处（走查 8 官 P2-24，2026-08-17）|
+| D60 | 本地/生产数据源分离声明：data/ 本地空 vs 生产有数据须有数据源说明，禁止假设 | 本地 data 空 vs 生产 5 只（走查 8 官 S8，2026-08-17）|
+| D61 | PushSettings 类型增量跨文档全同步：新增推送类型必须同步 api-spec / feature-reference 开关清单 / REVIEW 登记，一处漏即红灯 | learn-review 入 ALL_TYPES 但 feature-ref 8 类型清单未更（learn V2 审 P2-docs6，2026-09-07）|
+| D62 | 端点计数与实现对拍：ai-guard-align 只抓「端点↔api-spec 存在性」，抓不到段落幽灵/漏记——新增 Controller 路由后核对 change-log/status 的端点增量数 | GET /learn/card 漏计 116 vs 117（learn V2 审 P2-docs2，2026-09-07）|
+| D63 | 提醒/推送触发条件口径逐字对拍：变更行/注释/正文的触发语义（如「满 7 天」= created 还是 reviewAt）必须一致并随实现修正 | learn 复习提醒 created vs review 口径漂移（learn V2 审 S-learn1，2026-09-07）|
+| D64 | **功能主轴同步（RFC 20261001 批 3）**：本批动到的功能 → `.agents/knowledge/features/_index.md` 那一行（状态/需求出处/实现出处/欠着）必须同步；被碰到的功能**还没有意图卡就补一张**（≤12 行、只写意图，禁写实现细节）。**机器守卫 `ai-guard-feature.sh` 只查「已写的有没有写跑偏」，查不出「该写没写」——这一条靠审查官判** | 新机制（2026-10-01）；守卫盲区如实标注|

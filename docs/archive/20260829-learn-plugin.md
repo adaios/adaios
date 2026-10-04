@@ -2,13 +2,13 @@
 title: learn 插件——外部内容学习沉淀（视频/文章 → 个人知识卡片 → 三通道呈现）
 date: 2026-08-29
 status: superseded
-supersededBy: ../../.agents/skills/data-learn-writer/SKILL.md
+supersededBy: ../../.agents/toolkit/skills/data-learn-writer/SKILL.md
 decided-by: adai（2026-09-06：§四 六项决策点全按建议默认拍板；C 方向同日搁置；同日开工 V1 后端流水线——独立端点喂入（仿截图入账先例）+ 卡片化落盘 + 列表/树端点，测试先行 +30 全绿；2026-09-07 开工 L2 呈现层——LearnKnowledgeSource 问答注入 + web 资产页 + app 最近学习，三端测试全绿；详见 change-log；**2026-09-12：拍板下架 B 形态（产品内插件整体撤销，需求回归 A 形态会话技能 data-learn-writer，读层一并砍）**——理由与待执行清单见 §九）
 ---
 
 # learn 插件：外部内容学习沉淀
 
-> ⛔ **已下架（2026-09-12，adai 拍板）**：本 RFC 的 **B 形态（产品内 learn 插件）整体撤销**——喂入/消化/复习流转/编辑/交易候选反哺全链路，连同「读层」（问答召回 + 资产页浏览）一并砍掉；产品内不再保留「学习」入口与 `/learn/*` 端点。需求回归 **A 形态**会话技能 [`data-learn-writer`](../../.agents/skills/data-learn-writer/SKILL.md)（明确保留，唯一入口）。
+> ⛔ **已下架（2026-09-12，adai 拍板）**：本 RFC 的 **B 形态（产品内 learn 插件）整体撤销**——喂入/消化/复习流转/编辑/交易候选反哺全链路，连同「读层」（问答召回 + 资产页浏览）一并砍掉；产品内不再保留「学习」入口与 `/learn/*` 端点。需求回归 **A 形态**会话技能 [`data-learn-writer`](../../.agents/toolkit/skills/data-learn-writer/SKILL.md)（明确保留，唯一入口）。
 > **下架理由（实据）、不砍的资产、待执行清单见 §九**；§一~§八 保留为历史决策记录（**不是当前口径**，勿据此开工）。
 > ⚠️ 状态提示：本文档登记的是**决策**；代码与生产插件开关**尚未变更**（2026-09-12 用户指示「只写文档，另有会话在处理代码」）——执行须等用户发批次。
 
@@ -261,7 +261,7 @@ Java 17 + Spring Boot，遵循 conventions.md C1-C8（分层依赖 C7：interfac
 
 | 形态 | 载体 | 适用场景 | 状态 |
 |:-----|:-----|:---------|:----:|
-| **A 会话技能** | `.agents/skills/data-learn-writer/SKILL.md`（五段格式技能包，可挂 DSH 会话 skill） | 会话内：用户说「整理这个视频」→ AI 按 skill 自动走 抓取→转写→结构化→落盘 流程 | ✅ 已落地（2026-09-06，首例 `data/adai/learn/ai/harness-engineering/` 9 文档）|
+| **A 会话技能** | `.agents/toolkit/skills/data-learn-writer/SKILL.md`（五段格式技能包，可挂 DSH 会话 skill） | 会话内：用户说「整理这个视频」→ AI 按 skill 自动走 抓取→转写→结构化→落盘 流程 | ✅ 已落地（2026-09-06，首例 `data/adai/learn/ai/harness-engineering/` 9 文档）|
 | **B learn 插件** | 本 RFC（阿呆产品内插件：喂入 → 卡片 → 三通道呈现） | 产品内长期沉淀，不依赖 DSH 会话，数据落服务器 `data/{userId}/learn/` | ⛔ **2026-09-12 整体下架（见 §九）**——曾 ✅ **V1 后端流水线（2026-09-06）+ L2 呈现层（2026-09-07）已落地**：注册/卡片化落盘/列表/树端点 + LearnKnowledgeSource 问答注入 + web 资产页 + app 最近学习（后端 1233/app 170/web 167 全绿）；V2 消化闭环（复习流转/编辑/trading 候选联动）待续 |
 | **C 专用 Agent** | 独立专用 agent（拉取 → 转写 → 整理，全自动后台跑） | 批量/无人值守：一批链接/订阅源丢进去自动消化，无需人在场 | ⏸ **搁置（2026-09-06 用户拍板）** |
 
@@ -291,7 +291,7 @@ Java 17 + Spring Boot，遵循 conventions.md C1-C8（分层依赖 C7：interfac
 ### 9.1 决策
 
 - **B 形态（产品内 learn 插件）整体下架**：喂入消化 / 复习流转 / 复习推送 / 卡片编辑 / 交易候选反哺 **全链路砍掉**；「读层」（`LearnKnowledgeSource` 问答召回 + 资产页浏览）**一并砍掉**（2026-09-12 用户同日拍板），learn 插件不再作为产品能力存在。
-- **需求回归 A 形态**：会话技能 [`data-learn-writer`](../../.agents/skills/data-learn-writer/SKILL.md) 是 learn 需求的**唯一入口**，明确保留、继续使用。
+- **需求回归 A 形态**：会话技能 [`data-learn-writer`](../../.agents/toolkit/skills/data-learn-writer/SKILL.md) 是 learn 需求的**唯一入口**，明确保留、继续使用。
 - 用户原话（2026-09-12）：**「A 是我明确需要的，B 太麻烦了，失去了意义」**。
 
 ### 9.2 下架理由（实据，非主观）
@@ -308,7 +308,7 @@ Java 17 + Spring Boot，遵循 conventions.md C1-C8（分层依赖 C7：interfac
 ### 9.3 不砍的资产（硬约束，任何执行批次都不得触碰）
 
 - `data/adai/learn/**`——**A 的真相源，一篇不删**（含 `ai/harness-engineering/` 9 篇 + README + `_raw/` 转写与 meta）。
-- A 技能 `.agents/skills/data-learn-writer/SKILL.md`（**单一事实源**，五段格式技能包）——`.dsh/skills/data-learn-writer.md` 是指向它的**软链接**（DSH 会话加载入口；勿复制成两份，改内容只改源文件）。
+- A 技能 `.agents/toolkit/skills/data-learn-writer/SKILL.md`（**单一事实源**，五段格式技能包）——`.dsh/skills/data-learn-writer.md` 是指向它的**软链接**（DSH 会话加载入口；勿复制成两份，改内容只改源文件）。
 - 本文档本身——保留为历史决策记录（`status: superseded`）。
 
 ### 9.4 待执行清单（**尚未执行**；须用户发批次 + 确认并发会话已收敛）
@@ -326,7 +326,7 @@ Java 17 + Spring Boot，遵循 conventions.md C1-C8（分层依赖 C7：interfac
 
 ### 9.5 A 形态现状（保留，唯一入口）
 
-- 技能包：`.agents/skills/data-learn-writer/SKILL.md`（五段格式，**单一事实源**）；`.dsh/skills/data-learn-writer.md` → 指向它的软链接（DSH 侧会话加载入口）。
+- 技能包：`.agents/toolkit/skills/data-learn-writer/SKILL.md`（五段格式，**单一事实源**）；`.dsh/skills/data-learn-writer.md` → 指向它的软链接（DSH 侧会话加载入口）。
 - 流程：抓取 → 转写/取文 → 结构化整理 → 落盘 `data/adai/learn/` + 时效性追踪。
 - 首例产物：`data/adai/learn/ai/harness-engineering/`（2026-09-06，9 篇 + README + `_raw/`）。
 - **A 产物的检索方式不依赖产品**：DSH 会话内直接 `read`/`grep` `data/adai/learn/` 即可。

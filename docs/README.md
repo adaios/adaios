@@ -34,10 +34,10 @@ tags: [meta, index, docs]
 
 | 你手上的东西 | AI 干活时读吗 | 去向 |
 |:--|:--:|:--|
-| 端点契约表 | ✅ 写接口必查 | `.agents/reference/api-spec.md` |
+| 端点契约表 | ✅ 写接口必查 | `.agents/knowledge/reference/api-spec.md` |
 | 未修项清单 | ✅ 每次开工读 | `.agents/records/REVIEW.md` |
 | 项目愿景 | ✅ 每次会话首读 | `.agents/direction/VISION.md` |
-| Git 工作规范 | ✅ 提交前查 | `.agents/guides/git-workflow.md` |
+| Git 工作规范 | ✅ 提交前查 | `.agents/rules/guides/git-workflow.md` |
 | 某次走查的报告 | ❌ 考古时才看 | `docs/records/audits/` |
 | 竞品调研 | ❌ 一次性 | `docs/research/` |
 | 隐私政策正文 | ❌ 对外提交用 | `docs/legal/` |
@@ -52,7 +52,7 @@ tags: [meta, index, docs]
 | [**archive/**](archive/_index.md) | 🗄 退役文档——3 份 `superseded` RFC + 早期 AI Context 模板 + project-os-usage |
 | [**records/**](records/_index.md) | 🗃 历史存档——走查存档 27 份 · 事故记录（TestFlight 合同缺失）· 发布史 · 归档问题清单 |
 | [**research/**](research/_index.md) | 🔬 研究 · 调研 · 诊断材料（记忆方案借鉴 / 记忆保真诊断 / 交易日志竞品 / 风险计划） |
-| [**ideas/**](ideas/_index.md) | 💡 未定型但有价值的想法（成熟后升级为 `.agents/rfc/`） |
+| [**ideas/**](ideas/_index.md) | 💡 未定型但有价值的想法（成熟后升级为 `.agents/direction/rfc/`） |
 | [**legal/**](legal/_index.md) | ⚖️ 对外材料——隐私政策正文 |
 
 ---
@@ -63,10 +63,10 @@ tags: [meta, index, docs]
 
 | 旧路径 | 新路径 |
 |:--|:--|
-| `docs/guides/`（7 份工程规则） | `.agents/guides/` |
-| `docs/deployment/`（5 份运维规则） | `.agents/deployment/` |
-| `docs/deployment/serve_static.py` | `.agents/scripts/serve_static.py` |
-| `docs/architecture/ai-context-engineering.md` · `ai-calling-governance.md` | `.agents/assets/` |
+| `docs/guides/`（7 份工程规则） | `.agents/rules/guides/` |
+| `docs/deployment/`（5 份运维规则） | `.agents/rules/deployment/` |
+| `docs/deployment/serve_static.py` | `.agents/mechanism/scripts/serve_static.py` |
+| `docs/architecture/ai-context-engineering.md` · `ai-calling-governance.md` | `.agents/rules/assets/` |
 | `docs/inbox/` | 已删除（空壳） |
 
 ### 二批：判据收紧为「AI 上下文运行时是否需要」
@@ -75,14 +75,14 @@ tags: [meta, index, docs]
 |:--|:--|
 | `docs/VISION.md` | `.agents/direction/VISION.md` |
 | `docs/architecture/product-roadmap.md` | `.agents/direction/product-roadmap.md` |
-| `docs/architecture/`（13 份：api-spec · data-format-freeze · product/system-architecture · framework-plus-plugin-model · frontend-reference · memory-os-design · trading-* 5） | `.agents/reference/` |
-| `docs/reference/`（6 份：status · feature-reference · trading-features · admin-features · framework-plugin-gap · task-plugin-model） | `.agents/reference/` |
-| `docs/features/`（功能主轴） | `.agents/features/` |
+| `docs/architecture/`（13 份：api-spec · data-format-freeze · product/system-architecture · framework-plus-plugin-model · frontend-reference · memory-os-design · trading-* 5） | `.agents/knowledge/reference/` |
+| `docs/reference/`（6 份：status · feature-reference · trading-features · admin-features · framework-plugin-gap · task-plugin-model） | `.agents/knowledge/reference/` |
+| `docs/features/`（功能主轴） | `.agents/knowledge/features/` |
 | `docs/records/{change-log,task-log}.md` · `docs/review/REVIEW.md` | `.agents/records/` |
-| `docs/rfc/`（66 份生效决策） | `.agents/rfc/` |
+| `docs/rfc/`（66 份生效决策） | `.agents/direction/rfc/` |
 | `docs/rfc/`（3 份 `superseded`） | `docs/archive/` |
 | `docs/review/audits/`（27 份走查存档） | `docs/records/audits/` |
-| `docs/review/guard.sh` | `.agents/guards/guard.sh` |
+| `docs/review/guard.sh` | `.agents/mechanism/guards/guard.sh` |
 | `docs/releases/`（2 份） | `docs/records/`（release-v1.0.0 · release-template） |
 | `docs/architecture/{memory-frameworks-borrow,memory-fidelity}.md` · `docs/reference/{trading-journal-benchmark,trading-risk-plan}.md` | `docs/research/` |
 | `docs/records/issue-log.md` · `docs/deployment/testflight-beta-contract-missing.md` | `docs/records/`（存档） |

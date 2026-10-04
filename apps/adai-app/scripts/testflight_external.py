@@ -65,7 +65,7 @@ BETA_DESCRIPTION = (
     "本版本为 TestFlight 测试版，用于验证记录、问答与学习三条主链路，功能仍在调整中。"
 )
 
-# 「What to Test」——审核员按这个走（与 .agents/deployment/testflight-external-testing.md §3.1 同口径）
+# 「What to Test」——审核员按这个走（与 .agents/rules/deployment/testflight-external-testing.md §3.1 同口径）
 WHAT_TO_TEST = """本版重点验证三条主链路：
 1. 登录：用测试账号登录（冷启动若出现生物识别提示，可直接取消）。
 2. 记录与问答（核心链路）：在主页输入任意一句话（如「今天心情不错」），
@@ -74,7 +74,7 @@ WHAT_TO_TEST = """本版重点验证三条主链路：
 
 说明：本 App 为个人 AI 助手，所有数据属于该测试账号，无社交与支付。"""
 
-# 提交审核时若没传 --notes 用的默认备注（模板见 .agents/deployment/testflight-external-testing.md §3.2）
+# 提交审核时若没传 --notes 用的默认备注（模板见 .agents/rules/deployment/testflight-external-testing.md §3.2）
 DEFAULT_NOTES = """登录路径：启动 App → 登录页输入测试账号密码 → 进入主页。
 测试账号（Sign-in information 字段同值）：
   Username: applereview

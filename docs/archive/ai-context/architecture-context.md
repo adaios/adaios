@@ -1,6 +1,6 @@
 ---
 title: 架构级上下文（Architecture Context）—— 已退役
-description: 早期架构上下文：包树、分层依赖、两类 Domain、Context Engine、技术决策与选型。2026-10-03 退役——包树已由 services/adai-core/AGENTS.md 承担，Context Engine 与依赖规则已由 ARCHITECTURE.md / .agents/reference/system-architecture.md 等 50+ 文件承担。
+description: 早期架构上下文：包树、分层依赖、两类 Domain、Context Engine、技术决策与选型。2026-10-03 退役——包树已由 services/adai-core/AGENTS.md 承担，Context Engine 与依赖规则已由 ARCHITECTURE.md / .agents/knowledge/reference/system-architecture.md 等 50+ 文件承担。
 version: 1
 created: 2026-08-16
 updated: 2026-10-03
@@ -140,5 +140,5 @@ Identity（风险偏好、投资风格）
 
 ## 相关文档
 
-- [system-architecture.md](../../.agents/reference/system-architecture.md) — 完整架构文档
+- [system-architecture.md](../../.agents/knowledge/reference/system-architecture.md) — 完整架构文档
 - `os/*-os/definition/` — 各 Domain 定义文档

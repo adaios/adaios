@@ -3,7 +3,7 @@
 > 与 Claude 对话时使用的精确 UI 元素 → 代码引用。
 > 每个按钮、输入框、交互元素都能在本文件找到对应的 widget 和行号。
 >
-> 配套文档：[frontend-reference.md](../../.agents/reference/frontend-reference.md) | [DESIGN.md](DESIGN.md)
+> 配套文档：[frontend-reference.md](../../.agents/knowledge/reference/frontend-reference.md) | [DESIGN.md](DESIGN.md)
 
 **最后更新：2026-09-26**（§6 交易管理整节按代码真实渲染序重排 + 补候选卡交互、大数与折叠展示口径；此前 2026-09-17：RFC 20260917 撤 project 插件，项目仪表盘/任务看板 → 待办清单）
 

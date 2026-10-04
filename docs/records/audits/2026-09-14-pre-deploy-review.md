@@ -9,9 +9,9 @@ lines: 84
 depends-on: []
 related:
   - ../REVIEW.md
-  - ../../../.agents/process/review.md
-  - ../../../.agents/roles/code-backend-reviewer.md
-  - ../../../.agents/roles/ai-adversarial-reviewer.md
+  - ../../../.agents/rules/process/review.md
+  - ../../../.agents/toolkit/roles/code-backend-reviewer.md
+  - ../../../.agents/toolkit/roles/ai-adversarial-reviewer.md
 tags: [review, audit, pre-deploy, security]
 ---
 
@@ -19,7 +19,7 @@ tags: [review, audit, pre-deploy, security]
 
 > **为什么审**：用户问「确认是否需要进行生产部署」→ 判定「需要，且有三批后端代码未上线」→ 用户选择先跑 GATE-BEFORE 三门（全 PASS）→ 再跑增量深审，**安全面优先**。
 > **范围**：`git diff dc95599..HEAD`（`dc95599` = 生产 v3.63 APNs 批部署记录；其后 12 个提交即「未发布面」）。代码改动集中在三批：`892e05b` learn 抓取放开（微博/公众号/头条 + Web Archive 兜底修复）· `99d4831` 收盘小结锁屏脱敏 + 非 iOS 开关去假 + Android 正式签名 · `2b576e7` 外部工具令牌；另有一组 iOS 外部入口 app 提交。
-> **方式**：`.agents/process/review.md` deep 档——**四官隔离并行**（backend / frontend / docs / adversarial，各自独立子代理、材料按域裁剪、互不可见），主会话另做**代码实测复核**（不回灌官报告）。四官全程只读，未改任何文件。
+> **方式**：`.agents/rules/process/review.md` deep 档——**四官隔离并行**（backend / frontend / docs / adversarial，各自独立子代理、材料按域裁剪、互不可见），主会话另做**代码实测复核**（不回灌官报告）。四官全程只读，未改任何文件。
 > **结论**：**P0×2（当场修复出表）· 战略×1 · P1×9 · P2×7 · ⭐ 多官独立命中 4 处**。
 
 ## 一、交叉印证（⭐ = 材料隔离下多官独立命中 + 主会话实测）

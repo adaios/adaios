@@ -7,7 +7,7 @@ updated: 2026-08-15
 status: active
 lines: 128
 depends-on:
-  - ../../../.agents/process/audit.md
+  - ../../../.agents/rules/process/audit.md
 related:
   - ../REVIEW.md
 tags: [review, audit, ai-engineering]
@@ -39,7 +39,7 @@ AI 工程层**方向正确、骨架已成**：三层结构（assets/workflow/sta
 |:-:|:-----|:-------|:------:|
 | C1 | **docs/ai 迁移残留未清零**（process 门禁命令断链：ship.md:46-47/audit.md:30/review.md:34,38 + frontmatter-spec §四/§六 + _index.md 标题 + docs-contract-reviewer）| 6 官 | 战略/P1 |
 | C2 | **ai-guard-meta 只校验 frontmatter 边，正文路径引用无机器防线**（M1 盲区）——迁移残留因此全绿 PASS | 6 官 | 战略/P1 |
-| C3 | **ship.md 契约同步指向不存在的 `.agents/reference/feature-reference.md`**（实际在 .agents/reference/）| 3 官 | P1 |
+| C3 | **ship.md 契约同步指向不存在的 `.agents/knowledge/reference/feature-reference.md`**（实际在 .agents/knowledge/reference/）| 3 官 | P1 |
 | C4 | **六段闭环名实不符**：develop 无文件、验收无程序、「六段」只具名 5 段 | 3 官 | 战略/P2 |
 | C5 | **ADR 覆盖不足**：首批 3/5-10 条，28 篇 RFC 历史决策大多无索引 | 3 官 | P2 |
 | C6 | **workflow/ vs process/ 目录边界未定义**：review/audit/ship 实际在 process/，与 RFC 目标结构（全在 workflow/）偏离且无 ADR 记录 | 3 官 | P2 |
@@ -60,7 +60,7 @@ AI 工程层**方向正确、骨架已成**：三层结构（assets/workflow/sta
 | S3 | 第一原则「无第三视角」承载集中于 product 一官，ux/ui/frontend 清单无对应项，light 模式无人检查 | 产品架构 | P2 |
 | S4 | RFC frontmatter 规范未文档化：design.md 用 approved/decided-by/revised，frontmatter-spec 枚举是 draft/active/superseded/archived | Context | P3 |
 | S5 | REVIEW 计数自相矛盾（P2 摘要 11 vs 14 vs 15）| 文档 | P2 |
-| S6 | G 系列脚本（.agents/guards/guard.sh）位置无说明，README 目录表找不到执行器 | 产品架构 | P3 |
+| S6 | G 系列脚本（.agents/mechanism/guards/guard.sh）位置无说明，README 目录表找不到执行器 | 产品架构 | P3 |
 | S7 | 外部目录（method）引用无只读边界（B8 外向动作/B9 外部目录只读）| Context | P2 |
 
 ## 四、P0（数据丢失）

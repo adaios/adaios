@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────
+# 定时审查（触发侧：每周自动跑，防审查休眠）
+#
+# 用法:  bash .agents/mechanism/scripts/task-weekly-audit.sh [--auto]
+# 说明:  每周自动执行：
+#         W1 守护检查（G1-G7 防 P0 复发）
+#         W2 健康总检（ai-guard-health 六维：结构/元数据/命名/体积/契约/新鲜度）+ 内容对齐（ai-guard-align）
+#         W3 沉淀检查（ai-guard-sediment——change-log 是否连续）
+#         W4 失真扫描（端点数/测试数三方对拍报告）
+#         W5 未修项报告（REVIEW 战略/P1 清单）
+#         W6 到期红线（公安备案/域名/Apple 账号；见 .agents/mechanism/scripts/task-check-deadlines.py）
+#        --auto = 只输出 FAIL 摘要，适合日志（保留参数兼容）
+#
+# 触发方式（2026-09-14 起）：
+#   ❌ 旧：crontab `0 9 * * 1` —— macOS TCC 拦截 crontab，**从未真正跑过**
+#   ✅ 新：LaunchAgent `com.adai.adaios-weekly-audit`（每周一 09:00）
+#          日志 .agents/records/state/task-weekly-audit.log
+#          重装：bash .agents/mechanism/scripts/ai-setup-launchd.sh
+# ─────────────────────────────────────────────────────────────
+set -u
+
+cd "$(git rev-parse --show-toplevel)"   # 层级无关（2026-10-04 加固：原 ../.. 是隐式位置假设）
+ROOT="$(pwd)"
+AUTO="${1:-}"
+TODAY=$(date +%Y-%m-%d)
+
+echo "═══ 每周审查（${TODAY}）═══"
+
+# W1 守护检查
+echo "▸ W1 守护检查（G1-G7）..."
+G1=$(bash .agents/mechanism/guards/guard.sh 2>&1 | tail -1)
+echo "   $G1"
+
+# W2 健康总检 + 内容对齐
+# 2026-10-04：结构门禁改走 ai-guard-health —— 它已含 ai-guard-meta（维度②），
+#   并额外覆盖命名 / 体积 / 契约 / 新鲜度四个内容规范维度（此前无人守）。
+echo "▸ W2 健康总检（六维）..."
+bash .agents/mechanism/guards/ai-guard-health.sh 2>&1 | grep -E "总评|① |② |③ |④ |⑤ |⑥ " | head -7 | sed 's/^/   /'
+echo "▸ W2 内容对齐..."
+ALIGN=$(bash .agents/mechanism/guards/ai-guard-align.sh 2>&1 | tail -1)
+echo "   $ALIGN"
+
+# W3 沉淀检查
+echo "▸ W3 沉淀检查（change-log 连续性）..."
+SED=$(bash .agents/mechanism/guards/ai-guard-sediment.sh 2>&1 | tail -1)
+echo "   $SED"
+
+# W4 失真扫描：端点数三方对拍
+echo "▸ W4 失真扫描..."
+EPT=$(cat services/adai-core/build/resources/main/META-INF/endpoints.txt 2>/dev/null || echo "?")
+STATUS_EPT=$(grep -o '端点：\*\*[0-9]*\*\*' .agents/knowledge/reference/status.md 2>/dev/null | grep -o '[0-9]*' || echo "?")
+if [ "$EPT" = "$STATUS_EPT" ]; then
+    echo "   ✅ 端点数一致（${EPT}）"
+else
+    echo "   ❌ 端点数漂移：endpoints.txt=$EPT vs status.md=$STATUS_EPT"
+fi
+
+# W5 未修项报告
+echo "▸ W5 未修项（REVIEW 战略/P1）..."
+bash .agents/mechanism/guards/ai-guard-context.sh 2>&1 | sed -n '/## C2/,/## C3/p' | grep "^- " | head -8 || echo "   （无未修项）"
+
+# W6 到期红线（2026-09-14 加：盘点发现到期型事项只写在文档里，文档不会主动叫人）
+echo "▸ W6 到期红线..."
+python3 .agents/mechanism/scripts/task-check-deadlines.py --one-line 2>&1 || true
+
+echo ""
+echo "═══ 每周审查完成（${TODAY}）═══"
+echo "报告存档建议：发现未修项 → .agents/records/REVIEW.md；需全维度走查 → 派 8 官（process/audit.md）"
+echo "到期项处置 → .agents/rules/guides/routine.md §四（勿只留在日志里）"

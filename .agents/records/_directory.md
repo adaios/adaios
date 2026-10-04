@@ -17,16 +17,16 @@ tags: [meta, directory]
 
 ## 职责边界
 - **放**：未修项（REVIEW）· 批次历史（change-log）· 待办（task-log）
-- **不放**：一次性报告 / 走查存档 → `../../docs/records/` · 发布说明 → `../../docs/records/` · 现状数字 → `../reference/status.md`（那是**事实**，不是记录）
+- **不放**：一次性报告 / 走查存档 → `../../docs/records/` · 发布说明 → `../../docs/records/` · 现状数字 → `../knowledge/reference/status.md`（那是**事实**，不是记录）
 
 ## 依赖关系
 
 | 方向 | 对象 | 说明 |
 |:--|:--|:--|
-| 依赖 | `../reference/status.md` | 记录与数字互为指针 |
-| 被依赖 | `../process/ship.md` | 收尾时写 change-log / REVIEW |
-| 被依赖 | `../guards/ai-guard-unfixed.sh` / `ai-guard-sediment.sh` / `ai-guard-context.sh` / `ai-guard-roadmap.sh` | **以路径常量直接读取**——改名即坏守卫 |
-| 被依赖 | `../features/_index.md` | 「欠着」列的编号须在 REVIEW 中存在 |
+| 依赖 | `../knowledge/reference/status.md` | 记录与数字互为指针 |
+| 被依赖 | `../rules/process/ship.md` | 收尾时写 change-log / REVIEW |
+| 被依赖 | `../mechanism/guards/ai-guard-unfixed.sh` / `ai-guard-sediment.sh` / `ai-guard-context.sh` / `ai-guard-roadmap.sh` | **以路径常量直接读取**——改名即坏守卫 |
+| 被依赖 | `../knowledge/features/_index.md` | 「欠着」列的编号须在 REVIEW 中存在 |
 
 ## 触发关系
 
@@ -51,5 +51,5 @@ tags: [meta, directory]
 
 ## 维护动作
 1. 新增记录类文档 → 补 `_index.md`
-2. **改本区路径＝高危**：必须同步改 `../guards/ai-guard-unfixed.sh` / `ai-guard-roadmap.sh` / `ai-guard-context.sh` / `ai-guard-sediment.sh` 与 `../scripts/task-cadence.sh` 里的常量
+2. **改本区路径＝高危**：必须同步改 `../mechanism/guards/ai-guard-unfixed.sh` / `ai-guard-roadmap.sh` / `ai-guard-context.sh` / `ai-guard-sediment.sh` 与 `../mechanism/scripts/task-cadence.sh` 里的常量
 3. 记录退役 → 移入 `../../docs/archive/`，不删除

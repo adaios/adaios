@@ -223,7 +223,7 @@ public record Task(
 
 | 文件 | 改动 |
 |:-----|:------|
-| **修改** `ProjectStatusAppService.java` | 解析 `.agents/rfc/` 中每个 RFC 的 frontmatter 状态 |
+| **修改** `ProjectStatusAppService.java` | 解析 `.agents/direction/rfc/` 中每个 RFC 的 frontmatter 状态 |
 | **修改** `ProjectContextContributor.java` | 注入 RFC 状态（proposed/approved/implemented/deprecated） |
 | **修改** `ProjectKnowledgeSource.java` | 注入 RFC 状态 + 当前 sprint 任务 |
 | **修改** `os/project-os/11-context/identity.md` | 更新为项目真实进度 |

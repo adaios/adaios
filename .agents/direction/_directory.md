@@ -17,14 +17,14 @@ tags: [meta, directory]
 
 ## 职责边界
 - **放**：理念（VISION）· 路线蓝图（roadmap）
-- **不放**：方案决策 → `../rfc/` · 架构决策 → `../assets/adr/` · 产品事实 → `../reference/`
+- **不放**：方案决策 → `rfc/` · 架构决策 → `../rules/assets/adr/` · 产品事实 → `../knowledge/reference/`
 
 ## 依赖关系
 
 | 方向 | 对象 | 说明 |
 |:--|:--|:--|
 | 入口 | `../../AGENTS.md` | 规则 1 把本区列为**首读** |
-| 被依赖 | `../rfc/` · `../reference/` | 决策与事实须与蓝图一致（`ai-guard-roadmap` 对拍） |
+| 被依赖 | `rfc/` · `../knowledge/reference/` | 决策与事实须与蓝图一致（`ai-guard-roadmap` 对拍） |
 
 ## 触发关系
 

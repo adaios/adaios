@@ -6,7 +6,7 @@ created: 2026-08-23
 updated: 2026-08-23
 status: active
 depends-on:
-  - ../../../.agents/process/audit.md
+  - ../../../.agents/rules/process/audit.md
 related:
   - ../REVIEW.md
   - ../../../.agents/README.md

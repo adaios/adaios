@@ -8,16 +8,16 @@ status: draft
 lines: 93
 depends-on: []
 related:
-  - ../../.agents/guards/ai-guard-meta.sh
-  - ../../.agents/guards/ai-guard-tools.sh
-  - ../../.agents/guards/ai-guard-cost.sh
+  - ../../.agents/mechanism/guards/ai-guard-meta.sh
+  - ../../.agents/mechanism/guards/ai-guard-tools.sh
+  - ../../.agents/mechanism/guards/ai-guard-cost.sh
 tags: [ideas, ai-engineering, 资产治理, 使用统计, 幽灵资产]
 ---
 
 # AI 资产台账与加载路径体检
 
 > **性质**：想法登记（未立项、未实施）。2026-10-03 用户拍板「**先不动，结论留档**」——本轮只做只读实测与分析，**未改任何代码、未实施任何监控**（AGENTS.md 规则 7）。
-> **维护方式**：结论主载于此；日后重拾时按 §六 的触发条件复核，若立项则升级为 `.agents/rfc/`。
+> **维护方式**：结论主载于此；日后重拾时按 §六 的触发条件复核，若立项则升级为 `.agents/direction/rfc/`。
 > **一句话**：方向对（体系确实缺「运行时」这一层），但**真病灶不是「多少天没被读的冷资产」，而是「静态全绿、运行时从不加载的幽灵资产」**。
 
 ## 一、来源
@@ -32,12 +32,12 @@ tags: [ideas, ai-engineering, 资产治理, 使用统计, 幽灵资产]
 
 | 发现 | 数据 | 含义 |
 |:--|:--|:--|
-| **审查官大面积幽灵** | `.agents/roles/` 12 个，**11 个 0 次读取**（仅 `ai-adversarial-reviewer.md` 2 次）；同期却派了 **27 次**审查类 subagent | 审查在跑，但**角色文件没被加载**——靠提示词复述；12 官属「图纸完备、运行时缺席」 |
+| **审查官大面积幽灵** | `.agents/toolkit/roles/` 12 个，**11 个 0 次读取**（仅 `ai-adversarial-reviewer.md` 2 次）；同期却派了 **27 次**审查类 subagent | 审查在跑，但**角色文件没被加载**——靠提示词复述；12 官属「图纸完备、运行时缺席」 |
 | **技能调用 = 0** | 近 5 天 `skill` 工具调用 **0 次** | `skills/data-learn-writer/SKILL.md` 有软链出口（DSH 已注册、本会话可见），一次没用 |
 | **出口断链** | `code-api-writer.md` / `code-domain-writer.md` / `ship.md` 为扁平布局，`.dsh/skills` 与 `.agents/skills` **只有 data-learn-writer** | 工具**根本看不见**这三个，等于不存在（ai-guard-tools T4 只验了「软链是否指回本体系」，未验「应有的技能是否都有出口」） |
 | **冷资产占比** | `ai-engineering/**` 63 个 md，**47 个（75%）从未被读**；仓库 `.md` 957 个，近 5 天读过 47 个（5%） | 需分类解读，见 §三 |
 | **陈旧度暂无分辨力** | git 最后写入：≤7 天 18 个 · 8-30 天 14 个 · 31-60 天 32 个 · **>60 天 0 个**，最久 49 天 | 项目本身才 49 天——此维度现在做出来只会全绿 |
-| **成本不是理由（实测修正）** | 读取**已高度分页**（多为 `limit=1~20` 行小窗口）；即使全量读 `.agents/reference/status.md` 一次仅 53.5k tokens ≈ **0.08 元** | 别为省钱做这件事（动机错位）；真正的成本大头是长会话的缓存命中输入，见 `.agents/checklists/ai-cost-checklist.md` |
+| **成本不是理由（实测修正）** | 读取**已高度分页**（多为 `limit=1~20` 行小窗口）；即使全量读 `.agents/knowledge/reference/status.md` 一次仅 53.5k tokens ≈ **0.08 元** | 别为省钱做这件事（动机错位）；真正的成本大头是长会话的缓存命中输入，见 `.agents/toolkit/checklists/ai-cost-checklist.md` |
 
 ## 三、关键判断
 
@@ -59,14 +59,14 @@ tags: [ideas, ai-engineering, 资产治理, 使用统计, 幽灵资产]
 
 ### 3.4 反直觉的一笔：热而肥
 
-`.agents/records/REVIEW.md`（610 行 / 433,651 字节）、`.agents/reference/status.md`（70 行 / 187,076 字节，**单行 2.7KB**）、`.agents/records/change-log.md`（354 行 / 545,939 字节）是「单行即一条完整记录」的巨行表格。因分页粒度是「行」，`limit=1` 也可能几千字节——这与使用率无关，但按记录拆文件能同时省上下文，值得单独议（**未议**）。
+`.agents/records/REVIEW.md`（610 行 / 433,651 字节）、`.agents/knowledge/reference/status.md`（70 行 / 187,076 字节，**单行 2.7KB**）、`.agents/records/change-log.md`（354 行 / 545,939 字节）是「单行即一条完整记录」的巨行表格。因分页粒度是「行」，`limit=1` 也可能几千字节——这与使用率无关，但按记录拆文件能同时省上下文，值得单独议（**未议**）。
 
 ## 四、候选形态（未采纳，记录备查）
 
 不是「使用次数排行榜」，而是**资产台账 + 加载路径体检**，按价值排序：
 
 1. **加载路径体检**（零日常开销）：每个资产分类（技能 / 审查官 / 规范 / ADR / 流程）× 期望加载路径 × 实际是否通。**当场可查** §二 的两笔：3 个技能无出口、11 个审查官无运行时加载路径。
-2. **每周使用简报**：挂 `.agents/scripts/task-cadence.sh weekly`，**只报异常、不报排行榜**。
+2. **每周使用简报**：挂 `.agents/mechanism/scripts/task-cadence.sh weekly`，**只报异常、不报排行榜**。
 3. **陈旧度**：等有 90 天+ 历史再设阈值，否则纯属白做。
 
 ## 五、若日后实施，必须守的两条
@@ -87,7 +87,7 @@ tags: [ideas, ai-engineering, 资产治理, 使用统计, 幽灵资产]
 #    筛 type == "tool/call"，读 data.name 与 data.arguments.file_path / .argument.name(skill)
 ls -t ~/.dsh/sessions/--Users-adai-Projects-adaios--/*/session.v4.jsonl.zstd | head -40
 # 2) 写入陈旧度（git 权威，跨工具可见）
-git log -1 --format=%cs -- .agents/assets/boundaries.md
+git log -1 --format=%cs -- .agents/rules/assets/boundaries.md
 ```
 
 > 抽样口径提醒：以上为**近 5 天 34 个会话**的样本，非全量 439 会话；`skill` 调用为 0 是此窗口内的事实，不等于历史从未调用。

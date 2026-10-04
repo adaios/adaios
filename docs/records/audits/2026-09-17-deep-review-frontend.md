@@ -16,7 +16,7 @@ tags: [review, frontend, audit]
 
 # 前端深度审查报告：晚间批 + 深夜第二批
 
-> 审查官：`.agents/roles/code-frontend-reviewer.md`（只报告不修改，B7）
+> 审查官：`.agents/toolkit/roles/code-frontend-reviewer.md`（只报告不修改，B7）
 > 审查方式：读 diff → 读实现上下文 → **跑 analyze/test（app + web）** → 读产物里的 `embedded.mobileprovision` 实证跨 target 契约；每条结论带位置 + 证据
 > 审查对象是**已提交状态**（HEAD = `42dc0b5`），工作区仅 `docs/` 有他人未提交改动，不影响本次结论
 
@@ -189,7 +189,7 @@ tags: [review, frontend, audit]
 
 1. **`POST /learn/cards/restore-origin` 三端零入口**（本批新增，P2-learn21 的修复）：web / app / admin grep 均 0 命中；用户遇到「`origin` 被别处工具抹掉 → 卡静默变只读」时，前端只能看到只读说明（app `learn_page.dart:1107`、web `learn_page.dart:884`），**没有自助恢复入口**，只能手打 API。若是有意「后端先落地、前端随后」，建议在 change-log / REVIEW 里注明「暂无前端入口」，避免读者以为用户可达。
 2. **`POST /learn/cards/repages` 同样零前端调用**（2026-09-15 加的端点，本批未动）——同上，仅作登记。
-3. **范围外 commit `bc6656b`（另一会话，午间谷时任务壳）**：非前端，我未做深入审查。仅两点如实转述：① 该 commit message **自曝** `.agents/scripts/ai-setup-launchd.sh` 的 `': > 日志'` 实为截断，已把 `backup.log`(2019B) 与 `task-weekly-audit.log`(4656B) 清零且**无法恢复**（`*.log` 被 gitignore，无副本）—— 属真实的一次性数据丢失（本地日志），已在提交信息里声明，是否需要单独出表由你定；② `.agents/scripts/task-noon.sh` 在时区 ≠ +0800 时只打印告警仍按本机钟继续跑峰谷闸门（`MIN_LEFT` 固定按 14:00 计算），属「提醒而非阻止」的设计取舍。
+3. **范围外 commit `bc6656b`（另一会话，午间谷时任务壳）**：非前端，我未做深入审查。仅两点如实转述：① 该 commit message **自曝** `.agents/mechanism/scripts/ai-setup-launchd.sh` 的 `': > 日志'` 实为截断，已把 `backup.log`(2019B) 与 `task-weekly-audit.log`(4656B) 清零且**无法恢复**（`*.log` 被 gitignore，无副本）—— 属真实的一次性数据丢失（本地日志），已在提交信息里声明，是否需要单独出表由你定；② `.agents/mechanism/scripts/task-noon.sh` 在时区 ≠ +0800 时只打印告警仍按本机钟继续跑峰谷闸门（`MIN_LEFT` 固定按 14:00 计算），属「提醒而非阻止」的设计取舍。
 4. **跨 target 契约清单未同步**：`ShareBridge.swift:57` 已把 access group 记为「跨 target 契约（**第五处**）」，而 `apps/adai-app/AGENTS.md:149` 仍只列「四处必须逐字一致」（App Group id + 键名 × 4 文件），**没有**把新增的 `keychain-access-groups` / `service` / `fallbackTeamId` / `teamIdentifier` 取法写进去。将来排查「扩展说没拿到钥匙」的人按 AGENTS.md 核对四处会**正好漏掉本次这批**。建议把 AGENTS.md 那一行扩成五处（纯文档，成本一行）。
 
 ## 八、覆盖面声明

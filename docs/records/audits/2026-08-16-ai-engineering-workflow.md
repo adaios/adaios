@@ -6,7 +6,7 @@ created: 2026-08-16
 updated: 2026-08-16
 status: active
 depends-on:
-  - ../../../.agents/process/audit.md
+  - ../../../.agents/rules/process/audit.md
 related:
   - ../REVIEW.md
 tags: [review, audit, ai-engineering]

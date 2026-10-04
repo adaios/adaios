@@ -71,7 +71,7 @@ return counter sorted by value desc
 ## 七、如果要回搬，三个候选
 
 1. **标签共现进 ContextEngine 召回**：现有 `TagIndexService.findRelatedIds`（标签→记录，`TagIndexService.java:138`，喂 `ContextEngine.java:269`）与 `TagRecommendationService`（频次 hot/cold，`:33-55`）之外，补「标签→标签」——用于扩大召回（同主题换说法的旧记录）与简报的「发现」（「这两件事你总是一起想」）。**前提核查**：`LearnCard.tags` 与 `ContentRecord.tags` 是否同一套索引。
-2. **「未生成」口径进审查清单**（`.agents/checklists/`）。
+2. **「未生成」口径进审查清单**（`.agents/toolkit/checklists/`）。
 3. **guard 死意图扫描**：扫 `@Pointcut` 指向不存在的包、恒常量返回且零调用的工具方法（现有 guard 管「文档↔代码」对齐，不管代码里的死意图）。
 
 ## 关联

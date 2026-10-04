@@ -8,7 +8,7 @@ status: active
 lines: 1
 depends-on: []
 related:
-  - ../.agents/deployment/backend-deployment.md
+  - ../.agents/rules/deployment/backend-deployment.md
 tags: [infra]
 ---
 
@@ -26,7 +26,7 @@ tags: [infra]
 
 ## 与生产部署的分工
 
-- **生产部署规程**（服务器 / systemd / 端口 / 配置真值表）见 [`../.agents/deployment/backend-deployment.md`](../.agents/deployment/backend-deployment.md)
+- **生产部署规程**（服务器 / systemd / 端口 / 配置真值表）见 [`../.agents/rules/deployment/backend-deployment.md`](../.agents/rules/deployment/backend-deployment.md)
 - 本目录只放**编排定义本身**，**不复制部署步骤**（单一权威来源）
 
 ## 处置建议（待定）

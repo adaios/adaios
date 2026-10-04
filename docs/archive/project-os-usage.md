@@ -25,7 +25,7 @@ tags: [guide, project-os]
 >
 > **本文件保留的唯一用途**：作为仓库内 `os/project-os/` 知识目录（**File First，知识文件不删**）的阅读说明——那些文件仍在，但**不再注入任何用户上下文**，也不再对应任何产品端点。
 >
-> 待办能力见 `.agents/reference/feature-reference.md` §10；API 契约见 `.agents/reference/api-spec.md` §13。
+> 待办能力见 `.agents/knowledge/reference/feature-reference.md` §10；API 契约见 `.agents/knowledge/reference/api-spec.md` §13。
 
 ## 一句话
 

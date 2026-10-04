@@ -14,7 +14,7 @@ tags: [ideas, briefing, strategy, external]
 
 # 阿呆（AdaiOS）现状简报——供外部 AI 讨论发展方向
 
-> **数据截止**：2026-09-19。所有数字的真相源是仓库内 `.agents/reference/status.md`（测试数/端点数/版本）、`.agents/records/REVIEW.md`（未修项）、`.agents/direction/product-roadmap.md`（蓝图）。
+> **数据截止**：2026-09-19。所有数字的真相源是仓库内 `.agents/knowledge/reference/status.md`（测试数/端点数/版本）、`.agents/records/REVIEW.md`（未修项）、`.agents/direction/product-roadmap.md`（蓝图）。
 
 ---
 

@@ -15,7 +15,7 @@ tags: [review, backend, audit]
 
 # 后端深度审查报告：晚间批 + 深夜第二批
 
-> 审查官：`.agents/roles/code-backend-reviewer.md`（只报告不修改，B7）
+> 审查官：`.agents/toolkit/roles/code-backend-reviewer.md`（只报告不修改，B7）
 > 审查方式：读 diff + 读实现上下文 + 跑测试 + 跑守护脚本；每条结论带位置与证据
 
 ## 一、范围与基线
@@ -33,9 +33,9 @@ tags: [review, backend, audit]
 | 检查 | 命令 | 结果 |
 |:---|:---|:---|
 | 相关测试 | `./gradlew test --tests "*DailyPnlComputeTest*" …`（7 类） | **BUILD SUCCESSFUL**：DailyPnlCompute 18 · LearnDigestAppService 51 · LearnCardFileRepository 68 · AccountController 39 · ApiTokenService 27 · ApnsPushChannel 28 · TradingAppService 65 —— **296 用例 0 失败 0 错误 0 跳过** |
-| 工具链守护 | `bash .agents/guards/ai-guard-tools.sh` | 6 通过 / 1 警告 / 0 失败（警告＝每周审查尚无日志，与本批无关） |
-| 契约对齐 | `bash .agents/guards/ai-guard-align.sh` | **PASS**：154 端点全部在 api-spec.md；测试数 1939/359/69/302 一致 |
-| 元数据治理 | `bash .agents/guards/ai-guard-meta.sh` | **PASS**（143 files，edges/lines/orphans 均 ok） |
+| 工具链守护 | `bash .agents/mechanism/guards/ai-guard-tools.sh` | 6 通过 / 1 警告 / 0 失败（警告＝每周审查尚无日志，与本批无关） |
+| 契约对齐 | `bash .agents/mechanism/guards/ai-guard-align.sh` | **PASS**：154 端点全部在 api-spec.md；测试数 1939/359/69/302 一致 |
+| 元数据治理 | `bash .agents/mechanism/guards/ai-guard-meta.sh` | **PASS**（143 files，edges/lines/orphans 均 ok） |
 | 分层依赖（C7） | 人工核对 diff 全部 import | 无新增违规；`AccountController` 直接用 `kernel.storage.FileStorage` 端口（kernel 为共享内核，不构成 infrastructure 反向依赖） |
 
 ## 三、结论
@@ -72,10 +72,10 @@ tags: [review, backend, audit]
   ```
 - **证据（2）同类修复的正解就在同文件**（`:161-171`）：
   > `hasProductOrigin`：**对抗审查 P1-A（2026-09-12）修复：只在前言块里找**——原先扫全文，外部卡正文/代码块里只要出现一行 `origin: product` …就会被误判成「产品卡」进而被产品改写。正文一概不算。
-- **证据（3）A 形态卡模板确含 status**：`.agents/skills/data-learn-writer/SKILL.md:79`
+- **证据（3）A 形态卡模板确含 status**：`.agents/toolkit/skills/data-learn-writer/SKILL.md:79`
   > **frontmatter**：learn 卡片模板（title/type/source/created/**status**/trade_related/tags）
   同文件 24 行进一步明确：「**产品卡带 `origin: product` 标记（用于区分可写性）**」——区分键是 origin，不是 status。
-- **证据（4）文档把错判据写成「产品独有键」**：`.agents/reference/api-spec.md`（v3.70 restore-origin 段）
+- **证据（4）文档把错判据写成「产品独有键」**：`.agents/knowledge/reference/api-spec.md`（v3.70 restore-origin 段）
   > 判据 = 正文含 `## 卡片页` 段，或 frontmatter 带产品独有键（`status` / `review_at` / `reminded_at`）
 - **证据（5）测试反例恰好回避了这条**：`LearnCardFileRepositoryTest.java:1043-1062` 的「别人的卡」样本 frontmatter 只有 `title/type/topic/created`，**故意没有 status** → 测绿，但真实 A 形态卡带 status 的路径无覆盖。
 - **建议**：判据改为与 `hasProductOrigin` 同款「只在 `---…---` 前言块内匹配」，并**删掉 `status:` 这一条**（它对两类卡都成立，无区分力）；`review_at/reminded_at` 也限定前言块。反例测试补一条「frontmatter 带 `status: new` 但没有产品痕迹」的外部卡必须被拒。
@@ -101,7 +101,7 @@ tags: [review, backend, audit]
 ### P2-1：令牌轮换回滚失败抛 `AuthException` → 401 → 前端全局登出；api-spec 未记该状态码
 
 - **问题**：`rotate` 在「旧令牌撤不掉」时回滚新令牌并 `throw new AuthService.AuthException(...)`。`GlobalExceptionHandler` 把 `AuthException` 一律映射为 **401**，而客户端（app/web）对 401 的既定行为是**清 token 回登录页**。用户只是换钥匙失败，却被登出；同时该失败没有任何区分于「会话失效」的表达。api-spec 的 rotate 段只声明了 200/404。
-- **位置**：`services/adai-core/src/main/java/com/adaiadai/core/application/ApiTokenService.java:220-224`；`services/adai-core/src/main/java/com/adaiadai/core/interfaces/GlobalExceptionHandler.java:81-84`；`.agents/reference/api-spec.md`（`POST /auth/tokens/{idOrPrefix}/rotate` 段）
+- **位置**：`services/adai-core/src/main/java/com/adaiadai/core/application/ApiTokenService.java:220-224`；`services/adai-core/src/main/java/com/adaiadai/core/interfaces/GlobalExceptionHandler.java:81-84`；`.agents/knowledge/reference/api-spec.md`（`POST /auth/tokens/{idOrPrefix}/rotate` 段）
 - **证据**：
   ```java
   if (!revoke(userId, old.tokenHash())) {                      // ApiTokenService:220
@@ -232,7 +232,7 @@ tags: [review, backend, audit]
 | 新端点契约登记 | `ai-guard-align.sh` A1：154 端点全在 api-spec | **通过**；`status.md` 有一处重复拼接文本（见下） |
 | 测试与守护 | 见第二节 | **全绿**；三件套 PASS |
 
-补充（文档瑕疵，非代码问题）：`.agents/reference/status.md` 端点行出现重复拼接 `**+1（2026-09-16 晚间批）**+1（2026-09-16 晚间批）：POST /learn/cards/restore-origin`，且 09-17 的 commit 被标为「09-16 晚间批」（时间标注与 commit 日期不一致）。
+补充（文档瑕疵，非代码问题）：`.agents/knowledge/reference/status.md` 端点行出现重复拼接 `**+1（2026-09-16 晚间批）**+1（2026-09-16 晚间批）：POST /learn/cards/restore-origin`，且 09-17 的 commit 被标为「09-16 晚间批」（时间标注与 commit 日期不一致）。
 
 ## 六、不确定项（无法证实 / 待验证）
 
@@ -244,9 +244,9 @@ tags: [review, backend, audit]
 
 ## 附录 A：范围外 commit `bc6656b`（午间谷时任务壳 + LaunchAgent）单独标注
 
-- 该 commit 属**另一会话**的 AI 工程工具链改动（`.agents/scripts/task-noon.sh` 新增、`ai-guard-prod.sh`、`.agents/scripts/ai-setup-launchd.sh`、`.agents/guides/routine.md`、`ai-guard-tools.sh` T7 已认它）。本轮不评判其设计，仅记两条观察：
-  1. **时区偏移只告警不阻断**：`.agents/scripts/task-noon.sh:44-47` 检测到本机 `%z ≠ +0800` 时只打印 `⚠️ 本机时区偏移…峰谷判定不可信`，随后**照常执行**。若本机时区被改，闸门会按本机钟放行高峰时段（2 倍价计费）。建议非 +0800 时 fail-closed（需 `--force` 才继续）。
-  2. `.agents/scripts/ai-setup-launchd.sh` 修掉了「重装即把历史日志截断清零」的真实事故（改为仅在文件不存在时创建）——这条是有价值的修复，已记入 `pitfalls.md` 的候选（未确认是否已沉淀）。
+- 该 commit 属**另一会话**的 AI 工程工具链改动（`.agents/mechanism/scripts/task-noon.sh` 新增、`ai-guard-prod.sh`、`.agents/mechanism/scripts/ai-setup-launchd.sh`、`.agents/rules/guides/routine.md`、`ai-guard-tools.sh` T7 已认它）。本轮不评判其设计，仅记两条观察：
+  1. **时区偏移只告警不阻断**：`.agents/mechanism/scripts/task-noon.sh:44-47` 检测到本机 `%z ≠ +0800` 时只打印 `⚠️ 本机时区偏移…峰谷判定不可信`，随后**照常执行**。若本机时区被改，闸门会按本机钟放行高峰时段（2 倍价计费）。建议非 +0800 时 fail-closed（需 `--force` 才继续）。
+  2. `.agents/mechanism/scripts/ai-setup-launchd.sh` 修掉了「重装即把历史日志截断清零」的真实事故（改为仅在文件不存在时创建）——这条是有价值的修复，已记入 `pitfalls.md` 的候选（未确认是否已沉淀）。
 - 守护脚本对本 commit 覆盖良好：`ai-guard-tools.sh` T6（`$VAR` 紧跟非 ASCII）PASS、T7 显示 `com.adai.adaios-noon-task` 已加载且「午间谷时 0 天前跑过」。
 
 ---
