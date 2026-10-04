@@ -21,6 +21,8 @@ target/
 # 真相源（skills / roles / assets / process / guards / scripts / rfc / review / features / ledger …）**必须入库**；
 # 只忽略「本机状态」与「出口」两类。⚠️ 规则必须**带前缀锚定**——写成 `skills/` 会连真相源一起忽略（pitfalls 二十三 记过这个坑）。
 .agents/records/state/
+# 旧路径（2026-10-04 六顶层重构前）——保留忽略防残留复活
+.agents/state/
 # 注意：gitignore 不支持行尾注释（`模式  # 注释` 会把注释当成模式的一部分）
 .qoder/
 .codex/

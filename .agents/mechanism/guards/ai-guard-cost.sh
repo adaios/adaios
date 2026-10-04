@@ -43,7 +43,7 @@ for a in "$@"; do
 done
 
 ROOT="$(cd "$(git rev-parse --show-toplevel)" && pwd)"
-STATE_DIR="$ROOT/.agents/state"
+STATE_DIR="$ROOT/.agents/records/state"
 COST_LOG="$STATE_DIR/cost-log.jsonl"
 CACHE="$STATE_DIR/cost-cache.json"
 

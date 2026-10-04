@@ -135,7 +135,7 @@ targets() {
   # 1) data/：个人数据整树（只读联调 link / 写入实验 copy）；顶层强制逐子项（安全设计 ①）
   [ -d "${MAIN}/data" ] && walk "${MAIN}/data" "data" "${MODE}" 1
   # 2) .agents/records/state/：**恒 link**（巡检游标与成本账必须唯一）
-  [ -d "${MAIN}/.agents/state" ] && walk "${MAIN}/.agents/state" ".agents/records/state" "link" 1
+  [ -d "${MAIN}/.agents/records/state" ] && walk "${MAIN}/.agents/records/state" ".agents/records/state" "link" 1
   # 3) 服务端密钥（根 .env 当前是空文件，按 -s 自动跳过）
   for f in "services/adai-core/.env" ".env"; do
     [ -s "${MAIN}/${f}" ] && emit "${MODE}" "${MAIN}/${f}" "${f}"
@@ -193,7 +193,7 @@ if [ "${CHECK}" -eq 1 ]; then
   if [ "${OK}" -eq 0 ] && [ "${MISSING}" -eq 0 ]; then
     # 判据必须是「主仓库有没有这三样外挂」，而不是「清单空不空」——清单为空也可能是
     # 「这些内容全都已被 git 跟踪，本来就无需补」（普通仓库的常态）。
-    if [ -d "${MAIN}/data" ] || [ -d "${MAIN}/.agents/state" ]; then
+    if [ -d "${MAIN}/data" ] || [ -d "${MAIN}/.agents/records/state" ]; then
       echo "⚠️  主仓库的 data/ 与 state/ 里没有「未跟踪」的部分可补（内容可能全在 git 里）——本仓库无需补外挂。"
       exit 0
     fi

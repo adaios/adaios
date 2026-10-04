@@ -20,7 +20,7 @@ set -uo pipefail
 
 ROOT="$(cd "$(git rev-parse --show-toplevel)" && pwd)"
 AGENTS="$HOME/Library/LaunchAgents"
-STATE="${ROOT}/.agents/state"
+STATE="${ROOT}/.agents/records/state"
 BACKUP_LOG="${STATE}/backup.log"
 AUDIT_LOG="${STATE}/task-weekly-audit.log"
 NOON_LOG="${STATE}/task-noon.log"
