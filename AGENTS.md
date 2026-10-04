@@ -43,7 +43,7 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 
 | 命令/操作 | 文件 | 说明 |
 |:---------|:-----|:-----|
-| **审核驱动主链** | `.agents/rules/process/review-driven.md` | **需求 → 设计 → 编码**：文档先行 + **双角色真对打**（编写者 / 审核者各为独立 subagent）多轮交叉；定了需求文稿后人只在 **4 个点**介入（需求定稿 · 设计取舍 · 验收 · 发布）；**≤3 轮不收敛强制升级给人**；在制品在 `.agents/records/workspace/` |
+| **审核驱动主链** | `.agents/rules/process/review-driven.md` | **需求 → 设计 → 编码**：文档先行 + **双角色真对打**（编写者 / 审核者各为独立 subagent）多轮交叉；定了需求文稿后人只在 **4 个点**介入（需求定稿 · 设计取舍 · 验收 · 发布）；**≤3 轮不收敛强制升级给人**；在制品在 `.agents/workspace/` |
 | 全维度走查 | `.agents/rules/process/audit.md` | 8 客观官 + 1 对抗官独立并行全量走查 + 交叉印证 |
 | 增量深审 | `.agents/rules/process/review.md` | 按改动派对应审查官 |
 | 收尾闭环 | `.agents/rules/process/ship.md` | /ship：测试→契约→登记→ai-guard-meta 门禁→提交 |
