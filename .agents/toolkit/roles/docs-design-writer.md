@@ -8,10 +8,10 @@ updated: 2026-10-04
 status: active
 lines: 60
 depends-on:
-  - ../../records/workspace/designs/_directory.md
+  - ../../workspace/designs/_directory.md
 related:
   - ./ai-context-reviewer.md
-  - ../../records/workspace/designs/_template-design.md
+  - ../../workspace/designs/_template-design.md
 tags: [ai, role, design]
 ---
 
@@ -32,7 +32,7 @@ tags: [ai, role, design]
 4. **记取舍**：做过的选择 + **为什么**（两个方案都行时选了哪个、依据是什么）。
 5. **标未决**：★ 需要人拍板的项——**取值取舍** / 与既有边界冲突 / 成本与范围权衡。**不自己定**。
 6. **自评风险**：我认为哪里最可能被审核者打回（主动暴露，别等对方挑）。
-7. **落盘**：`cp ../../records/workspace/designs/_template-design.md ../../records/workspace/designs/<需求id>/design-v<N>-<YYYYMMDD>.md` 后填写。
+7. **落盘**：`cp ../../workspace/designs/_template-design.md ../../workspace/designs/<需求id>/design-v<N>-<YYYYMMDD>.md` 后填写。
 
 ## 约束与规则
 
@@ -53,8 +53,8 @@ tags: [ai, role, design]
 
 ## 参考资料
 
-- `../../records/workspace/designs/_template-design.md` —— 模板 A（本角色的产出形态）
-- `../../records/workspace/designs/_directory.md` —— 目录契约：轮次命名 / 收敛判据 / 一需求一目录
-- `../../records/workspace/designs/_template-review.md` —— 对家的产出形态（知道会被怎么挑）
+- `../../workspace/designs/_template-design.md` —— 模板 A（本角色的产出形态）
+- `../../workspace/designs/_directory.md` —— 目录契约：轮次命名 / 收敛判据 / 一需求一目录
+- `../../workspace/designs/_template-review.md` —— 对家的产出形态（知道会被怎么挑）
 - `.agents/rules/assets/ai-context-engineering.md` §4.6 —— 主链全图与两条判据
 - `./ai-context-reviewer.md` —— 同类五段结构参考

@@ -31,7 +31,7 @@ flowchart TB
         A2["AGENTS.local.md（本机快照，不入 git）"]
     end
     subgraph L1["L1 任务层 ｜ 当前分支 / 当前任务"]
-        B1[".agents/records/workspace/tasks/&lt;分支&gt;.md<br/>做什么 · 进度 · 风险 · 待归档"]
+        B1[".agents/workspace/tasks/&lt;分支&gt;.md<br/>做什么 · 进度 · 风险 · 待归档"]
     end
     subgraph L2["L2 约束层（决策类）｜ 应该怎么做 / 不能做什么"]
         C1["约定 conventions · 边界 boundaries · 坑 pitfalls"]
@@ -73,7 +73,7 @@ flowchart TB
 
 ### L1 任务层（当前分支 / 任务）
 
-**分支本地账本**：`.agents/records/workspace/tasks/<分支>.md`（随分支 ✅）——做什么 · 进度 · 风险 · **待归档的账本条目**；合并时搬进 change-log / REVIEW / `_index`，然后删除本文件。目录契约见 `.agents/records/workspace/tasks/_directory.md`。
+**分支本地账本**：`.agents/workspace/tasks/<分支>.md`（随分支 ✅）——做什么 · 进度 · 风险 · **待归档的账本条目**；合并时搬进 change-log / REVIEW / `_index`，然后删除本文件。目录契约见 `.agents/workspace/tasks/_directory.md`。
 
 ### L2 约束层（决策类：应该怎么做 / 不能做什么）
 
@@ -175,7 +175,7 @@ flowchart TD
     A --> B["② 工具自动注入 AGENTS.local.md（L0 快照）"]
     B --> C["③ AI 按规则 0 执行 ai-guard-context.sh<br/>产出：状态 · 未修项 · 边界 · 坑 · 规范 · 待办 · 成本"]
     C --> D{"在分支上？"}
-    D -->|是| E["读 L1：.agents/records/workspace/tasks/&lt;分支&gt;.md"]
+    D -->|是| E["读 L1：.agents/workspace/tasks/&lt;分支&gt;.md"]
     D -->|否| F["按任务需要按需加载 L2 / L3"]
     E --> F
     F --> G["开工"]
@@ -303,7 +303,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    subgraph WS[".agents/records/workspace/  L1 在制品 · 随分支 · 未定稿"]
+    subgraph WS[".agents/workspace/  L1 在制品 · 随分支 · 未定稿"]
         TK["tasks/&lt;分支&gt;.md<br/>账本"]
         RQ["requirements/&lt;id&gt;.md<br/>需求稿"]
         DS["designs/&lt;id&gt;.md<br/>设计稿"]
@@ -387,7 +387,7 @@ flowchart LR
 ## 九、落地缺口（现状 → 目标）
 
 **已落地**：
-- **2026-10-03**（迁移批）：AI 资产收进 `.agents/` 容器 · 目录两件套 + `ai-guard-structure` · 出口 4→3 · 旧守卫适配修复 · **L1 任务层**（`.agents/records/workspace/tasks/`）。
+- **2026-10-03**（迁移批）：AI 资产收进 `.agents/` 容器 · 目录两件套 + `ai-guard-structure` · 出口 4→3 · 旧守卫适配修复 · **L1 任务层**（`.agents/workspace/tasks/`）。
 - **2026-10-04**（归纳两批）：判据演进「按读者」→「按性质」→ **「AI 运行时是否需要」**；`docs/` 定为**档案馆**；`.agents/` 14 → **20 子目录（19 受管）**、`docs/` 12 → **5 区**；**目录两件套 22 组**；守卫判据统一 **7 处**（元文件 vs 业务文件 · S2 分段 · M4 豁免 · 无尾斜杠常量）。
 
 | 仍未做 | 目标 | 代价 |

@@ -59,7 +59,7 @@ files += sorted((AI/'mechanism/guards').glob('*.md'))      # 守卫 + 目录两�
 files += sorted((AI/'mechanism/scripts/lib').glob('*.md'))         # 库 + 两件套
 files += sorted((AI/'rules/method').glob('*.md'))      # 元方法层
 files += sorted((AI/'mechanism/scripts').glob('*.md'))     # 环境脚本 + 两件套
-files += sorted((AI/'records/workspace').rglob('*.md'))  # 任务账本（L1，可二级）
+files += sorted((AI/'workspace').rglob('*.md'))  # 在制品（2026-10-04 提为顶层）
 # ── docs/ 档案馆：**活文档**（研究 / 想法 / 法务）纳入；**历史存档豁免** ──
 # 豁免：records/audits 27 份走查存档 · records 的 4 份存档（issue-log / testflight / app-polish / release-*）
 #       · archive/ 正文——它们是"当时的事实"，不适用"引用必须指向现在"。

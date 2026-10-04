@@ -7,7 +7,7 @@ updated: 2026-10-04
 status: active
 lines: 98
 depends-on:
-  - ../../records/workspace/designs/_directory.md
+  - ../../workspace/designs/_directory.md
 related:
   - review.md
   - ship.md

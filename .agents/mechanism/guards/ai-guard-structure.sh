@@ -82,7 +82,23 @@ if not AG.is_dir():
 
 # 扫「有 _index.md 的目录」（不限层级）—— 这样 workspace/tasks/ 这类**二级受管目录**也能查到；
 # 没有 _index.md 的目录（assets/adr/、skills/data-learn-writer/）由父目录清单的 rglob 覆盖，不单独受管。
-SUBS = sorted(str(d.relative_to(AG)) for d in AG.rglob("*") if d.is_dir() and (d / "_index.md").exists())
+def _structural(d):
+    """结构目录 = 该有「_index.md + _directory.md」两件套的目录。
+    排除：隐藏/缓存目录 · 配置目录（*.d）· 技能包（含 SKILL.md）· workspace/ 下的在制品（第 2 层起）。
+    ⚠️ 2026-10-04 修盲区：原判据是「已有 _index.md 的目录」——**不建 _index.md 的目录永远免检**
+    （实测漏掉 5 个：workspace / adr / projects / 技能包 / 配置目录；前三个确实是真遗漏）。"""
+    rel = d.relative_to(AG)
+    if any(pp.startswith('.') or pp == '__pycache__' for pp in rel.parts):
+        return False
+    if d.name.endswith('.d'):                 # 配置目录（如 task-noon.d）
+        return False
+    if (d / 'SKILL.md').exists():             # 技能包（契约是 SKILL.md，不是 _index.md）
+        return False
+    if rel.parts[0] == 'workspace' and len(rel.parts) >= 2:
+        return False                          # 在制品目录（每需求一个，动态生长）
+    return True
+
+SUBS = sorted(str(d.relative_to(AG)) for d in AG.rglob("*") if d.is_dir() and _structural(d))
 
 # ── S1 + S2 ──
 for name in SUBS:
