@@ -3,9 +3,9 @@ title: AdaiOS worktree 并行工作手册（外挂三件套与沙箱边界）
 description: 在本项目用 git worktree 开并行线时的全部额外动作——worktree 是「空壳」（data/.env/state 都不在版本库内）必须补外挂、DSH 沙箱只能写工作区、端口与构建锁冲突、提交与合并纪律、干净构建发布用法、验证清单；通用形态见同目录 Qoder 手册
 version: 1
 created: 2026-10-01
-updated: 2026-10-03
+updated: 2026-10-05
 status: active
-lines: 143
+lines: 157
 depends-on: []
 related:
   - development.md
@@ -94,7 +94,21 @@ DSH 的文件策略是 workspace-write：**AI 只能写当前会话 workspace �
 | 方案 | 好处 | 代价 |
 |:--|:--|:--|
 | **仓库外 `../adaios-<任务>` + 一条线一个会话**（推荐） | 沙箱与信任边界最干净；与通用手册 §4.3「CWD 即信任目录」同构 | 每条线要单开会话（workspace 指到那个目录） |
-| 仓库内 `.worktrees/<任务>`（需加 .gitignore） | 当前会话直接能干 | 全仓库搜索会命中重复副本（Flutter/gradle 在各自子目录工作，不受影响） |
+| 仓库内 `.worktrees/<任务>`（需加 .gitignore） | 当前会话直接能干 | 全仓库搜索会命中重复副本（Flutter/gradle 在各自子目录工作，不受影响）；**IDE 还会顺着父目录发现主仓库**（见下） |
+
+### ⚠️ 仓库内方案的第三条代价：IDE 会顺着父目录发现主仓库（2026-10-05 实机踩到）
+
+原先只写了「搜索命中重复副本」——**低估了**。真实症状是 IDE 层的：
+
+| 症状 | 原因 | 处置 |
+|:--|:--|:--|
+| IDEA 打开某条线后 Gradle 面板出现**两个同名 `adai-core`**（一个路径是 `$PROJECT_DIR$/../../services/adai-core`），或直接报 Gradle 冲突 | worktree 在**主仓库内部** ⇒ IDE 往上级扫到了主仓库的**同一个模块**，把它也当外部 Gradle 项目链接 | IDEA 的 Gradle 面板里对多余节点 **Unlink Gradle Project**（写进 `.idea/gradle.xml`，之后按它走、不会自动加回）|
+| 报 `Timeout waiting to acquire shared lock on daemon addresses registry` / 日志有 `Failed to stop Gradle daemons during project close` | 本仓库有**两个不同版本的 Gradle**：后端 `services/adai-core` **8.14.5** · Flutter Android 子工程 `apps/*/android` **9.1.0**（由 Flutter 插件链接）。两个版本的 daemon 同时启动会抢同一份 `~/.gradle/daemon/registry.bin` 的锁 | 同上，把 `apps/*/android` 也 Unlink（手机端只认 iOS；命令行 `flutter build apk` 不受影响，不依赖 IDE 的 Gradle 集成）|
+
+**新建 worktree 后的第一条检查**：IDEA 打开该线 → Gradle 面板应当**只有一个** `services/adai-core`；多出来的（`../../services/adai-core`、`apps/*/android`）Unlink 掉。
+若 IDEA 反复把 android 链回来 → 在 `~/.gradle/gradle.properties` 加 `org.gradle.daemon=false`（彻底消除 daemon 注册表竞争；代价：每次构建新起 JVM）。
+
+> **根治「IDE 扫到主仓库」只有一途：把 worktree 放到仓库外**（本节第一方案）——这也是推荐它的理由之一。
 
 ## 六、端口与运行环境
 

@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-10-05
 status: active
-lines: 330
+lines: 336
 depends-on:
   - ../../toolkit/checklists/ai-guard-checklist.md
 related:
@@ -328,3 +328,9 @@ tags: [ai, assets, pitfalls]
 | 坑 | 症状 | 根因 | 修复 | 状态 | 复发信号 |
 |:---|:-----|:-----|:-----|:----:|:---------|
 | **构建脚本的「可选参数」缺省＝开发者地址，且无任何告警** | 用户报 web 端 `POST http://localhost:8080/api/v1/auth/login net::ERR_CONNECTION_REFUSED` —— **生产 web 连的是本地地址、登录不了**（P0，用户可见）。根因是我跑构建时**漏了 `API_BASE_URL` 这一个参数**（发版体检打印的命令里明明带着它） | `serve_web.sh` 的 `API_BASE_URL` 是**可选参数**：不传就**完全不带 `--dart-define`**，Flutter 静默回落到代码默认值 `localhost:8080`；构建**照常成功**、`--build-only` 照常打印"完成" | ① 带正确地址重建 + 重新部署 + **真实账号登录验证**（已恢复）；② `serve_web.sh` 在 `--build-only` 且未传 URL 时 **fail-closed 报错退出**（本地预览须显式传 `http://localhost:8080`） | ✅ 已修（2026-10-05） | 生产构建脚本存在「**可选**」参数、其缺省值指向 localhost/dev；**部署后只验 md5 一致与 HTTP 200**（那只证明"部署的是我构建的产物"，**不证明产物是对的**）而不验**真实用户路径**（登录/主流程）；别人给的标准命令被"图省事"简化 |
+
+## 三十六、worktree 建在主仓库内部 ⇒ IDE 把同一模块当第二个 Gradle 项目（2026-10-05 分支开发批）
+
+| 坑 | 症状 | 根因 | 修复 | 状态 | 复发信号 |
+|:---|:-----|:-----|:-----|:----:|:---------|
+| **仓库内 worktree 让 IDE 顺着父目录扫到主仓库，再撞上「两个 Gradle 版本」** | IDEA 打开 `.worktrees/<线>` 后 Gradle 报冲突；Gradle 面板出现**两个同名 `adai-core`**（其中一条路径是 `$PROJECT_DIR$/../../services/adai-core`）；IDEA 日志有 `Failed to stop Gradle daemons during project close` | **两条原因叠加**：① worktree 在**主仓库内部** ⇒ IDE 往上级扫到主仓库的**同一个模块**，把它也当外部 Gradle 项目链接；② 本仓库有**两个 Gradle 版本**——后端 `services/adai-core` **8.14.5** · Flutter Android 子工程 `apps/*/android` **9.1.0**（由 Flutter 插件链接），两个版本的 daemon 同时启动会抢同一份 `~/.gradle/daemon/registry.bin` 的锁 | 两份 `.idea/gradle.xml`（主仓库 + 该线）各**只留** `services/adai-core`，把 `apps/*/android` 与 `../../services/adai-core` **Unlink** 掉（`.idea/` 是本机状态，改完 IDEA 按它走、不会自动加回）。要出 Android 包用命令行 `flutter build apk`——不依赖 IDE 的 Gradle 集成 | ✅ 已修（2026-10-05，两处工作副本各验「Gradle 面板只剩一个」） | 新建 worktree / 换机 / IDEA 重新导入后，Gradle 面板里**多于一个**项目；日志出现 `Timeout waiting to acquire shared lock on daemon addresses registry`。**根治「IDE 扫到主仓库」只有把 worktree 放到仓库外**（见 `worktree-workflow.md` §五） |
