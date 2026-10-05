@@ -17,6 +17,9 @@ target/
 # 换机 / 新 clone 后重建：bash .agents/mechanism/scripts/ai-link-skills.sh（验证：bash .agents/mechanism/guards/ai-guard-tools.sh 的 T4）
 .dsh/
 .claude/
+# ── 仓库内 worktree（并行开发线，2026-10-05 起）──
+# 每条线一个目录、各自独立 index；机制与外挂见 .agents/rules/guides/worktree-workflow.md §五
+.worktrees/
 # ── .agents/ —— AI 上下文工程容器（2026-10-03 起；2026-10-04 二批改为 6 顶层）──
 # 真相源（skills / roles / assets / process / guards / scripts / rfc / review / features / ledger …）**必须入库**；
 # 只忽略「本机状态」与「出口」两类。⚠️ 规则必须**带前缀锚定**——写成 `skills/` 会连真相源一起忽略（pitfalls 二十三 记过这个坑）。
