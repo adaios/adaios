@@ -3,9 +3,9 @@ title: workspace/ 目录索引
 description: .agents/workspace/ 的文件清单与过期判断；**这是全工程最活跃的目录**（在制品容器）；契约见 ./_directory.md
 version: 1
 created: 2026-10-04
-updated: 2026-10-04
+updated: 2026-10-05
 status: active
-lines: 39
+lines: 40
 depends-on: []
 related: [./_directory.md, ../rules/process/review-driven.md]
 tags: [meta, index, workspace]
@@ -25,7 +25,7 @@ tags: [meta, index, workspace]
 | `designs/` | 设计稿（含对家评审稿） | 设计定案后**归档**并清空 | [→](./designs/_index.md) | [→](./designs/_directory.md) |
 | `tasks/` | 任务卡（当批要做的事） | 完成后**清空** | [→](./tasks/_index.md) | [→](./tasks/_directory.md) |
 
-## 文件清单（4 项）
+## 文件清单（5 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -33,6 +33,7 @@ tags: [meta, index, workspace]
 | `designs/_template-review.md` | 模板 B——设计审核文件（设计文档审核者产出）：审核对象 · 结论 · 问题清单（P0–P3）· 收敛判定；每轮… | active |
 | `requirements/_template.md` | 需求文稿模板——问题动机 · 范围 · 验收标准 · 未决问题 · 定稿记录；定稿由人拍板，随后归档 docs/ | active |
 | `tasks/_template.md` | 分支任务账本模板——本分支的目标 · 进度 · 风险 · 待归档条目；合并时按「待归档」搬进全局账本后删除本文件 | active |
+| `tasks/trading-batch1.md` | ② 交易线（feat/trading-plugin worktree）本批目标 + 并行作业纪律——给 IDEA… | active |
 
 ## 过期判断
 
