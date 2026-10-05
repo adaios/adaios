@@ -26,6 +26,17 @@ done
 # 可选参数：API_BASE_URL（连生产后端时传入，如 https://api.adaiadai.com）
 API_BASE_URL="${ARGS[0]:-}"
 
+# 2026-10-05（生产事故防复发）：`--build-only` 是生产构建路径，而 API_BASE_URL 是可选参数——
+# 不传时脚本**完全不带 --dart-define**，Flutter 会静默用代码默认值 http://localhost:8080，
+# 构建照常成功、部署后**用户端登录直接 ERR_CONNECTION_REFUSED**（2026-10-05 真实事故）。
+# 故在生产构建路径上 fail-closed：要么显式给生产地址，要么显式声明本地。
+if [ -z "$API_BASE_URL" ] && [ "${BUILD_ONLY:-0}" = "1" ]; then
+  echo "❌ --build-only 未传 API_BASE_URL：产物会连 http://localhost:8080（部署到生产＝用户登录不了）" >&2
+  echo "   生产构建：sh scripts/serve_web.sh https://api.adaiadai.com --build-only" >&2
+  echo "   本地预览：sh scripts/serve_web.sh http://localhost:8080 --build-only" >&2
+  exit 1
+fi
+
 echo "=== Building Flutter Web (JS + CanvasKit) ==="
 if [ -n "$API_BASE_URL" ]; then
   flutter build web --no-tree-shake-icons --dart-define=API_BASE_URL=$API_BASE_URL

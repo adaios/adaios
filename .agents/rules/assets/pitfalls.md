@@ -3,9 +3,9 @@ title: 已知坑归集（Pitfalls）
 description: 跨 checklists 归集的「踩过的坑」索引——症状/根因/修复/复发信号，按域分组；完整逐条在 checklists 活文档
 version: 1
 created: 2026-08-15
-updated: 2026-10-04
+updated: 2026-10-05
 status: active
-lines: 324
+lines: 330
 depends-on:
   - ../../toolkit/checklists/ai-guard-checklist.md
 related:
@@ -322,3 +322,9 @@ tags: [ai, assets, pitfalls]
 ---
 
 **追加方式**：AI 在开发/审核中发现新坑 → ①入对应 checklists（活文档）②本文件按域补一行（索引）。两条都要，防止只入一处。
+
+## 三十五、生产构建的「可选参数」没传 → 静默用 localhost 部署到生产（2026-10-05 部署批）
+
+| 坑 | 症状 | 根因 | 修复 | 状态 | 复发信号 |
+|:---|:-----|:-----|:-----|:----:|:---------|
+| **构建脚本的「可选参数」缺省＝开发者地址，且无任何告警** | 用户报 web 端 `POST http://localhost:8080/api/v1/auth/login net::ERR_CONNECTION_REFUSED` —— **生产 web 连的是本地地址、登录不了**（P0，用户可见）。根因是我跑构建时**漏了 `API_BASE_URL` 这一个参数**（发版体检打印的命令里明明带着它） | `serve_web.sh` 的 `API_BASE_URL` 是**可选参数**：不传就**完全不带 `--dart-define`**，Flutter 静默回落到代码默认值 `localhost:8080`；构建**照常成功**、`--build-only` 照常打印"完成" | ① 带正确地址重建 + 重新部署 + **真实账号登录验证**（已恢复）；② `serve_web.sh` 在 `--build-only` 且未传 URL 时 **fail-closed 报错退出**（本地预览须显式传 `http://localhost:8080`） | ✅ 已修（2026-10-05） | 生产构建脚本存在「**可选**」参数、其缺省值指向 localhost/dev；**部署后只验 md5 一致与 HTTP 200**（那只证明"部署的是我构建的产物"，**不证明产物是对的**）而不验**真实用户路径**（登录/主流程）；别人给的标准命令被"图省事"简化 |
