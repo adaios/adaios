@@ -7,6 +7,7 @@ import com.adaiadai.core.domain.trading.TradeDirection;
 import com.adaiadai.core.domain.trading.TradeRecord;
 import com.adaiadai.core.domain.trading.TradingHistoryRepository;
 import com.adaiadai.core.domain.trading.TradingLot;
+import com.adaiadai.core.domain.trading.TradingRoundPort;
 import com.adaiadai.core.domain.trading.TradingRuleSettings;
 import com.adaiadai.core.domain.trading.market.Candle;
 import com.adaiadai.core.domain.trading.market.MarketData;
@@ -45,7 +46,7 @@ import java.util.stream.Collectors;
  * 行为标注（记录即标注，进当日操作总结/复盘）：亏损加仓 / 追高 / 短线新开 / 破止损未走 / 浮盈回吐 / 短线超期。
  */
 @Service
-public class TradingLotService {
+public class TradingLotService implements TradingRoundPort {
 
     private static final Logger log = LoggerFactory.getLogger(TradingLotService.class);
 
@@ -121,6 +122,21 @@ public class TradingLotService {
 
     /** 单标的流水重放 → 批次列表（含初始批次兜底与回合）。 */
     private List<TradingLot> replaySymbol(String symbol, List<TradeRecord> trades, Position holding) {
+        List<TradingLot> lots = new ArrayList<>();
+        for (MutableLot m : replaySymbolMutable(symbol, trades, holding)) {
+            lots.add(m.lot);
+        }
+        return lots;
+    }
+
+    /**
+     * 单标的流水重放 → 可变批次中间体列表（含初始批次兜底与回合，保留回合关闭日）。
+     * <p>
+     * 2026-10-05（P2-认知2）：从 {@link #replaySymbol} 抽出——画像统计要「回合关闭日/持仓天数」，
+     * 只在重放过程里能拿到（{@link TradingLot} 不带卖出日），故让中间体承载 closeDate，
+     * {@link #closedRounds(String)} 复用同一份重放，**不复制第二套回合推导逻辑**。
+     */
+    private List<MutableLot> replaySymbolMutable(String symbol, List<TradeRecord> trades, Position holding) {
         List<TradeRecord> sorted = new ArrayList<>(trades);
         sorted.sort(Comparator
                 .comparing((TradeRecord t) -> effectiveDate(t))
@@ -201,6 +217,7 @@ public class TradingLotService {
                     BigDecimal newRealized = m.lot.realizedPnl().add(thisRealized);
                     if (newRemaining <= 0) {
                         m.lot = withRemaining(m.lot, 0, newRealized);
+                        m.closeDate = effectiveDate(t); // 2026-10-05：记录回合关闭日（画像持仓天数用）
                         open.remove(i);
                         closed.add(m);
                     } else {
@@ -215,13 +232,14 @@ public class TradingLotService {
             }
         }
 
-        List<TradingLot> lots = new ArrayList<>();
-        for (MutableLot m : open) lots.add(m.lot);
-        for (MutableLot m : closed) lots.add(m.lot);
+        List<MutableLot> all = new ArrayList<>();
+        all.addAll(open);
+        all.addAll(closed);
         // 初始批次（buyDate 可 null）排最前（最早建仓）；其余按买入日期升序
-        lots.sort(Comparator.comparing(TradingLot::buyDate, Comparator.nullsFirst(Comparator.naturalOrder()))
-                .thenComparing(TradingLot::lotId));
-        return lots;
+        all.sort(Comparator.comparing((MutableLot m) -> m.lot.buyDate(),
+                        Comparator.nullsFirst(Comparator.naturalOrder()))
+                .thenComparing(m -> m.lot.lotId()));
+        return all;
     }
 
     /** 单笔卖出费用：导入流水用券商实际费用（fee）；手动记录用模型模拟（卖出净得差）。 */
@@ -276,6 +294,62 @@ public class TradingLotService {
                     a[0], a[1], h != null ? h.quantity() : null, note));
         }
         return lines;
+    }
+
+    // ── 逐笔回合（画像统计数据源，P2-认知2）──
+
+    /**
+     * 已了结回合（{@link TradingRoundPort} 实现）——画像统计数据源（2026-10-05）。
+     * <p>
+     * 与 {@link #lots(String, String)} 的区别：<b>不取行情</b>（纯流水重放），可安全用于
+     * 每次 prompt 注入的实时统计（画像注入高频，外部行情已在 profile 之外单独注入）。
+     * 口径与批次视图完全一致：同标的同日买入合并为一批，卖出按 LIFO 扣减，剩余归零 = 回合关闭。
+     * <p>
+     * 诚实边界（不硬凑）：
+     * <ul>
+     *   <li>回合收益率 = realizedPnl / (volume × costPrice) × 100——分子分母同为该批买卖的
+     *       「实然」数字（费用已扣），**不是**清仓表「首买 → 末卖」的纸上区间收益。</li>
+     *   <li>成本不可测的回合（volume ≤ 0 / costPrice ≤ 0，负成本批）不返回——收益率无意义，
+     *       不参与统计（宁缺毋滥，不编造 0）。</li>
+     *   <li>buyDate 或 closeDate 不可得（初始批次无 entryDate）→ holdDays = 0，如实计 0，
+     *       不猜测持有天数。</li>
+     * </ul>
+     * 失败兜底：流水/持仓读取异常 → 空表 + WARN（画像降级为空，不抛错）。
+     */
+    @Override
+    public List<TradingRoundPort.ClosedRound> closedRounds(String userId) {
+        List<TradingRoundPort.ClosedRound> out = new ArrayList<>();
+        try {
+            List<TradeRecord> all = tradingHistoryRepository.findAll(userId);
+            Map<String, List<TradeRecord>> bySymbol = new LinkedHashMap<>();
+            for (TradeRecord t : all) {
+                bySymbol.computeIfAbsent(t.symbol(), k -> new ArrayList<>()).add(t);
+            }
+            Map<String, Position> holdings = positionRepository.findAll(userId).stream()
+                    .collect(Collectors.toMap(Position::symbol, p -> p, (a, b) -> a));
+            for (Map.Entry<String, List<TradeRecord>> e : bySymbol.entrySet()) {
+                for (MutableLot m : replaySymbolMutable(e.getKey(), e.getValue(), holdings.get(e.getKey()))) {
+                    TradingLot lot = m.lot;
+                    if (!lot.closed() || lot.volume() <= 0) continue;
+                    if (lot.costPrice() == null || lot.costPrice().signum() <= 0) continue;
+                    if (lot.realizedPnl() == null) continue;
+                    BigDecimal costValue = lot.costPrice().multiply(BigDecimal.valueOf(lot.volume()));
+                    double pnlPct = lot.realizedPnl().doubleValue() * 100.0 / costValue.doubleValue();
+                    int holdDays = lot.buyDate() != null && m.closeDate != null
+                            ? (int) Math.max(1, java.time.temporal.ChronoUnit.DAYS
+                                    .between(lot.buyDate(), m.closeDate))
+                            : 0;
+                    out.add(new TradingRoundPort.ClosedRound(lot.lotId(), lot.symbol(), lot.name(),
+                            lot.buyDate(), m.closeDate, costValue, lot.realizedPnl(), pnlPct, holdDays));
+                }
+            }
+        } catch (Exception ex) {
+            log.warn("逐笔回合推导失败（画像统计降级为空）| userId={} | {}", userId, ex.getMessage());
+            return List.of();
+        }
+        out.sort(Comparator.comparing(TradingRoundPort.ClosedRound::closeDate,
+                Comparator.nullsLast(Comparator.reverseOrder())));
+        return out;
     }
 
     // ── 批次视图 ──
@@ -668,6 +742,8 @@ public class TradingLotService {
     /** 可变批次中间体（TradingLot 不可变，扣减/合并时重建）。 */
     private static final class MutableLot {
         TradingLot lot;
+        /** 回合关闭日（批次剩余归零的那笔卖出的成交日）；未关闭为 null。 */
+        LocalDate closeDate;
 
         MutableLot(TradingLot lot) {
             this.lot = lot;

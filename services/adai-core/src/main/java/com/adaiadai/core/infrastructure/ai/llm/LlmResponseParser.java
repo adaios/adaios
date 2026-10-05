@@ -111,6 +111,38 @@ public class LlmResponseParser {
     // ── 内部方法 ──
 
     /**
+     * 从对话结束的回复中解析「动作清单」（REVIEW P2-交易73）。
+     * <p>
+     * 与 {@link #parse} 分开的原因：{@code actions} 是**对话结束**场景专有字段，
+     * {@link AiUnderstanding} 是 27 处构造点共用的 record——为一个场景给它加组件会让
+     * 所有构造点跟着漂移；而动作清单的消费者只有一个（{@code ActionReviewService}）。
+     * 这里只做「取出 + 去脏」，不做截断/去重/上限（那些是搬运规则的职责）。
+     * <p>
+     * 容错：无 JSON / 无字段 / 不是数组 / 项不是字符串 → 空清单（**沉默是默认项**：
+     * 抽不出来就当这场对话没给动作，不猜、不补）。
+     */
+    public static List<String> parseActions(String rawResponse) {
+        if (rawResponse == null || rawResponse.isBlank()) return List.of();
+        String jsonStr = extractJson(rawResponse);
+        if (jsonStr == null) return List.of();
+        try {
+            JsonNode root = MAPPER.readTree(jsonStr);
+            JsonNode arr = root.get("actions");
+            if (arr == null || !arr.isArray()) return List.of();
+            List<String> result = new ArrayList<>();
+            for (JsonNode node : arr) {
+                if (node == null || !node.isTextual()) continue;
+                String text = stripBackendArtifacts(decodeUnicodeEscapes(node.asText()));
+                if (text != null && !text.isBlank()) result.add(text);
+            }
+            return result;
+        } catch (Exception e) {
+            log.debug("actions 解析失败（按无动作处理）: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
      * 从 LLM 回复文本中提取 JSON 块（无则 null）。
      * <p>
      * 2026-08-30 流式批提为 public：QuestionAppService.answerStream 用它判定

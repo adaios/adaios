@@ -7,6 +7,7 @@ import com.adaiadai.core.kernel.ai.JsonTailFilter;
 import com.adaiadai.core.kernel.ai.StreamingAiClient;
 import com.adaiadai.core.infrastructure.ai.llm.LlmResponseParser;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
+import com.adaiadai.core.infrastructure.storage.CardLockRegistry;
 import com.adaiadai.core.kernel.context.engine.ContextEngine;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
@@ -42,13 +43,18 @@ public class QuestionAppService {
     private final AiClient aiClient;
     private final StreamingAiClient streamingAiClient;
     private final PluginService pluginService;
+    /** 共享 per-card 锁池（与 ConversationController.end 是同一个 Spring 单例；P2-工程13）。 */
+    private final CardLockRegistry cardLockRegistry;
 
+    /** Spring 主构造：注入共享锁池——卡片 append 与 conversation end 的写回互斥。 */
+    @org.springframework.beans.factory.annotation.Autowired
     public QuestionAppService(ContextEngine contextEngine, CardFileRepository cardRepository,
                               RecordRepository recordRepository,
                               MemoryService memoryService,
                               AiClient aiClient,
                               StreamingAiClient streamingAiClient,
-                              PluginService pluginService) {
+                              PluginService pluginService,
+                              CardLockRegistry cardLockRegistry) {
         this.contextEngine = contextEngine;
         this.cardRepository = cardRepository;
         this.recordRepository = recordRepository;
@@ -56,6 +62,21 @@ public class QuestionAppService {
         this.aiClient = aiClient;
         this.streamingAiClient = streamingAiClient;
         this.pluginService = pluginService;
+        this.cardLockRegistry = cardLockRegistry;
+    }
+
+    /**
+     * 兼容构造（7 参，测试/旧调用）：自建**私有**锁池——仅适用于与 end 侧无并发的单线程用例。
+     * 生产走 Spring 主构造（共享单例），不经过这里。
+     */
+    public QuestionAppService(ContextEngine contextEngine, CardFileRepository cardRepository,
+                              RecordRepository recordRepository,
+                              MemoryService memoryService,
+                              AiClient aiClient,
+                              StreamingAiClient streamingAiClient,
+                              PluginService pluginService) {
+        this(contextEngine, cardRepository, recordRepository, memoryService,
+                aiClient, streamingAiClient, pluginService, new CardLockRegistry());
     }
 
     /**
@@ -224,13 +245,18 @@ public class QuestionAppService {
         if (cardId != null) {
             String timeStr = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm"));
 
-            Optional<CardRecord> existing = cardRepository.findById(userId, cardId);
-            if (existing.isPresent()) {
-                CardRecord updated = existing.get()
-                        .withTurn(false, aiText, timeStr);
-                cardRepository.save(userId, updated);
-                log.info("AI turn saved to card | cardId={} | len={}", cardId,
-                        aiText != null ? aiText.length() : 0);
+            // REVIEW P2-工程13：卡片读-改-写进共享 per-card 锁（与 ConversationController.end 的
+            // 写回、ensureCardWithUserTurn 同一把）。锁顺序：append 侧只取 cardLock，绝不取 endLock；
+            // 锁内只有 findById→withTurn→save（AI 调用已在上游完成，不在锁内）。
+            synchronized (cardLockRegistry.cardLock(userId, cardId)) {
+                Optional<CardRecord> existing = cardRepository.findById(userId, cardId);
+                if (existing.isPresent()) {
+                    CardRecord updated = existing.get()
+                            .withTurn(false, aiText, timeStr);
+                    cardRepository.save(userId, updated);
+                    log.info("AI turn saved to card | cardId={} | len={}", cardId,
+                            aiText != null ? aiText.length() : 0);
+                }
             }
         }
 
@@ -311,24 +337,31 @@ public class QuestionAppService {
 
     /**
      * 确保卡片存在并追加用户轮次（首问建卡 / 续聊 append，与 RecordController.handleQuestion 同口径）。
+     * <p>
+     * REVIEW P2-工程13：整段「findById → 建卡/追加 → save」进共享 per-card 锁——与
+     * {@code ConversationController.endConversation} 的卡片写回（含「写回前 re-read」之后的那次 save）
+     * 互斥，消除「end 拿旧快照回写覆盖本轮 append 轮次」的窗口；锁顺序 append 侧只取 cardLock，
+     * 绝不取 endLock（反向构成死锁环，见 CardLockRegistry 注释）。锁内只有读-改-写，无 AI 调用。
      */
     public void ensureCardWithUserTurn(String userId, String cardId, String content, LocalDateTime createdAt) {
         java.time.format.DateTimeFormatter timeFmt = java.time.format.DateTimeFormatter.ofPattern("HH:mm");
         String timeStr = createdAt.format(timeFmt);
-        Optional<CardRecord> existing = cardRepository.findById(userId, cardId);
-        if (existing.isEmpty()) {
-            CardRecord card = new CardRecord(
-                    cardId, "conversation", "active",
-                    List.of(), List.of(new CardRecord.Turn(true, content, timeStr)),
-                    null, createdAt, createdAt
-            );
-            cardRepository.save(userId, card);
-            log.info("Card created (first turn) | cardId={}", cardId);
-        } else {
-            CardRecord updated = existing.get()
-                    .withTurn(true, content, timeStr);
-            cardRepository.save(userId, updated);
-            log.info("Card append | cardId={} | contentLen={}", cardId, content != null ? content.length() : 0);
+        synchronized (cardLockRegistry.cardLock(userId, cardId)) {
+            Optional<CardRecord> existing = cardRepository.findById(userId, cardId);
+            if (existing.isEmpty()) {
+                CardRecord card = new CardRecord(
+                        cardId, "conversation", "active",
+                        List.of(), List.of(new CardRecord.Turn(true, content, timeStr)),
+                        null, createdAt, createdAt
+                );
+                cardRepository.save(userId, card);
+                log.info("Card created (first turn) | cardId={}", cardId);
+            } else {
+                CardRecord updated = existing.get()
+                        .withTurn(true, content, timeStr);
+                cardRepository.save(userId, updated);
+                log.info("Card append | cardId={} | contentLen={}", cardId, content != null ? content.length() : 0);
+            }
         }
     }
 

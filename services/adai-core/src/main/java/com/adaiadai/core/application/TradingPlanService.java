@@ -1,6 +1,7 @@
 package com.adaiadai.core.application;
 
 import com.adaiadai.core.domain.trading.TradeRecord;
+import com.adaiadai.core.domain.trading.TradingException;
 import com.adaiadai.core.domain.trading.TradingHistoryRepository;
 import com.adaiadai.core.domain.trading.TradingPlan;
 import com.adaiadai.core.domain.trading.TradingPlanRepository;
@@ -58,6 +59,22 @@ public class TradingPlanService {
         this.klineService = klineService;
     }
 
+    /**
+     * P2-交易72：同一天「读-改-写」必须串行——否则「App 点今天没动」与「web 保存计划」
+     * 并发时，后写者会用自己读到的旧快照覆盖对方刚写下的东西（**计划条目会被静默抹掉**）。
+     * 与 {@code TradingPlanFileRepository} 的 stripe lock 同模式；方向单向（service → repo），无环。
+     */
+    private static final int LOCK_STRIPES = 16;
+    private final Object[] locks = new Object[LOCK_STRIPES];
+    {
+        for (int i = 0; i < LOCK_STRIPES; i++) locks[i] = new Object();
+    }
+
+    private Object lockFor(String userId, LocalDate date) {
+        String key = (userId != null ? userId : "default") + "|" + date;
+        return locks[key.hashCode() & (LOCK_STRIPES - 1)];
+    }
+
     // ── 读 ──
 
     public Optional<TradingPlan> find(String userId, LocalDate date) {
@@ -79,11 +96,53 @@ public class TradingPlanService {
                 items.add(parseItem(raw));
             }
         }
-        TradingPlan plan = new TradingPlan(date, items, note != null ? note : "", LocalDateTime.now());
-        planRepository.save(userId, plan);
-        log.info("操作计划已落盘 | userId={} | date={} | 条目 {} 条", userId, date, items.size());
-        return plan;
+        synchronized (lockFor(userId, date)) {
+            // P2-交易72：覆盖写**保留**当天已回填的「今日状态」——用户写计划不该抹掉他刚说的「今天没动」；
+            // 反过来回填状态也不碰 items（见 recordDayStatus）。两条写路径互不吞掉对方的字段。
+            String kept = planRepository.find(userId, date)
+                    .map(TradingPlan::dayStatus).orElse(TradingPlan.DAY_STATUS_NONE);
+            TradingPlan plan = new TradingPlan(date, items, note != null ? note : "", kept, LocalDateTime.now());
+            planRepository.save(userId, plan);
+            log.info("操作计划已落盘 | userId={} | date={} | 条目 {} 条", userId, date, items.size());
+            return plan;
+        }
     }
+
+    // ── P2-交易72：当天事后的「今日状态」回填（今天没动 / 想动没动）──
+
+    /**
+     * 回填某天的状态。**不改动 items / note**（与用户已写的计划不冲突），同日重复提交**幂等**：
+     * 值没变就**不重写盘**（{@code recorded=false}），如实告诉调用方「早就记着了」。
+     *
+     * <p>为什么这条入口必须存在：用户 2026-09-23 原话「那我今天没有买卖 怎么告诉你呢 你还在等我的数据」——
+     * 系统在等一个他**没有地方填**的状态。「没动」本身是完整信息（R119「零仓位也是交易」），
+     * 不是数据缺失，所以这里既不发问、也不催，只给他一个落点。
+     *
+     * @throws com.adaiadai.core.domain.trading.TradingException 状态值不在已知集合内（不猜、不静默回落）
+     */
+    public DayStatusResult recordDayStatus(String userId, LocalDate date, String status) {
+        if (!TradingPlan.isKnownDayStatus(status)) {
+            throw new TradingException("这天只能记「没动」或「想动没动」两种，我认不出「" + status + "」");
+        }
+        synchronized (lockFor(userId, date)) {
+            TradingPlan existing = planRepository.find(userId, date).orElse(null);
+            if (existing != null && status.equals(existing.dayStatus())) {
+                log.info("今日状态与已记一致，不重复落盘 | userId={} | date={} | status={}", userId, date, status);
+                return new DayStatusResult(existing, false);
+            }
+            TradingPlan plan = existing == null
+                    ? new TradingPlan(date, List.of(), "", status, LocalDateTime.now())
+                    : new TradingPlan(existing.date(), existing.items(), existing.note(), status,
+                            existing.createdAt() != null ? existing.createdAt() : LocalDateTime.now());
+            planRepository.save(userId, plan);
+            log.info("今日状态已落盘 | userId={} | date={} | status={} | 保留既有条目 {} 条",
+                    userId, date, status, plan.items().size());
+            return new DayStatusResult(plan, true);
+        }
+    }
+
+    /** 回填结果：{@code recorded=false} = 这天早就记着同一个状态了（这次没写盘）。 */
+    public record DayStatusResult(TradingPlan plan, boolean recorded) {}
 
     /**
      * 一句话 → 计划条目。**解析不出就不猜**：标的取不到 6 位代码时 symbol 留空（由用户补），
@@ -212,7 +271,8 @@ public class TradingPlanService {
             unplanned.add(t.symbol() + " " + t.name() + " " + t.direction() + " " + t.volume() + "股"
                     + (symbolPlanned ? "（方向与计划相反）" : ""));
         }
-        return new PlanReview(date, opt.isPresent(), items, unplanned, triggeredCount, executedCount);
+        return new PlanReview(date, opt.isPresent(), items, unplanned, triggeredCount, executedCount,
+                opt.map(TradingPlan::dayStatus).orElse(TradingPlan.DAY_STATUS_NONE));
     }
 
     private Candle todayCandle(String symbol, LocalDate date) {
@@ -233,7 +293,10 @@ public class TradingPlanService {
 
     /** 收盘对账结果：**只陈述事实**，不含判断与建议。 */
     public record PlanReview(LocalDate date, boolean hasPlan, List<ItemReview> items,
-                             List<String> unplanned, int triggeredCount, int executedCount) {}
+                             List<String> unplanned, int triggeredCount, int executedCount,
+                             // P2-交易72（2026-10-05）：这天用户事后回填的状态（"" = 没填）。
+                             // 参与对账是为了**不把「没动」当成缺数据**——它与「今天没有成交记录」是互相印证的两句话。
+                             String dayStatus) {}
 
     /**
      * 一条计划的对账。

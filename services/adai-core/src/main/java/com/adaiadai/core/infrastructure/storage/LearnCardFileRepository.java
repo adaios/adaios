@@ -80,6 +80,13 @@ public class LearnCardFileRepository implements LearnCardRepository {
     /** 本实现写出的卡带此标记；别处（Mac 上技能）整理的卡没有 → 只读。 */
     private static final String ORIGIN_KEY = "origin";
     private static final String ORIGIN_PRODUCT = "product";
+    /**
+     * 「这张卡用了哪些素材」键（P2-learn33 对抗审查 A，2026-10-05）。
+     * <p>
+     * 刻意**不进** {@link #rewriteManaged} 的受管键列表：编辑卡时它作为未知键原样保留
+     * （用户改核心观点/要点不该把素材来源抹掉），只有 {@link #writeSourceAssets} 会动它。
+     */
+    private static final String SOURCE_ASSETS_KEY = "source_assets";
     /** README 自动段标记（只追加、不重写他人已写内容）。 */
     private static final String README_MARKER = "## 阿呆整理记录（自动维护）";
     private static final DateTimeFormatter DIR_DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd");
@@ -373,6 +380,52 @@ public class LearnCardFileRepository implements LearnCardRepository {
             out.add(f.substring(slash + 1));
         }
         return out;
+    }
+
+    /**
+     * 记下这张卡用了哪些素材（P2-learn33 对抗审查 A，2026-10-05）：把素材名写进卡自己的
+     * frontmatter {@code source_assets: [...]}。
+     * <p>
+     * 走**严格写定位**（只认唯一可写命中）：写不进去（只读同名卡/盘写失败）就抛，由调用方决定
+     * 怎么降级——记不上来源的卡展开时按「没留素材」处理（宁可拒绝展开，也不借用同主题别的卡的稿子）。
+     */
+    @Override
+    public void writeSourceAssets(String userId, String type, String title, List<String> names) {
+        if (!LearnCard.isValidType(type) || title == null || title.isBlank()
+                || names == null || names.isEmpty()) {
+            return;
+        }
+        List<String> cleaned = names.stream()
+                .filter(n -> n != null && !n.isBlank())
+                .map(LearnCardFileRepository::singleLine)
+                .distinct()
+                .toList();
+        if (cleaned.isEmpty()) return;
+        synchronized (lockFor(userId)) {
+            Located located = requireWritable(userId, type, title);
+            String content = fileStorage.read(userId, located.path());
+            if (content == null || content.isBlank()) return;
+            fileStorage.write(userId, located.path(), replaceFrontmatterKey(content, SOURCE_ASSETS_KEY,
+                    "[" + String.join(", ", cleaned) + "]"));
+            log.info("learn 卡片素材来源已记下 | userId={} | type={} | title={} | 素材 {} 份",
+                    userId, type, title, cleaned.size());
+        }
+    }
+
+    /**
+     * 读这张卡记下的素材名（frontmatter {@code source_assets}）。
+     * <p>
+     * 没有该键（老卡 / 别处整理的卡）→ 空列表：调用方必须按「这张卡没留原始素材」处理，
+     * **不回退**到主题目录扫描（那正是本批修掉的缺陷）。
+     */
+    @Override
+    public List<String> sourceAssets(String userId, String type, String title) {
+        if (!LearnCard.isValidType(type) || title == null || title.isBlank()) return List.of();
+        String md = readCard(userId, type, title);
+        if (md == null || md.isBlank()) return List.of();
+        String raw = frontmatterValue(md, SOURCE_ASSETS_KEY);
+        if (raw == null || raw.isBlank()) return List.of();
+        return parseTags(raw);
     }
 
     @Override
@@ -1205,6 +1258,61 @@ public class LearnCardFileRepository implements LearnCardRepository {
             log.info("learn 素材已归位到主题目录 | userId={} | {}/{} | {} 个", userId, type, topic, promoted.size());
         }
         return promoted;
+    }
+
+    // ── 展开（P2-learn33，2026-10-05）：索引卡 → 衍生全文卡，不就地覆盖原卡 ──
+
+    /** 衍生关系键：衍生卡的 frontmatter 记下「展开自哪张卡」。 */
+    private static final String DERIVED_FROM_KEY = "derived_from";
+    /** 展开全文的正文段名（未知段：产品四段之外，编辑手术原样保留）。 */
+    private static final String EXPANDED_SECTION = "## 展开全文";
+
+    /**
+     * 该卡是否已有展开产物（衍生卡标题）——扫同 type 下的卡，认 frontmatter 的
+     * {@code derived_from == 原卡标题}。
+     *
+     * <p>为什么不用标题约定（「原题 · 展开」）：标题是用户可见、可改的；衍生关系是结构事实，
+     * 必须落在 frontmatter 里才对得起 File First（用户改标题不该把关系改丢）。
+     */
+    @Override
+    public String expandedTitle(String userId, String type, String title) {
+        if (!LearnCard.isValidType(type) || title == null || title.isBlank()) return null;
+        for (Located l : locateAll(userId, type)) {
+            String content = fileStorage.read(userId, l.path());
+            if (content == null || content.isBlank()) continue;
+            if (title.equals(frontmatterValue(content, DERIVED_FROM_KEY))) return l.card().title();
+        }
+        return null;
+    }
+
+    /**
+     * 落一张衍生卡：正常落卡（四段 + 页）→ 补 {@code derived_from} 键 → 追加 {@code ## 展开全文} 段。
+     *
+     * <p><b>原卡一字不动</b>（衍生而非覆盖）：新文件、新标题，原卡的 frontmatter 与正文都不碰。
+     * 三处写入顺序上「先落卡再补键」：落卡失败直接抛（fail-visible），补键/追加段失败只是
+     * 衍生的关系或全文缺失——基础卡仍在，比什么都没落强（与 promoteRaw 同口径，只告警）。
+     */
+    @Override
+    public void saveDerived(String userId, LearnCard card, String derivedFrom, String fullText) {
+        save(userId, card, List.of());
+        try {
+            String path = cardPath(userId, card.type(), card.title());
+            if (path == null) return;
+            String content = fileStorage.read(userId, path);
+            if (content == null || content.isBlank()) return;
+            String next = derivedFrom == null || derivedFrom.isBlank()
+                    ? content
+                    : replaceFrontmatterKey(content, DERIVED_FROM_KEY, singleLine(derivedFrom));
+            if (fullText != null && !fullText.isBlank()) {
+                next = next.stripTrailing() + "\n\n" + EXPANDED_SECTION + "\n\n" + fullText.strip() + "\n";
+            }
+            fileStorage.write(userId, path, next);
+            log.info("learn 展开产物已落盘（衍生卡）| userId={} | 源自《{}》| 新卡《{}》",
+                    userId, derivedFrom, card.title());
+        } catch (Exception e) {
+            log.warn("learn 展开产物补写关系/全文失败（基础卡已落盘）| userId={} | title={} | {}",
+                    userId, card.title(), e.getMessage());
+        }
     }
 
     /** 同名素材的版本化文件名（{@code a.txt} → {@code a-2.txt}、{@code a-3.txt}…）。 */

@@ -237,24 +237,32 @@ public class TradingAppService {
     /** 记录一次持仓全量 replace 锚定（best-effort：失败告警不阻断已成功的导入，防重暂时失效可被发现）。
      *  2026-09-12：锚定日取**快照自身日期**（文件名日期，前端可传 snapshotDate）——补导几天前的快照文件时，
      *  不能把锚定日写成「今天」，否则锚定日之后、快照之前的真实成交会被误判为「已含在快照内」而丢掉持仓/现金增量。
-     *  2026-09-18（P0-交易59）：再对「盘前导出的当日快照」做一次归一化，见 {@link #normalizeAnchorDate}。 */
-    private void recordPositionsReplaceAnchor(String userId, LocalDate snapshotDate) {
+     *  2026-09-18（P0-交易59）：再对「盘前导出的当日快照」做一次归一化，见 {@link #normalizeAnchorDate}。
+     *  2026-10-05（P2-交易84）：归一化的**依据**随锚定一起落盘（{@link #decideAnchor}）——
+     *  显式基准日（{@code basedOn}）在先，时钟只在无据时兜底，且兜底必标无据。 */
+    private AnchorDecision recordPositionsReplaceAnchor(String userId, LocalDate snapshotDate, LocalDate basedOn) {
+        // 2026-09-21（P1-交易61）：同时留**文件原始日期**——归一化后与它不等 = 锚定日是推断出来的，
+        // 对账闸门据此报出「锚定日当天的成交可能不在快照里」（此前只能结构自洽地报「账实一致」= 假绿）。
+        AnchorDecision decision = decideAnchor(snapshotDate, LocalDate.now(), LocalTime.now(), basedOn);
         try {
-            // 2026-09-21（P1-交易61）：同时留**文件原始日期**——归一化后与它不等 = 锚定日是推断出来的，
-            // 对账闸门据此报出「锚定日当天的成交可能不在快照里」（此前只能结构自洽地报「账实一致」= 假绿）。
-            anchorRepository.updatePositionsReplace(userId, normalizeAnchorDate(snapshotDate), snapshotDate);
+            anchorRepository.updatePositionsReplace(userId, decision.anchorDate(), decision.fileDate(),
+                    decision.basis());
         } catch (RuntimeException e) {
             log.error("持仓 replace 已落库但快照锚定写入失败（P2-34 防重暂时失效）| userId={} | {}", userId, e.getMessage());
         }
+        return decision;
     }
 
     /** 记录一次资金股份导入锚定（best-effort，同上；锚定日取快照自身日期，见 recordPositionsReplaceAnchor）。 */
-    private void recordCashImportAnchor(String userId, LocalDate snapshotDate) {
+    private AnchorDecision recordCashImportAnchor(String userId, LocalDate snapshotDate, LocalDate basedOn) {
+        AnchorDecision decision = decideAnchor(snapshotDate, LocalDate.now(), LocalTime.now(), basedOn);
         try {
-            anchorRepository.updateCashImport(userId, normalizeAnchorDate(snapshotDate), snapshotDate);
+            anchorRepository.updateCashImport(userId, decision.anchorDate(), decision.fileDate(),
+                    decision.basis());
         } catch (RuntimeException e) {
             log.error("资金股份导入已落库但快照锚定写入失败（P2-34 防重暂时失效）| userId={} | {}", userId, e.getMessage());
         }
+        return decision;
     }
 
     /**
@@ -276,6 +284,70 @@ public class TradingAppService {
      */
     private static LocalDate normalizeAnchorDate(LocalDate snapshotDate) {
         return normalizeAnchorDate(snapshotDate, LocalDate.now(), LocalTime.now());
+    }
+
+    /**
+     * 锚定决策（2026-10-05，P2-交易84）：锚定日 + 文件日期 + 显式基准日 + **依据**（有据/无据）。
+     *
+     * <p>「有据」= 显式基准日 / 文件日期直接采用 / 休市日归一化；「无据」= 时钟推断兜底。
+     * 回执与对账闸门都据它说话——**任何归一化都不许静默**。
+     */
+    public record AnchorDecision(LocalDate anchorDate, LocalDate fileDate, LocalDate explicitDate,
+                                 AnchorBasis basis) {
+
+        /** 是否为有据的锚定日。 */
+        public boolean withEvidence() {
+            return basis != null && basis.withEvidence();
+        }
+
+        /** 给了显式基准日却被判不可信（未来日期）→ 回执必须如实说明，不许静默忽略。 */
+        public boolean explicitRejected() {
+            return explicitDate != null && (anchorDate == null || !explicitDate.equals(anchorDate));
+        }
+
+        /** 回执人话（导入回执 / 日志直显；第一人称、无系统视角标签）。 */
+        public String describe() {
+            StringBuilder sb = new StringBuilder();
+            if (explicitRejected()) {
+                sb.append("你指定的基准日 ").append(explicitDate)
+                        .append(" 在未来，不可信，已按「没有基准日」处理——");
+            }
+            sb.append("锚定日 ").append(anchorDate).append("：")
+                    .append(basis != null ? basis.label() : "依据未记录")
+                    .append(withEvidence() ? "（有据）" : "（无据）");
+            if (anchorDate != null && fileDate != null && !anchorDate.equals(fileDate)) {
+                sb.append("；文件里的日期是 ").append(fileDate);
+            }
+            return sb.toString();
+        }
+    }
+
+    /**
+     * 锚定决策：把「数据基准日从哪来」显式化（2026-10-05，P2-交易84 治本）。
+     *
+     * <p>① <b>显式基准日在先</b>：导入方（用户/前端）说了「这份数据是哪天的」→ 直接采用，
+     * 不再用导入时刻去猜（09:26 导出、09:28 导入不再被退到上一交易日——本条病根）。
+     * <p>② <b>未来日期仍不可信</b>（P2-10 保护不放松）：显式基准日在今天之后 → 忽略，
+     * 落回时钟兜底，且依据标 {@link AnchorBasis#CLOCK}（无据），回执说明「已忽略」。
+     * <p>③ 没有显式依据 → 既有归一化（盘前/非交易日退上一交易日）+ 依据判据：
+     * 文件日期当天休市 = 有据（{@link AnchorBasis#CLOSED_DAY}，b90f56a2 口径不变）；
+     * 其余归一化 = 时钟推断（{@link AnchorBasis#CLOCK}，保持报警）。
+     */
+    static AnchorDecision decideAnchor(LocalDate fileDate, LocalDate today, LocalTime now,
+                                       LocalDate explicitBasis) {
+        if (explicitBasis != null && !explicitBasis.isAfter(today)) {
+            return new AnchorDecision(explicitBasis, fileDate, explicitBasis, AnchorBasis.EXPLICIT);
+        }
+        LocalDate anchor = normalizeAnchorDate(fileDate, today, now);
+        AnchorBasis basis;
+        if (fileDate != null && fileDate.equals(anchor)) {
+            basis = AnchorBasis.FILE_DATE;           // 没动过：文件本身就是证据
+        } else if (fileDate != null && !TradingSessionPushService.isTradingDayStrict(fileDate)) {
+            basis = AnchorBasis.CLOSED_DAY;          // 休市日导出 → 基准日是上一交易日，确定
+        } else {
+            basis = AnchorBasis.CLOCK;               // 兜底：导入时刻推断
+        }
+        return new AnchorDecision(anchor, fileDate, explicitBasis, basis);
     }
 
     /** 可测版本（包级可见）：把「今天/现在」参数化，便于单测覆盖盘前与盘后两种分支。 */
@@ -395,8 +467,14 @@ public class TradingAppService {
         // 全降级、持仓少 2 只）→ 归一化**没有依据** → 必须继续报警（drift 在该场景会假绿，这条是唯一旁路）。
         LocalDate evidenceDate = anchor.positionsFileDate() != null
                 ? anchor.positionsFileDate() : anchor.cashFileDate();
-        boolean normalizedWithEvidence = evidenceDate != null && anchorDate != null
-                && !TradingSessionPushService.isTradingDayStrict(evidenceDate);
+        // 2026-10-05（P2-交易84）：**依据随锚定落盘**（AnchorBasis）后，判据多一条——
+        // 导入时明确给出「数据基准日」的（EXPLICIT）同样是有据的，不该报警；
+        // 时钟推断（CLOCK）照旧算「无据的归一化」→ 保持 ⚠️ 旁路（2026-09-18 真事故同型仍可见）。
+        // 休市日判据（b90f56a2 口径）一字不改，只做 OR 扩展。
+        boolean basisSaysEvidence = anchor.positionsBasisWithEvidence() || anchor.cashBasisWithEvidence();
+        boolean normalizedWithEvidence = basisSaysEvidence
+                || (evidenceDate != null && anchorDate != null
+                    && !TradingSessionPushService.isTradingDayStrict(evidenceDate));
         // 只有「无据的归一化」才算可疑推断 → 前端据此决定要不要出横幅
         boolean anchorInferred = (anchor.positionsDateInferred() || anchor.cashDateInferred())
                 && !normalizedWithEvidence;
@@ -1278,6 +1356,20 @@ public class TradingAppService {
 
     public PositionImportResult importPositions(String userId, List<PositionImportItem> items, boolean replace,
                                                 LocalDate snapshotDate, BigDecimal brokerTodayPnl) {
+        return importPositions(userId, items, replace, snapshotDate, brokerTodayPnl, null);
+    }
+
+    /**
+     * 持仓导入（2026-10-05，P2-交易84 加 {@code basedOn}）。
+     *
+     * @param basedOn **显式数据基准日**（可选；导入方说清「这份快照是哪天的」）——
+     *                给了它就优先于时钟推断，不再因为「导入时刻 &lt; 09:30」被退到上一交易日；
+     *                在未来 → 不可信，忽略并如实说明（见 {@link #decideAnchor}）。
+     *                为 null → 既有归一化（时钟推断兜底，回执标「无据」）。
+     */
+    public PositionImportResult importPositions(String userId, List<PositionImportItem> items, boolean replace,
+                                                LocalDate snapshotDate, BigDecimal brokerTodayPnl,
+                                                LocalDate basedOn) {
         if (items == null || items.isEmpty()) {
             return new PositionImportResult(0, List.of());
         }
@@ -1358,8 +1450,10 @@ public class TradingAppService {
             positionRepository.saveAll(userId, current);
             // P2-交易34 治本：replace=true 是「以券商文件为准」的全量锚定——记锚定日供增量防重
             // （此后 entryDate ≤ 本日的成交 sync 回放/手动补录将转补录或拒绝，防 replace+回放双计）。
+            AnchorDecision anchorDecision = null;
             if (replace) {
-                recordPositionsReplaceAnchor(userId, snapshotDate);
+                // 2026-10-05（P2-交易84）：锚定日 + **依据**（显式基准日 / 文件日期 / 休市归一化 / 时钟推断）
+                anchorDecision = recordPositionsReplaceAnchor(userId, snapshotDate, basedOn);
                 // 2026-09-12 账实一致性批：同文件记「快照当日持仓基线」——
                 // 对账闸门（integrity）用基线 + 锚点之后流水净增减推应有持仓，与落地持仓比对，
                 // 让「账实不符」当天可见（本次生产事故：口径塌了三天没人报警）。
@@ -1379,7 +1473,7 @@ public class TradingAppService {
             // **不动现金**——显式声明，让「单侧」可审计（现金侧由「资金股份查询」导入负责）。
             log.info("持仓初始化导入 | side=POSITIONS_ONLY（只改持仓，不动现金）| userId={} | 导入 {} 只 | 未设止损 {} 只 | replace={} | 落盘 {} 只",
                     userId, imported, missingStopLoss.size(), replace, current.size());
-            return new PositionImportResult(imported, missingStopLoss);
+            return new PositionImportResult(imported, missingStopLoss, anchorDecision);
         }
     }
 
@@ -1459,8 +1553,16 @@ public class TradingAppService {
         }
     }
 
-    /** 导入结果：导入数量 + 未设止损列表（R68 提示）。 */
-    public record PositionImportResult(int imported, List<String> missingStopLoss) {}
+    /** 导入结果：导入数量 + 未设止损列表（R68 提示）。
+     *  <p>2026-10-05（P2-交易84）：{@code anchor} = 本次落地的锚定日与**依据**（replace=true 才有；
+     *  非全量导入 / 空导入 → null）。回执据此说清「这一天是怎么定下来的」，不再静默推断。 */
+    public record PositionImportResult(int imported, List<String> missingStopLoss, AnchorDecision anchor) {
+
+        /** 兼容构造（无锚定动作：非 replace / 空导入 / 既有测试零改动）。 */
+        public PositionImportResult(int imported, List<String> missingStopLoss) {
+            this(imported, missingStopLoss, null);
+        }
+    }
 
     /**
      * 更新持仓元信息（web 持仓编辑，2026-08-17 补端点：role/止损位，只更新非空字段）。
@@ -1721,9 +1823,22 @@ public class TradingAppService {
     /**
      * 资金股份查询导入（2026-09-12 加 {@code snapshotDate}）：账户快照日期与现金锚定日都用
      * 快照自身日期（文件名日期），为 null 时退回今天（旧行为）。
+     * <p>2026-10-05（P2-交易84）：{@code basedOn} = 导入方显式给出的**数据基准日**（可选）——
+     * 优先于时钟推断，见 {@link #decideAnchor}。
      */
     public CashImportResult importCashQuery(String userId, String content, LocalDate snapshotDate) {
-        LocalDate effectiveDate = snapshotDate != null ? snapshotDate : LocalDate.now();
+        return importCashQuery(userId, content, snapshotDate, null);
+    }
+
+    /** 资金股份查询导入 + 显式数据基准日（2026-10-05，P2-交易84）。 */
+    public CashImportResult importCashQuery(String userId, String content, LocalDate snapshotDate,
+                                            LocalDate basedOn) {
+        // 2026-10-05（P2-交易84）：显式基准日（且不在未来）优先——账户快照日与现金锚定日随之对齐，
+        // 避免「对账看到的是 A 日、落盘锚定成 B 日」的两套口径。
+        LocalDate today = LocalDate.now();
+        LocalDate explicit = (basedOn != null && !basedOn.isAfter(today)) ? basedOn : null;
+        LocalDate effectiveDate = explicit != null ? explicit
+                : (snapshotDate != null ? snapshotDate : today);
         TradingImportParser.CashQuery q = TradingImportParser.parseCash(content);
         // 2026-08-17（P1-交易5 修复）：解析失败（首行「余额/可用/可取/参考市值/资产/盈亏」未命中）
         // 禁止落零覆盖——此前会把 account.json 资产/现金清零、cashBalance 置零且无提示（B51 检查点）
@@ -1799,7 +1914,8 @@ public class TradingAppService {
             if (!positions.isEmpty()) positionRepository.saveAll(userId, positions);
             // S5（2026-08-17）：现金唯一真源 = account.json（上方已保存）——不再写 positions.md cashBalance
             // P2-交易34 治本：资金股份导入 = 现金/资产锚定日（此后 ≤ 本日的转账补记/成交回放需防重）。
-            recordCashImportAnchor(userId, snapshotDate);
+            // 2026-10-05（P2-交易84）：锚定日 + 依据一起落盘，回执如实带上。
+            AnchorDecision anchorDecision = recordCashImportAnchor(userId, snapshotDate, basedOn);
             // C4：差额落账（|差| ≤ 0.005 视为一致，不记——避免每天一条 0 元调整刷屏）
             if (cashAdjustmentRepository != null && cashBeforeImport != null && q.cash() != null) {
                 BigDecimal adj = q.cash().subtract(cashBeforeImport);
@@ -1825,9 +1941,9 @@ public class TradingAppService {
             // RFC 20261003 C1（2026-10-03，单侧动作显式化）：资金快照是**只改现金侧**的动作
             // （外加持仓成本价），**不动持仓数量**——在日志里显式声明，让「单侧」成为可审计的事实，
             // 而不是靠读代码才知道。持仓侧由「持仓股」导入负责（见 importPositions 的 POSITIONS_ONLY）。
-            log.info("资金查询导入 | side=CASH_ONLY（只改现金侧与成本，不动持仓数量）| userId={} | 现金={} 资产={} | 成本更新 {} 只 | 当日盈亏列={}",
-                    userId, cash, q.assets(), updated, todayPnlFromFile);
-            return new CashImportResult(cash, q.assets(), updated, q.unparsedRows());
+            log.info("资金查询导入 | side=CASH_ONLY（只改现金侧与成本，不动持仓数量）| userId={} | 现金={} 资产={} | 成本更新 {} 只 | 当日盈亏列={} | 锚定={}",
+                    userId, cash, q.assets(), updated, todayPnlFromFile, anchorDecision.describe());
+            return new CashImportResult(cash, q.assets(), updated, q.unparsedRows(), anchorDecision);
         }
     }
 
@@ -1847,6 +1963,18 @@ public class TradingAppService {
      * 系统现金里，也不该在，但必须让人看得见（这正是 C5 流水自证带来的能力）。
      */
     public CashReconcile reconcileCash(String userId, String content, LocalDate snapshotDate) {
+        return reconcileCash(userId, content, snapshotDate, null);
+    }
+
+    /**
+     * 资金快照对账 + **显式数据基准日**（2026-10-05，P2-交易84）。
+     *
+     * <p>原实现 {@code snapshotDate != null ? snapshotDate : LocalDate.now()}：不给文件日期就用
+     * 「导入时刻」当天当对账截止日——与落盘锚定的口径可能分叉（dryRun 按 A 日算、落盘锚成 B 日）。
+     * 现在显式基准日（且不在未来）优先，与 {@link #decideAnchor} 同一判据；**时钟只作最后兜底**。
+     */
+    public CashReconcile reconcileCash(String userId, String content, LocalDate snapshotDate,
+                                      LocalDate basedOn) {
         TradingImportParser.CashQuery q = TradingImportParser.parseCash(content);
         if (!q.headerMatched()) {
             throw new TradingException("无法识别资金股份查询格式——请确认首行是「余额:… 可用:… 可取:…"
@@ -1858,7 +1986,11 @@ public class TradingAppService {
         }
         AccountSnapshot cur = accountSnapshot(userId);
         LocalDate anchor = anchorRepository.find(userId).cashImport();
-        LocalDate effectiveDate = snapshotDate != null ? snapshotDate : LocalDate.now();
+        // 2026-10-05（P2-交易84）：显式基准日（非未来）优先于时钟——对账口径与落盘锚定同一判据
+        LocalDate today = LocalDate.now();
+        LocalDate explicit = (basedOn != null && !basedOn.isAfter(today)) ? basedOn : null;
+        LocalDate effectiveDate = explicit != null ? explicit
+                : (snapshotDate != null ? snapshotDate : today);
 
         java.util.Map<String, BigDecimal> sums = new java.util.LinkedHashMap<>();
         java.util.Map<String, Integer> counts = new java.util.LinkedHashMap<>();
@@ -3358,9 +3490,28 @@ public class TradingAppService {
 
     /** 券商快照锚定状态（导入结果与对账闸门共用）：known=false → 无法判断哪些成交已含在快照内。 */
     public record AnchorStatus(LocalDate positionsReplace, LocalDate cashImport,
-                               boolean known, boolean holdingsKnown) {
+                               boolean known, boolean holdingsKnown,
+                               // 2026-10-05（P2-交易84）：锚定日的**依据**（有据/无据）+ 人话说明——
+                               // 老数据（依据未记录）→ null，前端不得据此冒充确定。
+                               String positionsBasis, String cashBasis, String basisNote) {
+
+        /** 兼容构造（依据未记录 —— 老落盘文件 / 既有测试与旧调用零改动）。 */
+        public AnchorStatus(LocalDate positionsReplace, LocalDate cashImport,
+                            boolean known, boolean holdingsKnown) {
+            this(positionsReplace, cashImport, known, holdingsKnown, null, null, null);
+        }
+
         static AnchorStatus of(SnapshotAnchor a, boolean holdingsKnown) {
-            return new AnchorStatus(a.positionsReplace(), a.cashImport(), a.known(), holdingsKnown);
+            AnchorBasis pb = a.positionsBasis();
+            AnchorBasis cb = a.cashBasis();
+            LocalDate latest = a.latest();
+            // 取「生效锚定日」那一边的依据；都记了但只有一边生效时以生效边为准
+            AnchorBasis effective = latest != null && latest.equals(a.positionsReplace()) ? pb : cb;
+            if (effective == null) effective = pb != null ? pb : cb;
+            String note = effective == null || latest == null ? null
+                    : latest + "：" + effective.label() + (effective.withEvidence() ? "（有据）" : "（无据）");
+            return new AnchorStatus(a.positionsReplace(), a.cashImport(), a.known(), holdingsKnown,
+                    pb != null ? pb.name() : null, cb != null ? cb.name() : null, note);
         }
 
         /** 生效锚定日（较晚者；未知 → null）。显式 @JsonProperty：record 默认只序列化组件，
@@ -3438,9 +3589,15 @@ public class TradingAppService {
      *  旧接口只给 int 计数，用户不知道是哪只。</p>
      */
     public record CashImportResult(java.math.BigDecimal cash, java.math.BigDecimal assets,
-                                   int updatedCost, List<String> unparsed) {
+                                   int updatedCost, List<String> unparsed, AnchorDecision anchor) {
         public CashImportResult {
             if (unparsed == null) unparsed = List.of();
+        }
+
+        /** 兼容构造（无锚定信息：既有测试 / 外部调用零改动）。 */
+        public CashImportResult(java.math.BigDecimal cash, java.math.BigDecimal assets,
+                                int updatedCost, List<String> unparsed) {
+            this(cash, assets, updatedCost, unparsed, null);
         }
 
         /** 丢行**条数**——沿用 P2-交易45 的 int 语义（旧响应字段 `unparsedRows` 与既有调用点/测试不变）。 */

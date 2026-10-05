@@ -3,9 +3,9 @@ title: AdaiOS API 文档（接口契约）
 description: 📋 **API 接口契约（唯一真相源）**——全部端点定义与请求/响应结构；`ai-guard-align` A1 与源码 `@Mapping` 逐一对拍
 version: 1
 created: 2026-08-15
-updated: 2026-10-04
+updated: 2026-10-05
 status: active
-lines: 3150
+lines: 3250
 depends-on: []
 related: []
 tags: [fact, reference]
@@ -15,7 +15,7 @@ tags: [fact, reference]
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.96 | 最后更新：2026-10-04**
+**文档版本：v3.98 | 最后更新：2026-10-05**
 
 ---
 
@@ -23,6 +23,9 @@ tags: [fact, reference]
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-10-05 | v3.99 | **learn 域三条收口（REVIEW P2-learn34 / P2-分享4 / P2-learn33）**——① **新增 2 端点**：`POST /learn/cards/expand`（把索引卡展开成**衍生**全文卡 + 三行要点：原卡不动 · 幂等不重烧模型 · 无素材人话拒绝 · **同步 LLM**）与 `GET /learn/cards/expansions`（「待展开」可见状态清单，`hasSource=false` 时前端不给入口）· ② **新增 2 个任务状态值**：**`expired`**（`needs_confirmation` 的 30 分钟确认窗口过期后，**内存清理与落盘账标记同一时刻成立**——治「决策入口 30 分钟即消失、账上却永久留『待确认』」的僵尸任务；读账路径亦懒清理）与 **`not_queued`**（连续分享时第二条**如实说「没排上」**并**单独入账**，不再假装 `running`；Feed 与 iOS 分享扩展同步按此短路，不再把「另一条读好了」当自己的结果报出来）· ③ 两个状态值出现在 `GET /learn/digest/jobs`、`GET /learn/digest/status` 与 `POST /learn/digest` 的响应与文案里。**端点 170 → 173**（含 v3.98 的 `POST /trading/plans/{date}/status`）。 |
+| 2026-10-05 | v3.98 | **无交易日缺「今天没动」的落点（REVIEW P2-交易72）——把用户「没有地方填的状态」补上**。用户原话（2026-09-23）：「**那我今天没有买卖 怎么告诉你呢 你还在等我的数据**」——阿呆方向是对的（「没买卖本身是完整信息」，并给了三种回法：今日无操作 / 今天买了卖了 XXXX / 今天想动没动），但这三种**只能靠聊天框手打**，双端没有界面落点；定性＝**状态回填的交互缺口**（不是数据缺失）。① **新端点 `POST /trading/plans/{date}/status`**：body `{"status":"NO_TRADE"\|"WANTED_NOT_ACTED"}`，认不出的值 → 400 人话（不猜、不替他记）。② **落点复用同一天的既有记录**（`trading/plans/{date}.json` 新增 `dayStatus` 字段）——「明天不动」是事前写、「今天没动」是事后填，**同一份记录、同一语义的两个时间方向**；**不另立存储**（另立即孤岛），也**不塞进流水**（`TradeRecord` 是成交，「没动」写成 volume=0 的假流水会污染持仓重建/现金/盈亏/复盘的所有下游）。③ **两条写路径互不吞字段**：回填状态不动既有 `items`/`note`；`POST /plans/{date}`（覆盖写计划）保留已填的 `dayStatus`；同日「读-改-写」进 service 层 stripe lock（与 P3-18 同族坑）。④ **同日同状态重复提交幂等**：值没变则**不重写盘**，响应 `recorded=false`；改状态是有效更正 → `recorded=true`。`GET /plans/{date}` 与 `GET /plans/{date}/review` 响应新增 `dayStatus`（旧文件缺字段读作 `""`，**additive**，旧客户端零破坏）。⑤ **双端已接**（web 桌面 + App）：交易页首屏一行两个一键盘点（「今天没动」/「想动，没动」），文案遵守第一原则 B1 且**不加「必须汇报」的压力**；前端本地已知同状态时**连请求都不发**，并如实说「已经记着了」。口径对齐 **P2-交易67**（有自算账照常出复盘；「无操作」是完整信息，R119「零仓位也是交易」）。**端点 170 → 171**；后端 **+14**（Service 6 · Controller 8）· web **+4** · app **+4** |
+| 2026-10-05 | v3.97 | **锚定日依据显式化（REVIEW P2-交易84）——不再用「导入时刻」猜「数据基准日」**。先说调研结论：四类导入中只有 `POST /trading/imports/save` 是 multipart（且文件落到服务端的 mtime = **上传时刻**，不是数据基准日 → 「文件 mtime」这条路**不可行**）；`positions/import` / `trades/import` / `imports/cash` / `sold/import` 收到的都是**文本/JSON**，而通达信「持仓股 / 资金股份查询」导出**内容里没有日期行**（实测 2026-09 样本首行即表头）→ 「内容基准日」也**不可行**。故采用 REVIEW 给出的第三条路：**显式让用户选基准日**。①`POST /trading/positions/import` 新增可选 query **`basedOn`**（`yyyy-MM-dd`）、`POST /trading/imports/cash` 新增可选 body **`basedOn`** = **显式数据基准日**：给了它就**优先于导入时刻**（09:26 导出、09:28 导入不再被退到上一交易日→不再与快照双计）；不传 = 既有归一化不变（**时钟推断只作最后兜底**）。②**依据随锚定落盘**：`trading/snapshot-anchor.json` 新增 `positionsBasis`/`cashBasis` ∈ `EXPLICIT`（显式）/`FILE_DATE`（文件日期）/`CLOSED_DAY`（休市日归一化）= **有据**，`CLOCK` = **无据**；老文件无字段 → 不可判定（不诬告）。③**任何归一化都不许静默**：两个导入响应新增 **`anchor`**（`{anchorDate,fileDate,basis,withEvidence,note[,explicitDate,explicitRejected]}`，`note` 可直接展示），`GET /trading/integrity` 的 `anchor` 增 **`positionsBasis`/`cashBasis`/`basisNote`**，且 `degraded[].inferred` 判据 OR 上「有据」——**显式基准日的归一化不再报警**（b90f56a2 的休市日口径一字不改），`CLOCK` 照旧报警。④**未来日期仍不可信**（P2-10 保护不放松）：显式基准日在今天之后 → 忽略 + 落回兜底 + 标 `CLOCK` + 回执说明「已忽略」，绝不把锚定日写进未来。⑤**前端已接**（web）：持仓/资金两个导入框新增「数据基准日（可选）」输入（默认留空 = 行为与今天完全一致，零回归），非法日期在弹窗内人话拒绝；导入回执 toast 带出依据。**端点 170 不变**（仅加可选参数 + 响应扩字段，全部 additive） |
 | 2026-10-04 | v3.96 | **C 档「丢行可见」收口（REVIEW P2-交易83 / P2-交易58）+ 契约文档对齐（P2-文档1 / P2-文档3）**——三处**响应扩字段**（全部 **additive**，旧客户端零破坏）：① `GET /trading/market-data/health` 新增 **`fallbackHealthy`**（兜底源新浪**最近一次主动体检**的结果；`false` 时 `ok` **仍可能为 `true`**——主源正常而兜底已挂，属「事前可见」而非链路故障）与 **`fallbackLastProbeAt`**（体检时刻；`null` = 还没探过或兜底已关闭，启用与否看 `sources`）；② `POST /trading/sold/import` 新增 **`unparsed`**（字符串数组，逐条 = 行号 + 原文 + 原因）与 **`unparsedCount`**（= 数组长度），解析层没看懂的行不再静默丢弃，**空则不带**这两个字段（按 symbol upsert，丢行不删档案，故不 fail-closed 但必须可见）；③ `POST /trading/imports/cash` 同样新增 **`unparsed`** / **`unparsedCount`**（回答「是**哪只票**的精确成本没更新」），**`unparsedRows` 保持 int 不变**——web 按数字解析该字段，改类型会把导入直接打挂，故升级一律走**加字段**式。**同批文档对齐（代码自 v3.65 / 2026-09-26 起即如此，本批只是补登，无行为变化）**：`POST /trading/trades/import` 响应段补上 v3.65 就已存在的 `unparsed`/`unparsedCount`（原文漏列，却以「与它同口径」为对齐依据）；`POST /conversations/end` 段把幂等口径补全为「幂等键 `conversationRecordId` **+** turns 指纹 `conversationTurnsHash` **两者同时成立**才命中；**内容变了要新落一条**、返回新的 `recordId`/`summary`；旧卡缺指纹退化为逐条比对 turns 文本序列」（与 `feature-reference.md` §3 逐字一致）。**端点 170 不变**（仅响应扩字段 + 文档对齐） |
 | 2026-09-28 | v3.93 | **行情渠道收敛与稳定（RFC `20260928-market-source-consolidation` 批 2；用户「几个行情渠道，目前什么情况，有稳定的吗」→「东财可删」「整理个稳定的方案，包括腾讯第二域名」）**——先说实测（2026-09-28 生产逐源直连）：**腾讯实时行情 200 · 腾讯 K 线新域名 200 · 老域名 200（09-22 那次 501 已恢复）· 新浪 200 · 东财 `push2his` 000（连接层，连 HTTP 码都拿不到）· tdx 数据止于 09-04**，而四层链路（tdx → 腾讯 → 东财 → 新浪）**名义冗余、实测只有一层在干活**（东财 7 天 1711 失败/182 成功；新浪从未被记录过一次成功或失败）→ 稳定全靠**腾讯单点**。① **批 1（配置级，已上生产）**：`ADAI_MARKET_TENCENT_KLINE_BASES` 配**两条**（新域名 + `web.ifzq.gtimg.cn`，按序尝试、第一个成功即停）；**真链演练**把主域名打成不可达 → 23 次失败**全部由第二域名顶上**且 `health` 报 `ok=true`。② **批 2（本批代码）**：**东财 K 线源出链路并删除该类**（`EastMoneyKlineDataSource`；东财的除权因子 `datacenter-web` 与名称解析 `searchapi` 实测可达，**不动**），**新浪由「最后一层」升为兜底** → 链路收敛为 `tdx → 腾讯（双域名）→ 新浪`；**新浪补可观测**（成功 INFO / 空 WARN，原先两者全静默）；**`tdx-enabled` 补环境变量挂钩** `${ADAI_TDX_ENABLED:true}`（原硬编码 → `.env` 配了静默不生效，2026-09-14 adj-path 事故同型），**`kline-primary` 随东财一并移除**（无第二主源可选，留着就是假开关）；③ **tdx 按用户真实节奏（一周导入一次）降噪**：滞后日志由每天 1300～2100 条 `WARN` 改为**同一滞后日期只记一条 `INFO`**，`tdxStale` 阈值仍 3 天（导入后第 4 天起自动走网络源，安全优先）；**不做「滞后即全局跳过本地读」**——滞后是**逐标的**的（实测同时存在停 09-04 与 09-18 两批），全局跳过会误杀仍然新鲜的标的。④ **`GET /trading/market-data/health` 响应增 `tdxLastDate`**（本地数据包最后一根 K 线日期，`null` = 本地关掉/还没取过）——周导入节奏下「该导数据包了」有了机器可读判据，不再只靠日志。**端点 160 不变**（仅响应扩字段）；后端 **2227 → 2228** |
 | 2026-09-26 | v3.92 | **截图候选自动带成交日期（竖排解析补 `tradeDate`）+ `summary` 出口与正文共用剥离**——① `POST /trading/screenshots` 的候选在「VLM 把表格拆成一列一行」的**竖排**版式下也会抽出**成交日期**：日期行从数据行序列中摘出（避免打断「数量 → 成交额 → 时间」的向下取链）作游标推给其后的成交；**判据保守**——日期行必须排在成交**之前**（列序不可信时整批返回 null，绝不猜）。此前竖排候选恒缺日期，而 v3.32 起「无日期禁止落库」→ 每笔都要用户手点「补日期」；**契约形状不变**（`tradeDate` 字段早已存在）。② `POST /conversations/end` 的 `summary` 与正文**共用同一个后台提示剥离出口**（此前只剥正文，「JSON 如下？」会作为**持久脏数据**落进 summary → 卡片与记忆）。后端 **2220 → 2225** |
@@ -554,6 +557,15 @@ tags: [fact, reference]
 }
 ```
 
+> **对话里给出的动作会落进待办（REVIEW P2-交易73 批）**：end 时 AI 回执里若带 `actions`
+> （这场对话里阿呆明确让对方去做的具体事，最多 3 条），服务端会逐条落进**既有待办**
+> （`data/{userId}/todos/`，`sourceRecordId` = 本次 `recordId`，到期日 = **次日**），
+> 并把它们写成该条记忆的**待行动事项**——于是它们会在：(a) 用户**下次对话**（`ContextEngine`
+> 的「待行动事项」注入）、(b) **次日早盘**（既有 `todo-due` 提醒，用户可关）被捞回；
+> 用户在清单里划掉后**不再被捞回**（待办 DONE → 记忆 `markDone`）。**响应形状不变**；
+> 抽不出动作 → 一条都不落（**沉默是默认项**，RFC 20260923）。幂等：同卡重复 end 不重复落，
+> 同标题的未完成待办已存在也不重复落（既有待办一字不动：只增不改不删）。
+
 ---
 
 ## 3. Feed 流
@@ -945,7 +957,9 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 ```json
 {
   "anchor": {"positionsReplace":"2026-09-09","cashImport":"2026-09-09","known":true,
-             "holdingsKnown":true,"anchorDate":"2026-09-09"},
+             "holdingsKnown":true,"anchorDate":"2026-09-09",
+             "positionsBasis":"EXPLICIT","cashBasis":null,
+             "basisNote":"2026-09-09：按你指定的数据基准日（有据）"},
   "holdingsKnown": true,
   "drift": [{"symbol":"002428","name":"云南锗业","snapshotQty":300,"ledgerDelta":100,
              "derived":400,"holdings":350,"diff":-50,
@@ -956,6 +970,11 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 }
 ```
 - `anchor` = 与导入响应同一结构；`holdingsKnown` = 快照基线是否已记录（决定能否对账）
+- **`anchor.positionsBasis` / `cashBasis` / `basisNote`（v3.97，2026-10-05，P2-交易84）**：锚定日的**依据**——
+  `EXPLICIT`（导入方显式给出的数据基准日）/ `FILE_DATE`（直接采用文件日期）/ `CLOSED_DAY`（文件日期当天休市，基准日取上一交易日）三种**有据**；
+  `CLOCK` = **无据**（时钟推断兜底）。`basisNote` = 一句可直接展示的人话（如「2026-09-09：按你指定的数据基准日（有据）」）；
+  老落盘文件无此字段 → `null`（不可判定，**不诬告**）。`degraded[].inferred` 的判据随之收紧：
+  **有据的归一化（含 EXPLICIT）→ 不算可疑推断 → 不出横幅**；`CLOCK` 仍照旧报警（2026-09-18 事故的旁路不放松）
 - `drift[]`：`snapshotQty`（快照基线，缺则 `null`）/`ledgerDelta`（锚定日之后流水净增减）/`derived`（应有）/`holdings`（落地）/`diff`（落地−应有）/`note`（人话）；`diff=0` 的标的不列出
 - `gaps[]`：重放时**卖超/未持有**的缺口行（与导入响应 `rejected` 是同一件事，可重复核算，不依赖当时返回）——缺口行**既不计入 `derived` 也不计入 `ledgerDelta`**（否则会得出「应有 −800 股」这种荒谬结论），只以 `gaps` 报出等人工核对/重导快照
 - **降级诚实**：锚定缺失 → `anchor.known=false` + `note`「无法判定」+ `drift:[]`；锚定有但基线未记录（`holdingsKnown=false`）→ 同样不误报差异，`note` 指路「重导一次『持仓股』快照即可建立基线」
@@ -1329,7 +1348,16 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 
 **body（v3.61）**：`{"content":"…转码后文本…","snapshotDate":"2026-09-09"}`——`snapshotDate` 可选（`yyyy-MM-dd`，兼容 `yyyyMMdd`），语义 = **快照自身日期**（通达信「资金股份查询」文件名里的日期）：该日期同时作为**账户快照日期**与**现金锚定日**（`trading/snapshot-anchor.json` 的 `cashImport`）；不传则退回导入日（今天）。补导几天前的资金文件必须传它，否则现金锚定日偏晚会把快照日之后、锚定日之前的现金变动误判为已包含。格式错 → 400 人话。
 
+**body（v3.97，2026-10-05，P2-交易84）**：可再加 **`basedOn`**（`yyyy-MM-dd`，可选）= **显式数据基准日**（导入方说清「这份快照是哪天的」）——
+给了它就**优先于「导入时刻」推断**（09:26 导出、09:28 导入不再被退到上一交易日）；同时作为**账户快照日期与现金锚定日**，与 `dryRun` 对账口径同判据。
+**在未来 → 不可信**：忽略并落回时钟兜底，依据标 `CLOCK`（回执 `anchor.explicitRejected=true` 如实说明被忽略）。`snapshotDate`（导出日）语义与归一化规则不变。
+
 **响应（v3.65）**：`{"cash":1381.93,"assets":79231.93,"updatedCost":3,"unparsedRows":0}`——`unparsedRows`（P2-交易45）= 明细里**没看懂的行数**（>0 → 这些持仓的「精确成本」本次没更新；不阻塞导入，但不静默）。**同时收紧首行校验**：正则命中首行但「余额/可用/可取/参考市值/资产/盈亏」任一项读不成数字（如 `余额:1.2.3`）→ **400 人话拒绝导入**（原来 `null` 会一路写进账户快照，资产/现金变空且无提示）。
+
+**响应（v3.97，2026-10-05，P2-交易84）**：新增 **`anchor`**（可选，additive——成交导入侧的 `anchor` 同结构）：
+`{"anchorDate":"2026-09-18","fileDate":"2026-09-18","basis":"EXPLICIT","withEvidence":true,"note":"锚定日 2026-09-18：按你指定的数据基准日（有据）"}`。
+`basis` ∈ `EXPLICIT`/`FILE_DATE`/`CLOSED_DAY`（**有据**）| `CLOCK`（**无据**，时钟推断兜底）；被忽略的未来基准日额外带 `explicitDate` + `explicitRejected:true`。
+**任何归一化都不许静默**：这份回执就是「这一天是怎么定下来的」的出口（`note` 可直接展示）。
 
 **`unparsed` / `unparsedCount`（P2-交易83，2026-10-04）**：`unparsedRows`（int）只说了「有几行没看懂」，用户不知道**是哪只**的精确成本没更新——>0 时同一份响应用于额外返回人话明细
 `{"cash":1381.93,"assets":79231.93,"updatedCost":3,"unparsedRows":1,"unparsed":["第 4 行「这不是明细行 xxx」：证券代码「这不是明细行」不是 6 位数字"],"unparsedCount":1}`。
@@ -1367,6 +1395,9 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 **query**：`replace`（可选，默认 `false`）——2026-08-18 确认批次：`replace=true` = **全量覆盖**（以文件为准，导入后移除文件里不存在的持仓，含 0 股残留；web 通达信持仓导入默认传 true）
 **query（v3.61）**：`snapshotDate`（可选，`yyyy-MM-dd`，兼容 `yyyyMMdd`）——**快照自身日期**（通达信「持仓股」文件名里的日期）。`replace=true` 时该日期作为**券商快照锚定日**并记录**持仓基线**（`trading/snapshot-anchor.json` 的 `holdings`，对账闸门 `GET /trading/integrity` 用它算 `derived`）；不传则退回导入日（今天）。补导几天前的快照文件必须传它——否则锚定日被写成今天，锚定日之后、快照之前的真实成交会被误判为「已含在快照内」而丢掉持仓/现金增量。格式错 → 400 人话。
 **query（v3.62）**：`todayPnl`（可选，数字，两位小数）——**券商「持仓股」导出「当日盈亏」列的全表之和**（🔴 **含 0 股行**：当日清仓标的的已实现盈亏也在这一列里，漏掉 0 股行会少算）。这是账户卡「当日盈亏」的**权威口径**（2026-09-13 用户实测：该列此前从未被读，系统只能退回自算，而自算值会错——真值 −1759.00 被自算成 −2837.00）。后端**三闸才写**：①值为空（文件没这一列 / 有行取不到数 → 前端不传）**不写**，保留账户旧值；②无账户快照（未导过资金股份）**不写**；③**`snapshotDate` ≠ 账户快照日 `snapshotDate` 不写**——「当日」必须同日，否则就是把 A 日的当日盈亏贴到 B 日的快照上。写前若账户已有同日值且不同 → WARN 记录两个口径与差值（以券商为准）。传非数字 → 400 人话（不静默忽略）。**当日盈亏三源优先级**：券商文件（权威，限同日）> 收盘 15:05 精确计算（口径①：当日已实现 + 持仓日浮动 + 当日股息/红利税）> 保留旧值；任何情况下**不落零**。
+**query（v3.97，2026-10-05，P2-交易84）**：`basedOn`（可选，`yyyy-MM-dd`）= **显式数据基准日**（用户/前端说清「这份快照是哪天的」）——
+给了它就**优先于「导入时刻」推断**（09:26 导出、09:28 导入不再被退到上一交易日）；`snapshotDate`（导出日）语义与盘前/休市日归一化规则**不变**。
+**在未来 → 不可信**（P2-10 保护不放松）：忽略，落回时钟兜底，依据标 `CLOCK`（回执 `anchor.explicitRejected=true` 如实说明「已忽略」）。
 
 **body**（数组，可空）：
 ```json
@@ -1380,6 +1411,11 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 - ⚠️ **前端调用方（含本仓 adai-web）在 `replace=true` 下必须先确认「文件每一行都解析成功」再提交**：全量覆盖语义下漏一行 = 那只持仓被**静默删除**。adai-web 已按此 **fail-closed**（有看不懂的行 → 不发请求 + 弹窗逐行摆原因，2026-09-13 负成本批）
 
 **响应**：`{"imported":2,"missingStopLoss":["600519 贵州茅台",...]}`（未设止损列表，前端提示补设）。按 symbol upsert（已存在更新，不存在新增）。需 trading 插件（403）。
+**响应（v3.97，2026-10-05，P2-交易84）**：`replace=true` 时新增 **`anchor`**（additive）——
+`{"anchorDate":"2026-09-18","fileDate":"2026-09-18","basis":"EXPLICIT","withEvidence":true,"note":"锚定日 2026-09-18：按你指定的数据基准日（有据）"}`。
+`basis` ∈ `EXPLICIT`（显式基准日）/`FILE_DATE`（文件日期）/`CLOSED_DAY`（休市日归一化）= **有据**，`CLOCK` = **无据**（时钟推断兜底）；
+未来基准日被忽略时额外带 `explicitDate` + `explicitRejected:true`。**任何归一化都不许静默**——依据随锚定落盘（`snapshot-anchor.json` 的 `positionsBasis`/`cashBasis`），
+`GET /trading/integrity` 的 `anchor` 与 `degraded[].inferred` 判据同源（有据的归一化不再报警，`CLOCK` 照旧报警）。
 
 ### `PUT /api/v1/trading/positions/{symbol}` — 更新持仓元信息（web 持仓编辑，2026-08-17 补端点）
 
@@ -1495,12 +1531,12 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 
 ### `GET /api/v1/trading/profile` — 个人交易画像（RFC 20260905 A 层，v3.47）
 
-客观统计（系统从清仓史实时推导）+ 建议遵守率 + 主观层原文（profile.md）。需 trading 插件（403）。
+客观统计（系统从**逐笔回合**实时推导；P2-认知2，2026-10-05 起数据源由清仓表切到「买入批次 → 卖清」的回合，字段 `soldCount` 随之改名 `roundCount`）+ 建议遵守率 + 主观层原文（profile.md）。需 trading 插件（403）。
 
 **Response** `200`
 
 ```json
-{"stats":{"soldCount":168,"winRatePct":33.3,"medianPnlPct":-1.54,
+{"stats":{"roundCount":232,"winRatePct":33.3,"medianPnlPct":-1.54,
   "disciplineViolationCount":91,"disciplineViolationRatePct":54.2,"avgHoldDays":12,
   "verdictBreakdown":{"盈利了结":57,"扛单超 5%":37,"短持仓亏损":54}},
  "objectiveText":"## 你的交易画像（客观统计…）",
@@ -1509,6 +1545,7 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 ```
 
 > 红线：数字系统算（不靠 LLM 编造）、主语是你（合规）。
+> 口径（P2-认知2）：`roundCount` = 已了结**回合**数（一批买入 → 卖清算一个回合），不是清仓表行数——同一标的做过 N 轮就是 N 个回合（生产实测 172 行清仓表 ≈ 232 个回合）。`adviceAdherence` 与逐票历史对照仍以清仓表（sold.json）为源，单位是清仓笔。
 
 ### `PUT /api/v1/trading/profile` — 保存画像主观层（RFC 20260905 A 层，v3.47）
 
@@ -2553,6 +2590,45 @@ chat 模式（全屏）
 
 **流程（服务端）**：判源类型 → 抓元数据 + 字幕/正文（**源必留痕** `_raw/`）→ 有字幕直接结构化；**无字幕 → 报价 + 等确认**（见 `/digest/confirm`）→ 云端转写 → LLM 六段结构化 → 落卡片 → 轮询回 `done`
 
+### `POST /api/v1/learn/cards/expand` — 把索引卡展开成衍生全文卡（v3.99）
+
+> REVIEW P2-learn33（2026-10-05）：学习卡停在「**索引层**」——有卡、无展开。本端点把一张卡展开成**衍生**全文卡 + 三行要点，**原卡一字不动**。
+
+**Body**
+
+| 字段 | 类型 | 必填 | 说明 |
+|:-----|:-----|:----:|:-----|
+| `type` | String | 是 | 卡片类型 ai/trading/other |
+| `title` | String | 是 | 卡片标题（与 type 一起定位卡片） |
+
+**Response** `200`：
+
+```json
+{ "type": "ai", "title": "稳定宽松的货币政策", "derivedFrom": "稳定宽松的货币政策",
+  "status": "ok", "message": "展开好了：《稳定宽松的货币政策》——原卡还在，三行要点和全文在新卡里" }
+```
+
+- `status`：`ok`（新生成衍生卡）/ `exists`（**已展开过 → 幂等，不再烧模型**）/ `expanding`（**同一张卡已有一个展开在跑**——并发第二个调用者拿到这句，**不重复烧模型**；文案「这张正在展开，等它读完再点一次」）
+- 产物是**新卡**（frontmatter `derived_from: 原卡标题`，全文落 `## 展开全文` 段）；原卡内容与元数据不变
+- `400`：卡片不存在 / **这张卡没留原始素材**（人话拒绝，**不硬编一篇**）
+- ⚠️ **素材按「这张卡」取**（2026-10-05 对抗审查修）：卡生成时把用到的素材记进 frontmatter `source_assets`，展开只读这份记录；**2026-10-05 之前落的老卡没有该字段 → 一律视为「没素材」**（重新整理一次来源才能展开）——**刻意不用「同主题素材」兜底**，否则会拿同主题里别的卡的素材编出一张对不上的衍生卡
+- `403`：learn 插件未启用（属「整理能力」，不适用 v3.72 的接收降级）
+- ⚠️ **同步 LLM 调用**（前端按长超时客户端处理，如 120s）；展开中再次调用由幂等兜住
+
+### `GET /api/v1/learn/cards/expansions` — 展开状态清单（v3.99）
+
+> 学习页据此把「**待展开**」做成**可见状态**（而不是靠用户想起来）。与上面的 `expand` 配对：这个答「哪些待展开」，那个做展开。
+
+**Response** `200`：
+
+```json
+{ "items": [ { "type": "ai", "title": "…", "topic": "…", "hasSource": true, "expanded": false, "expandedTitle": null } ] }
+```
+
+- `hasSource`：这张卡是否留有 `_raw` 素材——`false` 时前端**不给「展开」入口**（点了也只能靠编）
+- `expanded` / `expandedTitle`：已展开 → 指向衍生卡标题（原卡仍在）
+- 只读卡照常列出（可展开）；`403`：learn 插件未启用
+
 ### `POST /api/v1/learn/cards/feedback` — 产物反馈 → 长期偏好（v3.73）
 
 > RFC `.agents/direction/rfc/20260917-learn-representation.md` §五 2b：用户说一句「太啰嗦」，**下一次**整理出来的卡片就会变。
@@ -2581,6 +2657,8 @@ chat 模式（全屏）
 ### `POST /api/v1/learn/digest/confirm` — 转写费用确认（v3.57）
 
 > RFC 20260912 §3.8「费用可控条 5：单次可预期」——抓到无字幕视频时先回一条报价，**用户点头后才真花钱**。
+>
+> **2026-10-05（P2-learn34 对抗审查修）**：确认窗口有 **30 分钟 TTL**，且**付费路径自己校验**——超 TTL 后调用本端点会走与读路径**同一个**过期处理（账标 `expired` + 人话「这次没确认，已经过期；要读就再分享一次」），`transcribe` **零调用**。此前 TTL 只由读路径（`/digest/status`、`/digest/jobs`）懒清理，「客户端从不轮询」时超时点头**仍会真花钱**——同一事实两种结果，已统一。
 
 **Body**
 
@@ -3114,7 +3192,7 @@ R66 收盘跌破止损位未当日走（基准取 R72 的 3-5% 中值 −4%；**
 
 ```json
 {
-  "date": "2026-10-08", "note": "只做计划内的票",
+  "date": "2026-10-08", "note": "只做计划内的票", "dayStatus": "",
   "items": [ {"id": "plan_…", "action": "SELL", "symbol": "600206", "name": "",
               "condition": "跌破 45.5", "condOp": "LT", "condPrice": 45.50,
               "quantity": null, "text": "600206 跌破 45.5 清仓", "done": false} ]
@@ -3123,6 +3201,8 @@ R66 收盘跌破止损位未当日走（基准取 R72 的 3-5% 中值 −4%；**
 
 `text` = **用户的原话**（提醒时必须引用、不得改写）；`condOp`/`condPrice` 只服务对账判定，
 与 `condition` 分开存——避免「为了能算而改用户的话」。
+`dayStatus`（v3.98，P2-交易72）= 当天事后回填的状态（`""` 没填 / `NO_TRADE` 没动 / `WANTED_NOT_ACTED` 想动没动），
+见 `POST /trading/plans/{date}/status`。
 
 ### `POST /api/v1/trading/plans/{date}` — 写某天的操作计划（v3.94，2026-10-03）
 
@@ -3148,3 +3228,23 @@ body：`{"lines": ["600206 跌破 45.5 清仓", "明天不动"], "note": "只做
 
 `triggered` = 条件是否被当日行情触及（null = 无法判定：无条件 / 无行情 / 无标的）；
 `executed` = 当日是否有同标的同方向的成交（null = HOLD 类不适用）。
+
+### `POST /api/v1/trading/plans/{date}/status` — 当天事后的状态回填（v3.98，2026-10-05，P2-交易72）
+
+body：`{"status": "NO_TRADE"}`（今天没动）或 `{"status": "WANTED_NOT_ACTED"}`（想动，最后没动）。
+**认不出的值 → 400 人话**（不猜、不替用户记一个他没说过的状态）。需 trading 插件。
+
+**落点是这一天的记录本身**（`data/{userId}/trading/plans/{date}.json` 的 `dayStatus` 字段，与
+`GET|POST /trading/plans/{date}` 同一份文件），**不是另立存储**——「明天不动」是事前写、「今天没动」是事后填，
+同一语义的两个时间方向。**不改动既有 `items`/`note`**；反过来 `POST /plans/{date}`（覆盖写计划）也保留已填的 `dayStatus`。
+
+**同日同状态重复提交幂等**：值没变则**不重写盘**，响应 `recorded=false` —— 客户端据此说「已经记着了」，
+**不得假报一次落库**。改状态（没动 → 想动没动）是有效更正，`recorded=true`。
+
+```json
+{ "date": "2026-10-12", "note": "", "dayStatus": "NO_TRADE", "recorded": true, "items": [] }
+```
+
+`GET /trading/plans/{date}` 与 `GET /trading/plans/{date}/review` 的响应同时新增 `dayStatus`（`""` = 没填）。
+口径对齐 P2-交易67：**「没动」是完整信息，不是缺数据**——它与收盘复盘的「今天没有成交记录」互相印证
+（R119「零仓位也是交易，你交易的是『不买』」）。旧文件缺该字段 → 读作 `""`。

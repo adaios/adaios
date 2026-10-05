@@ -22,9 +22,14 @@ class LearnDigestTaskFileRepositoryTest {
     private final LearnDigestTaskFileRepository repository = new LearnDigestTaskFileRepository(storage);
 
     private static LearnDigestTask task(String id, String status, String title) {
+        return taskAt(id, status, title, "2026-09-23T23:06:05");
+    }
+
+    /** 指定提交时刻的账（位次判据只看 submittedAt）。 */
+    private static LearnDigestTask taskAt(String id, String status, String title, String submittedAt) {
         return new LearnDigestTask(id, "https://mp.weixin.qq.com/s/jsOBc6WCH", "央行报告", "mp.weixin.qq.com",
                 status, null, null, "other", title, "中国货币政策",
-                "2026-09-23T23:06:05", "done".equals(status) ? "2026-09-23T23:06:24" : null);
+                submittedAt, "done".equals(status) ? "2026-09-23T23:06:24" : null);
     }
 
     @Test
@@ -62,6 +67,27 @@ class LearnDigestTaskFileRepositoryTest {
 
         List<LearnDigestTask> tasks = repository.findRecent("adai", 10);
         assertEquals(List.of("dtask_2", "dtask_1"), tasks.stream().map(LearnDigestTask::id).toList());
+    }
+
+    /**
+     * P3（独立审查 2026-10-05）：位次只认 {@code submittedAt}——给一条**旧账**标「过期 / 没排上」
+     * 时它必须留在原时间位次，不得被顶成「最新」。
+     *
+     * <p>原实现按「谁最后写」插到文件头：一条 09-25 的旧账（P2-learn34 的过期写路径）会跳到
+     * 09-30 那条前面，学习页把很旧的任务排在最新——位次失真比状态失真更难察觉。
+     */
+    @Test
+    void save_oldTaskStatusAdvance_keepsChronologicalPosition() {
+        repository.save("adai", taskAt("dtask_new", "done", "新的那条", "2026-09-30T10:00:00"));
+        repository.save("adai", taskAt("dtask_old", "needs_confirmation", "旧的那条", "2026-09-25T05:13:00"));
+
+        // 旧账标过期（P2-learn34 的写路径：同 id 再写一次，状态推进）
+        repository.save("adai", taskAt("dtask_old", "expired", null, "2026-09-25T05:13:00"));
+
+        List<LearnDigestTask> tasks = repository.findRecent("adai", 10);
+        assertEquals(List.of("dtask_new", "dtask_old"), tasks.stream().map(LearnDigestTask::id).toList(),
+                "位次按 submittedAt（提交时刻）排——旧账标过期不许跳到「最新」第一位");
+        assertEquals("expired", tasks.get(1).status(), "状态本身仍要如实更新");
     }
 
     @Test

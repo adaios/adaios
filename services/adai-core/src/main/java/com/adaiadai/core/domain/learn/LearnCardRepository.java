@@ -52,6 +52,32 @@ public interface LearnCardRepository {
     }
 
     /**
+     * 记下**这张卡用了哪些原始素材**（素材文件名，落 frontmatter {@code source_assets: [...]}）——
+     * P2-learn33 对抗审查 A 修复（2026-10-05）。
+     * <p>
+     * <b>为什么必须按卡记而不能按主题找</b>：素材落盘名（{@code pasted-<hash>.txt} / 转写稿 /
+     * {@code image-N-<hash>.png}）**不含卡名**，而 {@code _raw/} 是**主题级**目录——同一个主题下
+     * 多张卡共用它。按主题取素材会让「自己没素材的卡」拿到同主题别的卡的转写稿去生成衍生卡
+     * （内容对不上）；按卡记下来，取用才有据。
+     * <p>
+     * 老卡（无该字段）**一律视为没留素材**，调用方不得回退到主题目录扫描。
+     * 默认实现 no-op（测试桩/其它实现不必改）。
+     */
+    default void writeSourceAssets(String userId, String type, String title, List<String> names) {
+    }
+
+    /**
+     * 读这张卡记下的素材文件名（frontmatter {@code source_assets}）。
+     * <p>
+     * 没记（老卡 / 别处整理的卡 / 当时留痕失败）→ 空列表——调用方按「这张卡没留原始素材」处理，
+     * **不得**回退到 {@link #rawAssets}（主题目录扫描正是本方法要取代的东西）。
+     * 默认实现返回空（测试桩无需实现）。
+     */
+    default List<String> sourceAssets(String userId, String type, String title) {
+        return List.of();
+    }
+
+    /**
      * 按 type + 标题精确读取。**本产品产出卡优先**；若只有别处整理的手工卡，则返回它
      * （writable=false，调用方按只读处理）。同为本产品产出且多张同名 → 抛 LearnException 400
      * （列出 created 日期，提示人工合并）——禁止静默取最新改错卡（P1-learn2）。
@@ -249,4 +275,31 @@ public interface LearnCardRepository {
      * @return 实际归位的素材名
      */
     List<String> promoteRaw(String userId, String type, String topic, List<String> names);
+
+    /**
+     * 该卡是否已有「展开」产物——返回衍生卡的标题；没有 → null（= 待展开）。
+     * <p>
+     * P2-learn33（2026-10-05）：学习卡停在「索引层」时，阿呆可以把它**展开**成一篇全文 + 三行要点；
+     * 产物是一张**衍生卡**（{@code derived_from: 原卡标题} 记在 frontmatter），**不就地覆盖原卡**。
+     * 本方法就是「这张已经展开过了吗」的判据（幂等：重复点展开不重复烧模型）。
+     * <p>
+     * 默认实现返回 null（测试桩/其它实现不必改）——即「一律待展开」，不影响任何写路径。
+     */
+    default String expandedTitle(String userId, String type, String title) {
+        return null;
+    }
+
+    /**
+     * 落一张**衍生卡**（P2-learn33 展开产物）：正常落卡 + 在 frontmatter 记 {@code derived_from}
+     * 原卡标题，并把展开全文写进 {@code ## 展开全文} 段（未知段，后续编辑手术原样保留）。
+     * <p>
+     * 与 {@link #save} 的关系：**不覆盖原卡**——衍生卡是新文件、新标题，原卡一字不动。
+     * 默认实现退化为 {@link #save}（测试桩无需实现）。
+     *
+     * @param derivedFrom 原卡标题（衍生关系的唯一真相源）
+     * @param fullText    展开全文（markdown；空则只落卡片四段）
+     */
+    default void saveDerived(String userId, LearnCard card, String derivedFrom, String fullText) {
+        save(userId, card);
+    }
 }

@@ -39,13 +39,31 @@ public record CardRecord(
         Integer conversationTurnsHash
 ) {
 
-    /** 兼容旧签名（无 conversationRecordId / 无指纹）——历史调用点零改动。 */
+    /**
+     * 兼容旧签名（无 conversationRecordId / 无指纹）——历史调用点零改动。
+     *
+     * @deprecated REVIEW P2-工程15（2026-09-26 夜间批 4 官深审）：本构造器把
+     *     {@code conversationRecordId} / {@code conversationTurnsHash} **静默置 null**。
+     *     用它**重写一张已有幂等键的卡**（重补 / 迁移 / 改状态改摘要），键就被抹掉，
+     *     下一次 {@code /conversations/end} 会把同一段对话当成新对话 —— 重复落盘 + 重复调模型。
+     *     <p><b>生产路径新建卡之外，必须显式携带幂等键</b>：用 10 参规范构造器，或
+     *     {@code withStatus} / {@code withSummary} / {@code withTurn} 这类保留键的派生方法。
+     *     本构造器仅供「新建卡」与既有测试/兼容调用点使用。
+     */
+    @Deprecated
     public CardRecord(String id, String type, String status, List<String> tags, List<Turn> turns,
                       String summary, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this(id, type, status, tags, turns, summary, createdAt, updatedAt, null, null);
     }
 
-    /** 兼容「只有幂等键、没有指纹」的签名（2026-09-26 批一 → 批九 之间的调用点）。 */
+    /**
+     * 兼容「只有幂等键、没有指纹」的签名（2026-09-26 批一 → 批九 之间的调用点）。
+     *
+     * @deprecated 同 8 参构造器：它会把 {@code conversationTurnsHash} 静默置 null——
+     *     指纹缺失虽由 {@code ConversationController.sameContentAsRecorded} 退化为比对 turns 文本兜底，
+     *     但重写带指纹的卡仍属信息降级。生产重写路径请用 10 参规范构造器。
+     */
+    @Deprecated
     public CardRecord(String id, String type, String status, List<String> tags, List<Turn> turns,
                       String summary, LocalDateTime createdAt, LocalDateTime updatedAt,
                       String conversationRecordId) {

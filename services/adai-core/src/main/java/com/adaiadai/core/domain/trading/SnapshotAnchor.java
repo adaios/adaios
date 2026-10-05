@@ -21,13 +21,24 @@ import java.time.LocalDate;
  *                         归一化只在「快照日期 == 今天」时生效（盘前/非交易日导出退到上一交易日），
  *                         此时「锚定日当天」的成交可能并不在快照里，必须让对账闸门能识别并报出。
  * @param cashFileDate      资金股份快照的原始文件日期（语义同 positionsFileDate；未记录 → null）
+ * @param positionsBasis    持仓锚定日的**依据**（2026-10-05，P2-交易84）：显式基准日 / 文件日期 /
+ *                          休市日归一化 = 有据；时钟推断 = 无据。老落盘文件无此字段 → null（不可判定，
+ *                          沿用「文件日期 ≠ 锚定日 = 推断」的既有语义，不诬告）。
+ * @param cashBasis         资金股份锚定日的依据（语义同 positionsBasis；未记录 → null）
  */
 public record SnapshotAnchor(LocalDate positionsReplace, LocalDate cashImport,
-                             LocalDate positionsFileDate, LocalDate cashFileDate) {
+                             LocalDate positionsFileDate, LocalDate cashFileDate,
+                             AnchorBasis positionsBasis, AnchorBasis cashBasis) {
 
     /** 兼容构造（旧调用 / 老落盘文件没有文件日期信息 = 不可判定是否推断）。 */
     public SnapshotAnchor(LocalDate positionsReplace, LocalDate cashImport) {
-        this(positionsReplace, cashImport, null, null);
+        this(positionsReplace, cashImport, null, null, null, null);
+    }
+
+    /** 兼容构造（有文件日期、无依据信息——2026-09-21 批的落盘格式）。 */
+    public SnapshotAnchor(LocalDate positionsReplace, LocalDate cashImport,
+                          LocalDate positionsFileDate, LocalDate cashFileDate) {
+        this(positionsReplace, cashImport, positionsFileDate, cashFileDate, null, null);
     }
 
     /** 空锚定（从未做过全量导入）。 */
@@ -50,6 +61,20 @@ public record SnapshotAnchor(LocalDate positionsReplace, LocalDate cashImport,
     /** 资金股份锚定日是否为推断值（语义同 {@link #positionsDateInferred()}）。 */
     public boolean cashDateInferred() {
         return cashFileDate != null && cashImport != null && !cashFileDate.equals(cashImport);
+    }
+
+    /**
+     * 持仓锚定日是否有据（2026-10-05，P2-交易84）：依据被记录过且不是时钟推断。
+     * <p>老落盘文件（依据为 null）→ false：**不报案**也**不诬告**，由既有
+     * {@link #positionsDateInferred()} 与文件日期是否记录来判定。
+     */
+    public boolean positionsBasisWithEvidence() {
+        return positionsBasis != null && positionsBasis.withEvidence();
+    }
+
+    /** 资金股份锚定日是否有据（语义同 {@link #positionsBasisWithEvidence()}）。 */
+    public boolean cashBasisWithEvidence() {
+        return cashBasis != null && cashBasis.withEvidence();
     }
 
     /**

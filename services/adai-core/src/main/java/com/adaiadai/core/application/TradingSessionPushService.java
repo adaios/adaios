@@ -267,7 +267,8 @@ public class TradingSessionPushService {
     }
 
     /**
-     * 「今天」是否交易日 —— **6 个定时推送入口的统一闸门**。
+     * 「今天」是否交易日 —— **7 个定时推送入口的统一闸门**（morningPlan / planReminder /
+     * middayTracking / closeAdvice / closeSummaryPush / closeAccountUpdate / tradeLogConfirm）。
      * <p>
      * 抽成包级可见方法只为**可测**：测试用 spy 把它固定为交易日，
      * 免得每逢**法定节假日**全量测试必红——2026-10-01（国庆）实测
@@ -288,6 +289,25 @@ public class TradingSessionPushService {
      */
     boolean isTradingDayToday() {
         return isTradingDay(LocalDate.now());
+    }
+
+    /**
+     * 「今天」是否交易日 —— **自证版**（周末 + 法定节假日都不算），
+     * 供 {@link #afterDataSync(String)} 这类**非 cron 触发**的路径使用。
+     * <p>
+     * P2-工程12②（2026-10-05）：抽成包级可覆写方法的理由与 {@link #isTradingDayToday()} 相同——
+     * 原实现内联 `isTradingDayStrict(LocalDate.now())`，测试只能靠
+     * `Assumptions.assumeTrue(isTradingDayStrict(LocalDate.now()))` 自跳过：**节假日跑测试时这条路径
+     * 一次都没验，却报"全绿"**。现在测试用 spy 覆写它，两个分支都成为**真断言**，且与真实日历无关。
+     * <p>
+     * ⚠️ 口径与 {@link #isTradingDayToday()} **刻意不同**（前者只查节假日表、周末交给 cron `MON-FRI`）：
+     * 本方法走 {@link #isTradingDayStrict(LocalDate)}，周末也算非交易日——因为 HTTP 触发的数据同步
+     * 可能发生在周六（2026-09-13 生产事故形态）。
+     * <p>
+     * 默认实现与原先内联的 `isTradingDayStrict(LocalDate.now())` **逐字等价**，生产行为零变化。
+     */
+    boolean isTradingDayStrictToday() {
+        return isTradingDayStrict(LocalDate.now());
     }
 
     /** 上一交易日（早盘买点的新鲜度基准：09:15 时最近一根已收盘 K 线就该是它）。 */
@@ -716,7 +736,9 @@ public class TradingSessionPushService {
     public void afterDataSync(String userId) {
         LocalDate today = LocalDate.now();
         syncStateRepository.recordSync(userId, today, LocalDateTime.now());
-        if (!isTradingDayStrict(today)) return; // 非交易日导入（补昨天/上周的账）→ 只记状态
+        if (!isTradingDayStrictToday()) return; // 非交易日导入（补昨天/上周的账）→ 只记状态
+                                                // P2-工程12②（2026-10-05）：原为内联 isTradingDayStrict(today)，
+                                                // 测试靠 assumeTrue 自跳过 → 节假日这条路径零验证；现可覆写、真断言
         if (nowTime().isBefore(REVIEW_TRIGGER_FROM)) {
             log.info("数据已同步（收盘前），复盘留给 15:30 兜底 | userId={}", userId);
             return;

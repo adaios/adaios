@@ -198,6 +198,12 @@ class _TradingPageState extends State<TradingPage> {
   Map<String, dynamic>? _planView; // null = 这天还没写（后端 404，不编造空壳）
   bool _planLoading = false;
   String? _planMsg; // 最近一次操作的回执（成功/失败人话） // RFC 20260822：当日交易复盘（今日 N 笔 · 时段分布）
+  // ── P2-交易72（2026-10-05）：当天事后的状态回填——「今天没动 / 想动，没动」 ──
+  // 用户原话：「那我今天没有买卖 怎么告诉你呢 你还在等我的数据」——系统在等一个他**没有地方填**的状态。
+  // ⚠️ 必须独立用「今天」：`_planDate` 默认是**下一个交易日**（计划是前晚写的），挂在它上面会记错日子。
+  String _todayDayStatus = ''; // '' = 还没记；取值与后端 TradingPlan.DAY_STATUS_* 逐字一致
+  bool _dayStatusSaving = false; // 请求在途守卫（防连点并发写）
+  String? _dayStatusMsg; // 最近一次回执（成功/失败/「早就记着了」人话）
   // v3.41（2026-09-04）：活跃市值区间（用户手动判定，多头/空头红绿切换）
   String? _marketStage; // bull（多头）| bear（空头）| null（未手动判定）
   bool _marketStageExists = false;
@@ -226,6 +232,7 @@ class _TradingPageState extends State<TradingPage> {
     _loadCases();
     _loadMarketStage();
     _loadPlan();
+    _loadTodayDayStatus();
     // B3（2026-08-16）定时刷新：每 30 分钟自动更新行情/盈亏（跟随交易时段节奏）
     // P3-11（2026-08-17）：IndexedStack offstage 时（切到别的页）不再空转发请求——仅当前页为交易页才刷
     // 注：P1-1 修复后 shell 传中文 label（'交易'），判断须用 label 而非插件标识 'trading'
@@ -831,6 +838,9 @@ class _TradingPageState extends State<TradingPage> {
                         ),
                       ]),
                       const SizedBox(height: 12),
+                      // P2-交易72：今天的状态盘点（首屏不折叠——最短路径，他打开交易页就看得见）
+                      _buildDayStatusRow(),
+                      const SizedBox(height: 12),
                       // E1（2026-08-16）：Tab 工作区替代纵向堆叠（UI/UX 审查方案）
                       _buildTabWorkspace(),
                     ],
@@ -1422,6 +1432,119 @@ class _TradingPageState extends State<TradingPage> {
   /// 切回 Tab 时主动刷新（防收盘/他端变更后陈旧，复发信号：保活页陈旧）。
   final GlobalKey<_HistorySectionState> _historyKey = GlobalKey<_HistorySectionState>();
 
+  // ── P2-交易72（2026-10-05）：今天没买卖 → 最短路径的落点（今天没动 / 想动，没动） ──
+  // 用户原话（2026-09-23）：「那我今天没有买卖 怎么告诉你呢 你还在等我的数据」。
+  // 定性：不是数据缺失，是**状态回填的交互缺口**——「没动」本身是完整信息（R119 零仓位也是交易），
+  // 所以这里只给一个一键落点，不追问、不催、不给「必须汇报」的压力。
+  // 落点复用同一天的既有记录（`trading/plans/{今天}.json` 的 dayStatus），与「今天买了/卖了」同属这一天；
+  // 后端只改这一个字段 → 不碰用户已写的计划条目。
+
+  String get _todayStr =>
+      '${DateTime.now().year.toString().padLeft(4, '0')}-${DateTime.now().month.toString().padLeft(2, '0')}-${DateTime.now().day.toString().padLeft(2, '0')}';
+
+  /// 今天已记的状态：只认「自己那次独立读」的结果（不拿别的日期的计划冒充今天）。
+  Future<void> _loadTodayDayStatus() async {
+    try {
+      final v = await widget.api.getPlan(_todayStr);
+      if (!mounted) return;
+      setState(() => _todayDayStatus = v?['dayStatus']?.toString() ?? '');
+    } catch (_) {
+      // 读不到就当「还没记」——不编造状态，也不打扰用户（他自己说过什么由他自己确认）
+    }
+  }
+
+  /// 回填今天的状态。**重复点同一个 chip 不重复落**：本地已知就是它 → 连请求都不发，如实说清。
+  Future<void> _setDayStatus(String status) async {
+    if (_todayDayStatus == status) {
+      setState(() => _dayStatusMsg = '今天已经记着了：${_dayStatusHuman(status)}。');
+      return;
+    }
+    setState(() {
+      _dayStatusSaving = true;
+      _dayStatusMsg = null;
+    });
+    try {
+      final r = await widget.api.setPlanDayStatus(_todayStr, status);
+      if (!mounted) return;
+      final recorded = r['recorded'] == true;
+      final applied = r['dayStatus']?.toString() ?? status;
+      setState(() {
+        _todayDayStatus = applied;
+        _dayStatusSaving = false;
+        // 如实回执：后端说这次没写盘（早就记着了）就说「已经记着了」，不许假报一次落库。
+        _dayStatusMsg = recorded
+            ? '记下了：今天${_dayStatusHuman(applied)}。'
+            : '今天已经记着了：${_dayStatusHuman(applied)}。';
+      });
+      // 计划区若正好看的是今天，一并刷新（两处显示同一份记录，不各说各话）
+      if (_planDateStr == _todayStr) await _loadPlan();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _dayStatusSaving = false;
+        _dayStatusMsg = '没记上：$e';
+      });
+    }
+  }
+
+  /// 状态的人话（句子用）——不出现枚举值、不出现系统味儿的词。
+  String _dayStatusHuman(String s) {
+    if (s == ApiService.dayStatusNoTrade) return '没动';
+    if (s == ApiService.dayStatusWantedNotActed) return '想动，但没动';
+    return s;
+  }
+
+  Widget _dayStatusChip(String status, String label) {
+    final chosen = _todayDayStatus == status;
+    return ActionChip(
+      label: Text(label, style: const TextStyle(fontSize: 12)),
+      backgroundColor: chosen ? AppColors.darkGreen.withValues(alpha: 0.18) : AppColors.darkSurface2,
+      side: BorderSide(color: chosen ? AppColors.darkGreen : AppColors.darkBorder),
+      visualDensity: VisualDensity.compact,
+      onPressed: _dayStatusSaving ? null : () => _setDayStatus(status),
+    );
+  }
+
+  /// 「今天」这一行：一句轻说明 + 两个一键盘点。放在首屏（不折叠）——他打开交易页就看得见。
+  Widget _buildDayStatusRow() {
+    final recorded = _todayDayStatus;
+    final msg = _dayStatusMsg;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Text('今天', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              recorded.isEmpty
+                  ? '今天没买卖的话，点一下就行——没动也是一天的完整记录。'
+                  : '今天记的是：${_dayStatusHuman(recorded)}',
+              style: const TextStyle(fontSize: 12, color: AppColors.darkGrey5),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 6),
+        Row(children: [
+          _dayStatusChip(ApiService.dayStatusNoTrade, '今天没动'),
+          const SizedBox(width: 8),
+          _dayStatusChip(ApiService.dayStatusWantedNotActed, '想动，没动'),
+          if (msg != null) ...[
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(msg, style: const TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+            ),
+          ],
+        ]),
+      ]),
+    );
+  }
+
   // ── 次日操作计划（§二~四）：前晚写 → 当日守 → 收盘对账。系统不生成计划、不给建议。 ──
 
   String get _planDateStr =>
@@ -1483,6 +1606,9 @@ class _TradingPageState extends State<TradingPage> {
       if (!mounted) return;
       final items = (r['items'] as List?) ?? const [];
       final unplanned = (r['unplanned'] as List?) ?? const [];
+      // P2-交易72：对账里如实带上「这天你说的是什么」——它与「今天没有成交记录」互相印证，
+      // 不是缺数据（口径对齐 P2-交易67）。
+      final rDayStatus = r['dayStatus']?.toString() ?? '';
       // P3-14（2026-10-03 增量深审）：**不要把 `r['x']` 写在字符串插值里**——守卫 G6 用 `'[^']*'`
       // 去引号，嵌套引号会让它的括号计数错位、静态检查静默失效。先取到局部变量再用 `$var`。
       final trigCount = r['triggeredCount'];
@@ -1499,8 +1625,14 @@ class _TradingPageState extends State<TradingPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  if (rDayStatus.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Text('这天你记的是：${_dayStatusHuman(rDayStatus)}',
+                          style: const TextStyle(fontSize: 13, color: AppColors.darkGreen)),
+                    ),
                   if (items.isEmpty)
-                    const Text('这天没有写计划。', style: TextStyle(fontSize: 13)),
+                    const Text('这天没有写计划条目。', style: TextStyle(fontSize: 13)),
                   for (final it in items)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 6),
@@ -1640,6 +1772,8 @@ class _TradingPageState extends State<TradingPage> {
   Widget _buildPlanSection() {
     final items = ((_planView?['items'] as List?) ?? const []);
     final note = _planView?['note']?.toString() ?? '';
+    // P2-交易72：这天事后回填的状态（"今天没动" / "想动，没动"）——与计划条目同一份记录里的两条信息。
+    final planDayStatus = _planView?['dayStatus']?.toString() ?? '';
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         const Text('计划日期', style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
@@ -1701,8 +1835,17 @@ class _TradingPageState extends State<TradingPage> {
                   style: const TextStyle(fontSize: 12, color: AppColors.darkGrey5))),
       ]),
       const SizedBox(height: 14),
-      Text(_planView == null ? '这天还没有写计划。' : '已记下 ${items.length} 条：',
+      Text(
+          _planView == null
+              ? '这天还没有写计划。'
+              : (items.isEmpty ? '这天没有写计划条目。' : '已记下 ${items.length} 条：'),
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+      if (planDayStatus.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text('这天你记的是：${_dayStatusHuman(planDayStatus)}',
+              style: const TextStyle(fontSize: 12.5, color: AppColors.darkGreen)),
+        ),
       for (final it in items)
         Padding(
           padding: const EdgeInsets.only(top: 4),
@@ -1796,7 +1939,7 @@ class _TradingPageState extends State<TradingPage> {
         OutlinedButton.icon(
           onPressed: () => _openImportDialog('自选股',
               '粘贴通达信自选导出（或选择文件）：代码/名称/细分行业/长期中期短期形态/近日指标提示',
-              (c, _) async {
+              (c, _, _) async {
                 final n = await widget.api.importWatchlist(c);
                 await _loadAll();
                 if (mounted) _toast('自选股导入 $n 只');
@@ -1971,7 +2114,7 @@ class _TradingPageState extends State<TradingPage> {
         OutlinedButton.icon(
           onPressed: () => _openImportDialog('清仓股',
               '粘贴通达信清仓导出（或选择文件）：代码/名称/介入日期/清仓日期/持仓天数/买卖次数/持仓期涨幅%',
-              (c, _) async {
+              (c, _, _) async {
                 final r = await widget.api.importSold(c);
                 await _loadAll();
                 if (!mounted) return;
@@ -2316,7 +2459,8 @@ class _TradingPageState extends State<TradingPage> {
         OutlinedButton.icon(
           onPressed: () => _openImportDialog('资金股份查询',
               '粘贴通达信「资金股份查询」导出（或选择文件）：更新现金余额 + 精确成本价（4 位）',
-              _importCashSnapshot),
+              _importCashSnapshot,
+              withBasisDate: true),
           icon: const Icon(Icons.upload_file, size: 14),
           label: const Text('导入资金', style: TextStyle(fontSize: 12)),
           style: OutlinedButton.styleFrom(
@@ -3574,7 +3718,9 @@ class _TradingPageState extends State<TradingPage> {
   /// 持仓快照导入（通达信「持仓股」导出，全量覆盖）——也是**建立/推进券商快照锚定**的入口
   /// （RFC 20260912：历史成交导入预检发现锚定缺失时，从这里「先导快照」把锚定日补上）。
   /// [snapshotDate] = 快照文件自身日期（从文件名解析），后端拿它当锚定日，优先于导入日。
-  Future<void> _importPositionsSnapshot(String content, String? snapshotDate) async {
+  /// [basedOn]（2026-10-05，P2-交易84）= 用户在导入框里显式给出的**数据基准日**（可空）——
+  /// 给了它就优先于「导入时刻」推断；为空则后端走既有归一化（回执标「无据」）。
+  Future<void> _importPositionsSnapshot(String content, String? snapshotDate, String? basedOn) async {
     final parsed = parseTdxPositions(content);
     if (parsed.rows.isEmpty) {
       throw Exception('无法识别通达信持仓导出——请确认表头含「证券代码/股票余额/成本价」');
@@ -3638,6 +3784,8 @@ class _TradingPageState extends State<TradingPage> {
       rows,
       replace: true,
       snapshotDate: snapshotDate,
+      // 2026-10-05（P2-交易84）：显式基准日（用户说清了才传；不传 = 既有行为）
+      basedOn: basedOn,
       // 2026-09-13：券商「当日盈亏」列之和（含 0 股行）——账户卡的当日盈亏以券商口径为准。
       // null（文件没这列 / 有行取不到数）不传 → 后端保留账户旧值，绝不落零。
       todayPnl: parsed.todayPnl,
@@ -3651,6 +3799,11 @@ class _TradingPageState extends State<TradingPage> {
       // 0 股残留行（已清空）如实告知：它不是错误，但用户有权知道「文件里有 4 行、进来 3 只」
       if (parsed.skipped.isNotEmpty) {
         msg += ' · 另有 ${parsed.skipped.length} 行已清空未计入';
+      }
+      // 2026-10-05（P2-交易84）：锚定日的**依据**如实带出（有据/无据）——「怎么定下来的」必须可见。
+      // 后端新字段（旧后端没有 → null，不显示也不编造）。
+      if (result.anchorNote != null) {
+        msg += ' · ${result.anchorNote}';
       }
       _toast(msg);
     }
@@ -3709,6 +3862,9 @@ class _TradingPageState extends State<TradingPage> {
         '持仓',
         '粘贴通达信持仓导出（或选择文件）：证券代码/股票余额/成本价 自动识别，全量覆盖，止损需导入后补设',
         _importPositionsSnapshot,
+        // 2026-10-05（P2-交易84）：持仓快照建立**锚定日**——让用户能显式说清基准日，
+        // 不再只能靠「导入时刻」推断（09:26 导出、09:28 导入会被退到上一交易日）。
+        withBasisDate: true,
       );
 
   /// 资金股份查询导入（现金 + 精确成本）——同样建立锚定（cashImport，RFC 20260912）。
@@ -3716,9 +3872,10 @@ class _TradingPageState extends State<TradingPage> {
   /// RFC 20261003 C4（2026-10-03）：**先对账、再覆盖**——覆盖前把「券商现金 vs 系统推算」与差额摆出来，
   /// 人看过才动账（此前是静默覆盖：差额被抹掉、不留痕，于是只能反复导全量）。
   /// 对账失败**不挡路**（如实降级为直接导入，老后端没有 dryRun 时也走这条）。
-  Future<void> _importCashSnapshot(String content, String? snapshotDate) async {
+  Future<void> _importCashSnapshot(String content, String? snapshotDate, String? basedOn) async {
     try {
-      final rec = await widget.api.reconcileCash(content, snapshotDate: snapshotDate);
+      // 2026-10-05（P2-交易84）：对账口径与落盘锚定同判据——显式基准日优先（不再两套日期）
+      final rec = await widget.api.reconcileCash(content, snapshotDate: snapshotDate, basedOn: basedOn);
       if (!mounted) return;
       final diff = (rec['diff'] as num?)?.toDouble() ?? 0;
       final same = diff.abs() < 0.005;
@@ -3774,10 +3931,14 @@ class _TradingPageState extends State<TradingPage> {
       final ok = await _confirmWithoutReconcile(e, '资金');
       if (ok != true) return;
     }
-    final r = await widget.api.importCash(content, snapshotDate: snapshotDate);
+    final r = await widget.api.importCash(content, snapshotDate: snapshotDate, basedOn: basedOn);
     await _loadAll();
     if (mounted) {
       var msg = '资金已更新：现金 ¥${r.cash.toStringAsFixed(2)} · 成本更新 ${r.updatedCost} 只';
+      // 2026-10-05（P2-交易84）：现金锚定日的**依据**如实带出（有据/无据）——与持仓侧同一口径。
+      if (r.anchorNote != null) {
+        msg += ' · ${r.anchorNote}';
+      }
       // P2-交易83（2026-10-04）：有丢行明细 → 弹回执 + 逐条展开（「是哪只票的精确成本没更新」）；
       // 只有计数没有明细（旧后端只回 unparsedRows）→ 退回原来那句人话，不假装有明细。
       if (r.unparsed.isNotEmpty) {
@@ -3798,11 +3959,16 @@ class _TradingPageState extends State<TradingPage> {
   }
 
   Future<void> _openImportDialog(String title, String hint,
-      Future<void> Function(String content, String? snapshotDate) onImport) async {
+      Future<void> Function(String content, String? snapshotDate, String? basedOn) onImport,
+      {bool withBasisDate = false}) async {
     final controller = TextEditingController();
     // 2026-09-12：所选文件名的日期（通达信导出名带日期）→ 当锚定日传给后端（优先于导入日）；
     // 粘贴路径取不到 → null（不传该字段，后端退回导入日）
     String? snapshotDate;
+    // 2026-10-05（P2-交易84）：**显式数据基准日**（可选）——文件名里的日期是**导出日**，
+    // 盘前/休市日导出时数据其实是上一交易日的，由用户说清（此前只能靠导入时刻猜）。
+    // 默认留空 = 与既有行为完全一致（不替用户猜、不改变默认路径）。
+    final basisCtl = TextEditingController();
     // 2026-10-01（P2-交易71 同族清扫）：空内容点「导入」原先直接 return——弹窗不关、也没有任何提示，
     // 用户点了以为没生效（与标注/匹配弹窗同一形态）。改为弹窗内如实说明。
     String? formError;
@@ -3845,8 +4011,39 @@ class _TradingPageState extends State<TradingPage> {
               ]),
               const SizedBox(height: 8),
               Text(hint, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+              // 2026-10-05（P2-交易84）：基准日框放在**粘贴框之前**——两个原因：
+              // ① 语义顺序（先说清这份数据是哪天的，再放内容）；② 既有用例按
+              // `find.byType(TextField).last` 定位内容框（多一个框会让它指错），顺序保持向后兼容。
+              if (withBasisDate) ...[
+                const SizedBox(height: 8),
+                Row(children: [
+                  const Text('数据基准日（可选）', style: TextStyle(fontSize: 12, color: AppColors.darkGrey3)),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 130,
+                    child: TextField(
+                      key: const Key('tradeImportBasis'),
+                      controller: basisCtl,
+                      style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1),
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        hintText: '2026-09-18',
+                        hintStyle: TextStyle(fontSize: 11, color: AppColors.darkGrey5),
+                      ),
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: 4),
+                Text(
+                    '这是这份快照**数据本身**对应的交易日。通达信文件名里的日期是**导出日**——'
+                    '盘前或休市日导出时，数据其实是上一交易日的。'
+                    '${snapshotDate != null ? '文件名里的日期是 $snapshotDate。' : ''}'
+                    '留空时我按导入时间判断（并在对账里标注「无据」）。',
+                    style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5, height: 1.4)),
+              ],
               const SizedBox(height: 6),
               TextField(
+                key: const Key('tradeImportContent'),
                 controller: controller,
                 maxLines: 7, minLines: 4,
                 style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1),
@@ -3866,10 +4063,21 @@ class _TradingPageState extends State<TradingPage> {
                   setDlg(() => formError = '先粘贴内容，或选择通达信导出的文件');
                   return;
                 }
+                // 2026-10-05（P2-交易84）：基准日填了就必须是合法日期——宁可在弹窗里明说，
+                // 也不静默丢掉用户输入（那正是「字段被无声忽略」的老病）。
+                String? basedOn;
+                if (withBasisDate && basisCtl.text.trim().isNotEmpty) {
+                  basedOn = parseBasisDateInput(basisCtl.text);
+                  if (basedOn == null) {
+                    setDlg(() => formError = '基准日「${basisCtl.text.trim()}」不是有效日期'
+                        '（写成 2026-09-18 这样），或留空让我按导入时间判断');
+                    return;
+                  }
+                }
                 Navigator.pop(ctx);
                 // 2026-08-17（P1-交易5）：导入失败必须反馈——后端解析失败会 400 + 人话消息，这里透出
                 try {
-                  await onImport(controller.text, snapshotDate);
+                  await onImport(controller.text, snapshotDate, basedOn);
                 } catch (e) {
                   _toast('导入失败：${extractApiErrorMessage(e)}');
                 }

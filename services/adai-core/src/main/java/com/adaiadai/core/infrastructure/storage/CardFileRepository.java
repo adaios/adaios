@@ -71,6 +71,17 @@ public class CardFileRepository implements CardRepository {
     }
 
     /**
+     * 写回前钩子（默认空实现）：在持 {@code CardLockRegistry.cardLock} 的卡片 RMW 段内、
+     * {@code findById} **之后**、{@code save} **之前**调用。
+     * <p>REVIEW P2-工程13 发现11：并发用例过去靠「end 线程第 N 次 findById」定位「写回前的
+     * 挂起点」——隐式依赖调用次数，写回路径一旦多一次读就以错误原因失败。显式钩子让用例确定性地
+     * 停在「已持（可能是旧的）快照、尚未写回」的瞬间；生产路径是空操作，无副作用。
+     */
+    public void beforeWriteback(String userId, String cardId) {
+        // 测试同步点（默认空）
+    }
+
+    /**
      * 根据 ID 查找卡片。
      * 兼容旧版数字 ID：如 "1784872873886" 也会匹配 "card_1784872873886"。
      */

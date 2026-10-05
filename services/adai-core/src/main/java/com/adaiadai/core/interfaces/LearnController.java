@@ -422,6 +422,42 @@ public class LearnController {
     }
 
     /**
+     * 展开（P2-learn33，2026-10-05）：把一张停在「索引层」的卡展开成**衍生**全文卡 + 三行要点。
+     * <p>
+     * body {@code {"type","title"}}。产物是新卡（{@code derived_from: 原卡标题}），**不就地覆盖原卡**；
+     * 已展开过 → {@code status=exists}（幂等、不再烧模型）；没留素材 → 400 人话（不硬编一篇）；
+     * **同一张卡已有一个展开在跑** → {@code status=expanding}（P2-learn33 审查 B：并发第二次不重复
+     * 烧模型，如实回「正在展开」）。
+     * 与 {@code /cards/expansions} 配对：那个答「哪些待展开」，这个做展开。
+     */
+    @PostMapping("/cards/expand")
+    public ResponseEntity<?> expand(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @Valid @RequestBody LearnCardKeyRequest body) {
+        ResponseEntity<?> denied = requireLearnPlugin(userId);
+        if (denied != null) return denied;
+        LearnDigestAppService.ExpansionResult r =
+                digestService.expandCard(userId, body.type(), body.title());
+        return ResponseEntity.ok(Map.of(
+                "type", r.type(), "title", r.title(), "derivedFrom", r.derivedFrom(),
+                "status", r.status(), "message", r.message()));
+    }
+
+    /**
+     * 展开状态清单（P2-learn33）：学习页据此把「待展开」做成**可见状态**（而不是靠用户想起来）。
+     * <p>
+     * 每项 {@code {type,title,topic,hasSource,expanded,expandedTitle}}：{@code hasSource=false}
+     * 表示这张卡没留原始素材，前端不给「展开」入口（点了也只能靠编）。只读卡照常列出（可展开）。
+     */
+    @GetMapping("/cards/expansions")
+    public ResponseEntity<?> expansions(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireLearnPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(Map.of("items", digestService.expansions(userId)));
+    }
+
+    /**
      * 产物反馈（RFC 20260917 §五 2b）：把「太啰嗦 / 多举例子」这类评价沉淀为**长期偏好**，
      * 经画像回流（同 RFC §四）作用于**下一次**卡片生成——这就是反馈闭环。
      * <p>

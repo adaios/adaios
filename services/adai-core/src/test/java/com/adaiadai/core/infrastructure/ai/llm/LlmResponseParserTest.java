@@ -371,4 +371,37 @@ class LlmResponseParserTest {
                 "summary 里的后台提示必须被剥掉，实际=" + summary);
         assertEquals("正文一句话", LlmResponseParser.extractNaturalText(response));
     }
+
+    // ── REVIEW P2-交易73：对话结束回执里的动作清单（actions）──
+
+    @Test
+    void parseActions_extractsArrayFromReceipt() {
+        String response = "好的，那就这么办。\n"
+                + "{\"summary\":\"收盘后三件事\",\"tags\":[\"交易\"],\"actionable\":false,"
+                + "\"actionSuggestion\":null,\"actions\":[\"把白线调出来\",\"数一下持有天数\"]}";
+        assertEquals(List.of("把白线调出来", "数一下持有天数"), LlmResponseParser.parseActions(response));
+    }
+
+    @Test
+    void parseActions_missingOrEmptyArray_isSilent() {
+        assertTrue(LlmResponseParser.parseActions("{\"summary\":\"闲聊\",\"tags\":[]}").isEmpty(),
+                "没有 actions 字段 → 空（沉默是默认项，不猜）");
+        assertTrue(LlmResponseParser.parseActions("{\"summary\":\"x\",\"tags\":[],\"actions\":[]}").isEmpty());
+        assertTrue(LlmResponseParser.parseActions(null).isEmpty());
+        assertTrue(LlmResponseParser.parseActions("").isEmpty());
+    }
+
+    @Test
+    void parseActions_nonJsonOrNonArray_isSilent() {
+        assertTrue(LlmResponseParser.parseActions("[Test] default response").isEmpty(),
+                "非 JSON 回执 → 空");
+        assertTrue(LlmResponseParser.parseActions("{\"summary\":\"x\",\"tags\":[],\"actions\":\"一条\"}").isEmpty(),
+                "不是数组 → 空（不把字符串当清单）");
+    }
+
+    @Test
+    void parseActions_ignoresNonTextAndBlankItems() {
+        String response = "{\"summary\":\"x\",\"tags\":[],\"actions\":[\"要做的\",null,42,\"  \",\"  另一件  \"]}";
+        assertEquals(List.of("要做的", "  另一件  "), LlmResponseParser.parseActions(response));
+    }
 }

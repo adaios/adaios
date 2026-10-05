@@ -2168,4 +2168,184 @@ type: ai
       expect(find.text('删除'), findsOneWidget);
     });
   });
+
+  // ── learn 域三清批（2026-10-05）：过期 / 没排上 / 待展开 ──
+
+  group('LearnPage 三清批（2026-10-05）', () {
+    testWidgets('整理进度：过期的「待确认」如实说「已经过期」，不再显示成等你拍板', (tester) async {
+      final api = ApiService(
+        baseUrl: 'http://test',
+        userId: 'adai',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) {
+            return _json({
+              'ai': [_card('ai', 'RAG 笔记', topic: 'harness')]
+            });
+          }
+          if (p.endsWith('/api/v1/learn/digest/status')) return _json({'status': 'idle'});
+          if (p.endsWith('/api/v1/learn/digest/jobs')) {
+            return _json({
+              'tasks': [
+                {
+                  'id': 'dtask_exp',
+                  'status': 'expired',
+                  'message': '这次没确认，已经过期；要读就再分享一次',
+                  'submittedAt': '2026-09-25T05:13:00',
+                  'settledAt': '2026-09-25T05:43:05',
+                },
+              ]
+            });
+          }
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+
+      expect(find.byKey(const ValueKey('learn-digest-progress')), findsOneWidget,
+          reason: '桌面端也要看得到这份账');
+      expect(find.textContaining('过期了'), findsOneWidget, reason: '过期要说人话（不是系统状态标签）');
+      expect(find.textContaining('已经过期'), findsOneWidget, reason: '出路也一起给：再分享一次');
+      expect(find.textContaining('等你拍板'), findsNothing, reason: '不能再显示成「在等你点」');
+    });
+
+    testWidgets('整理进度：被丢掉的那条如实说「没排上」（不显示成正在读）', (tester) async {
+      final api = ApiService(
+        baseUrl: 'http://test',
+        userId: 'adai',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) {
+            return _json({
+              'ai': [_card('ai', 'RAG 笔记', topic: 'harness')]
+            });
+          }
+          if (p.endsWith('/api/v1/learn/digest/status')) return _json({'status': 'idle'});
+          if (p.endsWith('/api/v1/learn/digest/jobs')) {
+            return _json({
+              'tasks': [
+                {
+                  'id': 'dtask_drop',
+                  'status': 'not_queued',
+                  'message': '我正在读上一条，这条没排上——等它读完，再分享一次',
+                  'submittedAt': '2026-09-23T23:20:00',
+                  'settledAt': '2026-09-23T23:20:01',
+                },
+              ]
+            });
+          }
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+
+      expect(find.textContaining('没排上'), findsWidgets, reason: 'P2-分享4：如实入账并说清');
+      expect(find.textContaining('没排上 · '), findsOneWidget,
+          reason: '状态行就是「没排上 · 时刻」，不是「正在读」');
+    });
+
+    testWidgets('喂入：上一条在跑 → 如实提示「没排上」，不进入轮询', (tester) async {
+      var pollCount = 0;
+      var submitted = false;
+      final api = ApiService(
+        baseUrl: 'http://test',
+        userId: 'adai',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) {
+            return _json({
+              'ai': [_card('ai', 'RAG 笔记', topic: 'harness')]
+            });
+          }
+          if (p.endsWith('/api/v1/learn/digest') && req.method == 'POST') {
+            submitted = true;
+            return _json({
+              'status': 'not_queued',
+              'message': '我正在读上一条，这条没排上——等它读完，再分享一次',
+            });
+          }
+          if (p.endsWith('/api/v1/learn/digest/status')) {
+            if (!submitted) return _json({'status': 'idle'});
+            pollCount++;
+            return _json({'status': 'done', 'type': 'ai', 'title': '不该发生'});
+          }
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+
+      await tester.tap(find.byTooltip('整理新内容（丢链接或粘素材，阿呆消化成卡片）'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('learn-digest-url')),
+          'https://www.bilibili.com/video/BV2yy411c7mD');
+      await tester.pump();
+      await tester.tap(find.text('开始整理'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('没排上'), findsWidgets, reason: '把后端那句原样转达');
+      expect(pollCount, 0, reason: '没排上 → 不进轮询（没东西可等）');
+      expect(find.text('整理新内容 · 消化中'), findsNothing);
+    });
+
+    testWidgets('待展开：目录亮徽标 + 详情一键展开 → 打开衍生卡', (tester) async {
+      var expandCalls = 0;
+      var treeCalls = 0;
+      final api = ApiService(
+        baseUrl: 'http://test',
+        userId: 'adai',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) {
+            treeCalls++;
+            return _json({
+              'ai': treeCalls == 1
+                  ? [_card('ai', '索引卡', topic: 'harness')]
+                  : [
+                      _card('ai', '索引卡', topic: 'harness'),
+                      _card('ai', '索引卡 · 展开', topic: 'harness'),
+                    ],
+            });
+          }
+          if (p.endsWith('/api/v1/learn/cards/expansions')) {
+            return _json({
+              'items': [
+                {
+                  'type': 'ai',
+                  'title': '索引卡',
+                  'topic': 'harness',
+                  'hasSource': true,
+                  'expanded': false,
+                },
+              ]
+            });
+          }
+          if (p.endsWith('/api/v1/learn/cards/expand')) {
+            expandCalls++;
+            return _json({
+              'type': 'ai',
+              'title': '索引卡 · 展开',
+              'derivedFrom': '索引卡',
+              'status': 'expanded',
+              'message': '展开好了：《索引卡 · 展开》——原卡还在，三行要点和全文在新卡里',
+            });
+          }
+          if (p.endsWith('/api/v1/learn/content')) {
+            return _json(_contentJson('ai', '索引卡', '# 索引卡\n', topic: 'harness'));
+          }
+          if (p.endsWith('/api/v1/learn/digest/status')) return _json({'status': 'idle'});
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+
+      expect(find.text('待展开'), findsOneWidget, reason: '待展开要做成目录上可见的状态');
+
+      await tester.tap(find.text('展开成全文 + 三行要点'));
+      await tester.pumpAndSettle();
+
+      expect(expandCalls, 1, reason: '一键展开要真的打到后端');
+      expect(find.textContaining('展开好了'), findsOneWidget, reason: '如实交代产物在哪');
+      expect(find.text('索引卡 · 展开'), findsWidgets, reason: '整树刷新后衍生卡进目录（原卡不覆盖）');
+    });
+  });
 }

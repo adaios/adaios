@@ -3,6 +3,7 @@ package com.adaiadai.core.application;
 import com.adaiadai.core.kernel.ai.AiClient;
 import com.adaiadai.core.kernel.ai.AiUnderstanding;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
+import com.adaiadai.core.infrastructure.storage.CardLockRegistry;
 import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.account.AccountRepository;
 import com.adaiadai.core.kernel.memory.MemoryService;
@@ -15,8 +16,10 @@ import org.mockito.ArgumentCaptor;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -47,7 +50,8 @@ class RecordRetryServiceTest {
         AiClient ai = mock(AiClient.class);
         RecordRetryService svc = new RecordRetryService(
                 records, mock(RecordUnderstandingService.class), ai,
-                mock(MemoryService.class), cards, accounts, mock(PluginService.class));
+                mock(MemoryService.class), cards, accounts, mock(PluginService.class),
+                new CardLockRegistry());
 
         svc.retryUnprocessed();
 
@@ -71,7 +75,8 @@ class RecordRetryServiceTest {
         AiClient ai = mock(AiClient.class);
         RecordRetryService svc = new RecordRetryService(
                 records, mock(RecordUnderstandingService.class), ai,
-                mock(MemoryService.class), cards, accounts, mock(PluginService.class));
+                mock(MemoryService.class), cards, accounts, mock(PluginService.class),
+                new CardLockRegistry());
 
         svc.retryUnprocessed();
 
@@ -110,7 +115,8 @@ class RecordRetryServiceTest {
 
         RecordRetryService svc = new RecordRetryService(
                 records, understandingService, mock(AiClient.class),
-                mock(MemoryService.class), cards, accounts, pluginService);
+                mock(MemoryService.class), cards, accounts, pluginService,
+                new CardLockRegistry());
 
         svc.retryUnprocessed();
 
@@ -136,6 +142,8 @@ class RecordRetryServiceTest {
         when(records.findAll("alice")).thenReturn(List.of());
         CardFileRepository cards = mock(CardFileRepository.class);
         when(cards.findAll("alice")).thenReturn(List.of(card));
+        // 修复（P2-工程13 发现1）后写回改为「锁内重读最新卡」→ findById 必须返回该卡
+        when(cards.findById("alice", "card_e2e")).thenReturn(Optional.of(card));
         AiClient ai = mock(AiClient.class);
         when(ai.understand(any())).thenReturn(new AiUnderstanding(
                 "睡眠困扰", null, null, null,
@@ -143,7 +151,8 @@ class RecordRetryServiceTest {
 
         RecordRetryService svc = new RecordRetryService(
                 records, mock(RecordUnderstandingService.class), ai,
-                mock(MemoryService.class), cards, accounts, mock(PluginService.class));
+                mock(MemoryService.class), cards, accounts, mock(PluginService.class),
+                new CardLockRegistry());
 
         svc.retryUnprocessed();
 
@@ -154,5 +163,80 @@ class RecordRetryServiceTest {
         assertEquals("user_input", r.source(), "重补记录 source 应为 user_input（正文=原话标记）");
         assertEquals("我：我最近睡不好\n你：是不是想太多了", r.content(), "正文必须是卡片还原的对话原文");
         assertEquals("睡眠困扰", r.summary(), "AI 转述应保留在 summary 字段");
+    }
+
+    // ── REVIEW P2-工程15（2026-09-26 夜间批）：重写路径必须显式携带幂等键 ──
+
+    @Test
+    void retryCard_preservesIdempotencyKeysOnRewrite() {
+        // 带键的卡经重补重写后，conversationRecordId / conversationTurnsHash 必须仍在——
+        // 旧实现走 8 参构造器把它们置 null，下一次 end 会把同一段对话当成新对话（重复落盘 + 重复调模型）
+        CardRecord keyed = new CardRecord(
+                "card_keyed", "conversation", "active", List.of(),
+                List.of(new CardRecord.Turn(true, "我最近睡不好", "23:00"),
+                        new CardRecord.Turn(false, "是不是想太多了", "23:01")),
+                null, LocalDateTime.now().minusMinutes(10), LocalDateTime.now().minusMinutes(10),
+                "rec_prev", 1234567);
+
+        AccountRepository accounts = mock(AccountRepository.class);
+        when(accounts.findAll()).thenReturn(List.of(new Account("alice", "user", true, null)));
+        RecordRepository records = mock(RecordRepository.class);
+        when(records.findAll("alice")).thenReturn(List.of());
+        CardFileRepository cards = mock(CardFileRepository.class);
+        when(cards.findAll("alice")).thenReturn(List.of(keyed));
+        when(cards.findById("alice", "card_keyed")).thenReturn(Optional.of(keyed));
+        AiClient ai = mock(AiClient.class);
+        when(ai.understand(any())).thenReturn(new AiUnderstanding(
+                "睡眠困扰", null, null, null,
+                List.of("健康"), "neutral", "life", false, null, "[Test]"));
+
+        RecordRetryService svc = new RecordRetryService(
+                records, mock(RecordUnderstandingService.class), ai,
+                mock(MemoryService.class), cards, accounts, mock(PluginService.class),
+                new CardLockRegistry());
+
+        svc.retryUnprocessed();
+
+        ArgumentCaptor<CardRecord> savedCard = ArgumentCaptor.forClass(CardRecord.class);
+        verify(cards).save(eq("alice"), savedCard.capture());
+        assertEquals("rec_prev", savedCard.getValue().conversationRecordId(),
+                "重补重写不得抹掉 conversationRecordId（否则下次 end 被当成新对话）");
+        assertEquals(Integer.valueOf(1234567), savedCard.getValue().conversationTurnsHash(),
+                "重补重写不得抹掉 conversationTurnsHash");
+        assertEquals("睡眠困扰", savedCard.getValue().summary(), "重补应照常写入 summary");
+    }
+
+    @Test
+    void retryCard_legacyCardWithoutKeys_staysKeyless() {
+        // 无键老卡不得被凭空造键：保持 null / null
+        CardRecord legacy = new CardRecord(
+                "card_legacy", "conversation", "active", List.of(),
+                List.of(new CardRecord.Turn(true, "我最近睡不好", "23:00"),
+                        new CardRecord.Turn(false, "是不是想太多了", "23:01")),
+                null, LocalDateTime.now().minusMinutes(10), LocalDateTime.now().minusMinutes(10));
+
+        AccountRepository accounts = mock(AccountRepository.class);
+        when(accounts.findAll()).thenReturn(List.of(new Account("alice", "user", true, null)));
+        RecordRepository records = mock(RecordRepository.class);
+        when(records.findAll("alice")).thenReturn(List.of());
+        CardFileRepository cards = mock(CardFileRepository.class);
+        when(cards.findAll("alice")).thenReturn(List.of(legacy));
+        when(cards.findById("alice", "card_legacy")).thenReturn(Optional.of(legacy));
+        AiClient ai = mock(AiClient.class);
+        when(ai.understand(any())).thenReturn(new AiUnderstanding(
+                "睡眠困扰", null, null, null,
+                List.of("健康"), "neutral", "life", false, null, "[Test]"));
+
+        RecordRetryService svc = new RecordRetryService(
+                records, mock(RecordUnderstandingService.class), ai,
+                mock(MemoryService.class), cards, accounts, mock(PluginService.class),
+                new CardLockRegistry());
+
+        svc.retryUnprocessed();
+
+        ArgumentCaptor<CardRecord> savedCard = ArgumentCaptor.forClass(CardRecord.class);
+        verify(cards).save(eq("alice"), savedCard.capture());
+        assertNull(savedCard.getValue().conversationRecordId(), "无键老卡不得被凭空造 conversationRecordId");
+        assertNull(savedCard.getValue().conversationTurnsHash(), "无键老卡不得被凭空造 conversationTurnsHash");
     }
 }

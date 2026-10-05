@@ -27,6 +27,7 @@ import java.util.Map;
  * GET  /api/v1/trading/plans                  → {dates:[…]}
  * GET  /api/v1/trading/plans/{date}           → {date, note, items:[…]}（不存在 → 404 人话）
  * POST /api/v1/trading/plans/{date}           → body {lines:[「600206 跌破 45.5 清仓」…], note:"…"}
+ * POST /api/v1/trading/plans/{date}/status    → body {status:"NO_TRADE"|"WANTED_NOT_ACTED"}（P2-交易72，幂等）
  * GET  /api/v1/trading/plans/{date}/review    → 收盘对账（计划 vs 实际 + 计划外成交）
  * </pre>
  *
@@ -106,9 +107,42 @@ public class TradingPlanController {
         return ResponseEntity.ok(view(plan));
     }
 
+    /**
+     * P2-交易72（2026-10-05）：回填某天的「今日状态」——当天事后的最短路径。
+     *
+     * <pre>POST /api/v1/trading/plans/{date}/status   body {"status":"NO_TRADE"|"WANTED_NOT_ACTED"}</pre>
+     *
+     * <p>用户 2026-09-23 原话「那我今天没有买卖 怎么告诉你呢 你还在等我的数据」——
+     * 系统在等一个他**没有地方填**的状态。本端点给的就是那个落点：**没动也是完整的一天**（R119）。
+     * <b>不改动 items / note</b>（与已写的计划不冲突），同日同状态重复提交**幂等**（{@code recorded=false}，
+     * 如实告诉调用方「早就记着了」，而不是假报一次落库）。
+     */
+    @PostMapping("/plans/{date}/status")
+    public ResponseEntity<?> recordDayStatus(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @PathVariable("date") String date,
+            @RequestBody(required = false) Map<String, Object> body) {
+        ResponseEntity<?> denied = gate(userId);
+        if (denied != null) return denied;
+        LocalDate d;
+        try {
+            d = LocalDate.parse(date);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "日期格式应为 yyyy-MM-dd"));
+        }
+        String status = body != null && body.get("status") != null ? String.valueOf(body.get("status")) : "";
+        if (!TradingPlan.isKnownDayStatus(status)) {
+            return ResponseEntity.badRequest().body(Map.of("error",
+                    "这天只能记「没动」或「想动没动」——status 用 NO_TRADE / WANTED_NOT_ACTED"));
+        }
+        TradingPlanService.DayStatusResult r = planService.recordDayStatus(userId, d, status);
+        Map<String, Object> out = new LinkedHashMap<>(view(r.plan()));
+        out.put("recorded", r.recorded());
+        return ResponseEntity.ok(out);
+    }
+
     /** 收盘对账（计划 vs 实际 + ⚠️ 计划外成交）。 */
-    @GetMapping("/plans/{date}/review")
-    public ResponseEntity<?> review(
+    @GetMapping("/plans/{date}/review")    public ResponseEntity<?> review(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
             @PathVariable("date") String date) {
         ResponseEntity<?> denied = gate(userId);
@@ -136,6 +170,9 @@ public class TradingPlanController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("date", r.date().toString());
         out.put("hasPlan", r.hasPlan());
+        // P2-交易72：对账里如实带上「这天你说的是什么」——「没动」与「今天没有成交记录」互相印证，
+        // 不把它当成缺数据（对齐 P2-交易67 已定的口径）。
+        out.put("dayStatus", r.dayStatus() != null ? r.dayStatus() : TradingPlan.DAY_STATUS_NONE);
         out.put("items", items);
         out.put("unplanned", r.unplanned());
         out.put("triggeredCount", r.triggeredCount());
@@ -162,6 +199,8 @@ public class TradingPlanController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("date", p.date().toString());
         out.put("note", p.note());
+        // P2-交易72：当天事后的状态回填（"" = 没填）——前端据此显示「今天记的是：没动」。
+        out.put("dayStatus", p.dayStatus() != null ? p.dayStatus() : TradingPlan.DAY_STATUS_NONE);
         out.put("items", items);
         return out;
     }

@@ -55,6 +55,12 @@ class _TradingPageState extends State<TradingPage> {
   Map<String, dynamic>? _planView; // null = 这天还没写（后端 404，不编造空壳）
   bool _planLoading = false;
   String? _planMsg;
+  // ── P2-交易72（2026-10-05）：当天事后的状态回填——「今天没动 / 想动，没动」 ──
+  // 用户原话：「那我今天没有买卖 怎么告诉你呢 你还在等我的数据」——系统在等一个他**没有地方填**的状态。
+  // ⚠️ 必须独立用「今天」：`_planDate` 默认是**下一个交易日**（计划是前晚写的），挂在它上面会记错日子。
+  String _todayDayStatus = ''; // '' = 还没记；取值与后端 TradingPlan.DAY_STATUS_* 逐字一致
+  bool _dayStatusSaving = false; // 请求在途守卫（防连点并发写）
+  String? _dayStatusMsg; // 最近一次回执（成功/失败/「早就记着了」人话）
   PortfolioSnapshotResponse? _snapshot;
   bool _loading = true;
   String? _error;
@@ -167,6 +173,7 @@ class _TradingPageState extends State<TradingPage> {
     super.initState();
     _loadAll();
     _loadPlan();
+    _loadTodayDayStatus();
     // 跟随交易节奏：每 30 分钟自动刷新盈亏/行情（手机上看不到旧数据）
     _autoRefresh = Timer.periodic(const Duration(minutes: 30), (_) {
       if (mounted) _refresh();
@@ -323,6 +330,120 @@ class _TradingPageState extends State<TradingPage> {
   /// 标题是「我」（阿呆）的一句话，[MarketDataHealthDto.note] 是后端拟好的正文；
   /// 展开才看取数链 / 最近成功与失败时刻 / 连续失败次数——这些是排查用细节，不该占首屏。
   /// 只有 `ok == false` 调用方才会渲染（'ok == true' 与「拿不到信息」都是零显示）。
+  // ── P2-交易72（2026-10-05）：今天没买卖 → 最短路径的落点（今天没动 / 想动，没动） ──
+  // 用户原话（2026-09-23）：「那我今天没有买卖 怎么告诉你呢 你还在等我的数据」。
+  // 定性：不是数据缺失，是**状态回填的交互缺口**——「没动」本身是完整信息（R119 零仓位也是交易），
+  // 所以这里只给一个一键落点，不追问、不催、不给「必须汇报」的压力。
+  // 落点复用同一天的既有记录（`trading/plans/{今天}.json` 的 dayStatus），与「今天买了/卖了」同属这一天；
+  // 后端只改这一个字段 → 不碰用户已写的计划条目。
+
+  String get _todayStr {
+    final n = DateTime.now();
+    return '${n.year.toString().padLeft(4, '0')}-${n.month.toString().padLeft(2, '0')}-${n.day.toString().padLeft(2, '0')}';
+  }
+
+  /// 今天已记的状态：只认「自己那次独立读」的结果（不拿别的日期的计划冒充今天）。
+  Future<void> _loadTodayDayStatus() async {
+    try {
+      final v = await widget.api.getPlan(_todayStr);
+      if (!mounted) return;
+      setState(() => _todayDayStatus = v?['dayStatus']?.toString() ?? '');
+    } catch (_) {
+      // 读不到就当「还没记」——不编造状态，也不打扰用户（他自己说过什么由他自己确认）
+    }
+  }
+
+  /// 回填今天的状态。**重复点同一个 chip 不重复落**：本地已知就是它 → 连请求都不发，如实说清。
+  Future<void> _setDayStatus(String status) async {
+    if (_todayDayStatus == status) {
+      setState(() => _dayStatusMsg = '今天已经记着了：${_dayStatusHuman(status)}。');
+      return;
+    }
+    setState(() {
+      _dayStatusSaving = true;
+      _dayStatusMsg = null;
+    });
+    try {
+      final r = await widget.api.setPlanDayStatus(_todayStr, status);
+      if (!mounted) return;
+      final recorded = r['recorded'] == true;
+      final applied = r['dayStatus']?.toString() ?? status;
+      setState(() {
+        _todayDayStatus = applied;
+        _dayStatusSaving = false;
+        // 如实回执：后端说这次没写盘（早就记着了）就说「已经记着了」，不许假报一次落库。
+        _dayStatusMsg = recorded
+            ? '记下了：今天${_dayStatusHuman(applied)}。'
+            : '今天已经记着了：${_dayStatusHuman(applied)}。';
+      });
+      // 计划区若正好看的是今天，一并刷新（两处显示同一份记录，不各说各话）
+      if (_planDateStr == _todayStr) await _loadPlan();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _dayStatusSaving = false;
+        _dayStatusMsg = '没记上：$e';
+      });
+    }
+  }
+
+  /// 状态的人话（句子用）——不出现枚举值、不出现系统味儿的词。
+  String _dayStatusHuman(String s) {
+    if (s == ApiService.dayStatusNoTrade) return '没动';
+    if (s == ApiService.dayStatusWantedNotActed) return '想动，但没动';
+    return s;
+  }
+
+  Widget _dayStatusChip(String status, String label) {
+    final chosen = _todayDayStatus == status;
+    return ActionChip(
+      label: Text(label, style: const TextStyle(fontSize: 12)),
+      backgroundColor: chosen ? AppColors.darkGreen.withValues(alpha: 0.18) : AppColors.darkSurface2,
+      side: BorderSide(color: chosen ? AppColors.darkGreen : AppColors.darkBorder),
+      visualDensity: VisualDensity.compact,
+      onPressed: _dayStatusSaving ? null : () => _setDayStatus(status),
+    );
+  }
+
+  /// 「今天」这一行：一句轻说明 + 两个一键盘点。紧跟每日入账（焦点 1）——他打开交易页就看得见。
+  Widget _buildDayStatusRow() {
+    final recorded = _todayDayStatus;
+    final msg = _dayStatusMsg;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Text('今天', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              recorded.isEmpty
+                  ? '今天没买卖的话，点一下就行——没动也是一天的完整记录。'
+                  : '今天记的是：${_dayStatusHuman(recorded)}',
+              style: const TextStyle(fontSize: 12, color: AppColors.darkGrey5),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 6),
+        Row(children: [
+          _dayStatusChip(ApiService.dayStatusNoTrade, '今天没动'),
+          const SizedBox(width: 8),
+          _dayStatusChip(ApiService.dayStatusWantedNotActed, '想动，没动'),
+        ]),
+        if (msg != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(msg, style: const TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+          ),
+      ]),
+    );
+  }
+
   // ── 次日操作计划（§二~四）：前晚写 → 当日守 → 收盘对账。系统不生成计划、不给建议。 ──
 
   String get _planDateStr =>
@@ -384,6 +505,9 @@ class _TradingPageState extends State<TradingPage> {
       if (!mounted) return;
       final items = (r['items'] as List?) ?? const [];
       final unplanned = (r['unplanned'] as List?) ?? const [];
+      // P2-交易72：对账里如实带上「这天你说的是什么」——它与「今天没有成交记录」互相印证，
+      // 不是缺数据（口径对齐 P2-交易67）。
+      final rDayStatus = r['dayStatus']?.toString() ?? '';
       // P3-14（2026-10-03 增量深审）：嵌套引号会让守卫 G6 的括号计数错位——先取局部变量。
       final trigCount = r['triggeredCount'];
       final execCount = r['executedCount'];
@@ -397,8 +521,14 @@ class _TradingPageState extends State<TradingPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (rDayStatus.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text('这天你记的是：${_dayStatusHuman(rDayStatus)}',
+                        style: const TextStyle(fontSize: 13, color: AppColors.darkGreen)),
+                  ),
                 if (items.isEmpty)
-                  const Text('这天没有写计划。', style: TextStyle(fontSize: 13)),
+                  const Text('这天没有写计划条目。', style: TextStyle(fontSize: 13)),
                 for (final it in items)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 6),
@@ -525,6 +655,8 @@ class _TradingPageState extends State<TradingPage> {
   Widget _buildPlanSection() {
     final items = ((_planView?['items'] as List?) ?? const []);
     final note = _planView?['note']?.toString() ?? '';
+    // P2-交易72：这天事后回填的状态（"今天没动" / "想动，没动"）——与计划条目同一份记录里的两条信息。
+    final planDayStatus = _planView?['dayStatus']?.toString() ?? '';
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         TextButton.icon(
@@ -584,8 +716,17 @@ class _TradingPageState extends State<TradingPage> {
                   style: const TextStyle(fontSize: 12, color: AppColors.darkGrey5))),
       ]),
       const SizedBox(height: 12),
-      Text(_planView == null ? '这天还没有写计划。' : '已记下 ${items.length} 条：',
+      Text(
+          _planView == null
+              ? '这天还没有写计划。'
+              : (items.isEmpty ? '这天没有写计划条目。' : '已记下 ${items.length} 条：'),
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+      if (planDayStatus.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text('这天你记的是：${_dayStatusHuman(planDayStatus)}',
+              style: const TextStyle(fontSize: 12.5, color: AppColors.darkGreen)),
+        ),
       for (final it in items)
         Padding(
           padding: const EdgeInsets.only(top: 4),
@@ -1510,6 +1651,9 @@ class _TradingPageState extends State<TradingPage> {
                   const SizedBox(height: 10),
                   _buildDroppedNotice(),
                 ],
+                const SizedBox(height: 12),
+                // P2-交易72：今天没买卖也有落点（首屏不折叠，紧跟记录流程）——没动也是一天的完整记录
+                _buildDayStatusRow(),
                 const SizedBox(height: 16),
                 // ── 焦点 2：持仓（主区，不折叠；点卡看阿呆说）──
                 Row(children: [

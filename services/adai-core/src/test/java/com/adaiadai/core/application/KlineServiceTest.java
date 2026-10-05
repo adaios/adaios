@@ -3,9 +3,12 @@ package com.adaiadai.core.application;
 import com.adaiadai.core.domain.trading.market.Candle;
 import com.adaiadai.core.domain.trading.market.KlineSource;
 import org.junit.jupiter.api.Test;
+import org.springframework.scheduling.support.CronExpression;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -19,6 +22,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -578,7 +582,124 @@ class KlineServiceTest {
 
     @Test
     void probeFallback_failureAfterRecovery_alertsAgain() {
-        // 恢复即清零冷却：下一轮故障属于**新的**故障周期，不该被上一轮的 1 小时冷却吃掉
+        // 确认恢复（连续 2 次通过）后才清零冷却：下一轮故障属于**新的**故障周期，不该被旧冷却吃掉。
+        // REVIEW P2-交易86 第 3 条把「恢复」从单次 ok 收紧为连续 2 次 ok——单次 ok 不算真恢复
+        // （否则抖动源 fail→ok→fail 就能每 30 分钟洗掉冷却再报一条 ERROR）。
+        KlineSource sina = mock(KlineSource.class);
+        when(sina.probe(anyString())).thenReturn(false).thenReturn(true).thenReturn(true).thenReturn(false);
+        KlineService svc = probing(mock(KlineSource.class), sina);
+
+        ch.qos.logback.classic.Logger logger =
+                (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(KlineService.class);
+        ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender =
+                new ch.qos.logback.core.read.ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            svc.probeFallbackSource(); // 失败 → ERROR（冷却起）
+            svc.probeFallbackSource(); // 第 1 次通过 → 只是恢复迹象，冷却**不**清零
+            svc.probeFallbackSource(); // 第 2 次通过 → 确认恢复，冷却清零
+            svc.probeFallbackSource(); // 再失败 → 新故障周期，仍应 ERROR
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        long probeErrors = appender.list.stream()
+                .filter(e -> e.getLevel() == ch.qos.logback.classic.Level.ERROR)
+                .filter(e -> e.getFormattedMessage().contains("兜底源主动探测未通过"))
+                .count();
+        assertEquals(2, probeErrors, "确认恢复后的再次失败应重新报 ERROR（不被旧冷却吞掉）：实际 " + probeErrors);
+    }
+
+    // ── REVIEW P2-交易86（2026-10-05）：兜底探测的三处小口径 ──
+    // ① 探测窗口覆盖到 15:00 收盘（cron 13-14 → 13-15，每交易日实际 10 次）；
+    // ② isProbeWindow() 收进最外层 try，任何异常都不许从 @Scheduled 入口逃逸（且如实记 ERROR）；
+    // ③ 冷却只在**确认恢复**（连续 2 次成功）后清零——抖动源 fail→ok→fail 的第二次失败仍只 WARN。
+
+    /**
+     * ① 触发点覆盖 15:00 且每交易日实际探测 10 次——用 Spring {@code CronExpression} **真算**触发点，
+     * 再逐点过 {@link KlineService#inTradingSession(LocalTime)}（生产同一条收口路径）。
+     * <p>
+     * 钉住三件事：a. cron 触发到 15:00（修前 13-14 的最后一次是 14:30，14:30–15:00 整段空档）；
+     * b. 过滤后的实际探测数 = 10（09:30/10:00/…/14:30/15:00）；c. 被过滤的恰好是 09:00 与 15:30。
+     * 日期取 2026-10-13（周二，非节假日），并**硬断言它是交易日**——若节假日表变了，用例红而不是静默失效。
+     */
+    @Test
+    void probeFallback_cronTicks_coverCloseAt1500_andYieldTenProbesPerTradingDay() {
+        LocalDate day = LocalDate.of(2026, 10, 13);
+        assertTrue(TradingSessionPushService.isTradingDayStrict(day),
+                "用例前提：2026-10-13 应是交易日（节假日表若变更，这里必须先红，不能让它悄悄失去鉴别力）");
+
+        KlineService svc = new KlineService(true, true, mock(KlineSource.class), tdxEmpty(),
+                mock(KlineSource.class));
+        CronExpression cron = CronExpression.parse(KlineService.CRON_FALLBACK_PROBE);
+
+        List<LocalTime> ticks = new ArrayList<>();
+        LocalDateTime cursor = day.atStartOfDay();
+        for (int i = 0; i < 24; i++) {
+            cursor = cron.next(cursor);
+            if (cursor == null || !cursor.toLocalDate().equals(day)) break;
+            ticks.add(cursor.toLocalTime());
+        }
+
+        assertEquals(12, ticks.size(), "工作日 cron 触发点应为 12 个（09:00–11:30、13:00–15:30 每半小时）：" + ticks);
+        assertTrue(ticks.contains(LocalTime.of(15, 0)), "cron 必须触发到 15:00（窗口含 15:00，别留 14:30–15:00 空档）：" + ticks);
+
+        List<LocalTime> probes = ticks.stream().filter(svc::inTradingSession).toList();
+        assertEquals(10, probes.size(), "每个交易日实际探测次数：cron 触发点经窗口收口后应为 10：" + probes);
+        assertEquals(List.of(LocalTime.of(9, 0), LocalTime.of(15, 30)),
+                ticks.stream().filter(t -> !svc.inTradingSession(t)).toList(),
+                "被窗口过滤的应恰好是 09:00（行情还是上一交易日）与 15:30（盘后）：" + ticks);
+        assertTrue(probes.contains(LocalTime.of(15, 0)), "收盘那一刻必须在探测点上：" + probes);
+    }
+
+    /**
+     * ② 窗口判定/探测体抛异常时**不逃逸**，且如实记 ERROR（不静默）。
+     * <p>
+     * 两条路径都走真实 {@link KlineService#isProbeWindow()} 默认体：
+     * a. 日历判断 {@code isTradingDayToday()} 抛（窗口谓词内部先求值它）；
+     * b. 窗口谓词本身抛（模拟将来判据改得会抛）。
+     */
+    @Test
+    void probeFallback_probeWindowThrows_isSwallowedAndLoggedAsError() {
+        for (String path : List.of("calendar", "window")) {
+            KlineSource sina = mock(KlineSource.class);
+            KlineService svc = spy(new KlineService(true, true, mock(KlineSource.class), tdxEmpty(), sina));
+            if (path.equals("calendar")) {
+                doThrow(new IllegalStateException("holiday table blew up")).when(svc).isTradingDayToday();
+            } else {
+                doThrow(new IllegalStateException("probe window blew up")).when(svc).isProbeWindow();
+            }
+
+            ch.qos.logback.classic.Logger logger =
+                    (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(KlineService.class);
+            ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender =
+                    new ch.qos.logback.core.read.ListAppender<>();
+            appender.start();
+            logger.addAppender(appender);
+            try {
+                assertDoesNotThrow(svc::probeFallbackSource,
+                        "调度入口不许因窗口判定异常而抛（path=" + path + "）");
+            } finally {
+                logger.detachAppender(appender);
+            }
+
+            long errors = appender.list.stream()
+                    .filter(e -> e.getLevel() == ch.qos.logback.classic.Level.ERROR)
+                    .filter(e -> e.getFormattedMessage().contains("兜底源探测体异常"))
+                    .count();
+            assertEquals(1, errors, "异常必须如实记一条 ERROR（不静默吞掉，path=" + path + "）：实际 " + errors);
+            verify(sina, never()).probe(anyString());
+        }
+    }
+
+    /**
+     * ③ 抖动源 fail→ok→fail：单次 ok **不算**恢复，冷却不被洗掉 ⇒ 第二次失败仍只 WARN，全程 1 条 ERROR。
+     * <p>
+     * 反例（修前行为）：一成功就清零冷却 ⇒ 每 30 分钟就能再报一条 ERROR，与「1 小时最多一条」不符。
+     */
+    @Test
+    void probeFallback_flappingSource_secondFailureStaysCooldownedWarnOnly() {
         KlineSource sina = mock(KlineSource.class);
         when(sina.probe(anyString())).thenReturn(false).thenReturn(true).thenReturn(false);
         KlineService svc = probing(mock(KlineSource.class), sina);
@@ -591,8 +712,8 @@ class KlineServiceTest {
         logger.addAppender(appender);
         try {
             svc.probeFallbackSource(); // 失败 → ERROR（冷却起）
-            svc.probeFallbackSource(); // 恢复 → 冷却清零
-            svc.probeFallbackSource(); // 再失败 → 新故障周期，仍应 ERROR
+            svc.probeFallbackSource(); // 抖动：单次 ok，连续成功仅 1 次 → 冷却不清零
+            svc.probeFallbackSource(); // 再失败 → 仍在冷却 → WARN
         } finally {
             logger.detachAppender(appender);
         }
@@ -601,7 +722,13 @@ class KlineServiceTest {
                 .filter(e -> e.getLevel() == ch.qos.logback.classic.Level.ERROR)
                 .filter(e -> e.getFormattedMessage().contains("兜底源主动探测未通过"))
                 .count();
-        assertEquals(2, probeErrors, "恢复后的再次失败应重新报 ERROR（不被旧冷却吞掉）：实际 " + probeErrors);
+        long probeWarns = appender.list.stream()
+                .filter(e -> e.getLevel() == ch.qos.logback.classic.Level.WARN)
+                .filter(e -> e.getFormattedMessage().contains("兜底源主动探测未通过"))
+                .count();
+        assertEquals(1, probeErrors, "抖动源的第二次失败必须仍在冷却里（只 1 条 ERROR）：实际 " + probeErrors);
+        assertEquals(1, probeWarns, "冷却期内的失败降 WARN（不静默）：实际 " + probeWarns);
+        assertEquals(Boolean.FALSE, svc.health().fallbackHealthy(), "健康位如实跟随最后一次探测");
     }
 
     @Test

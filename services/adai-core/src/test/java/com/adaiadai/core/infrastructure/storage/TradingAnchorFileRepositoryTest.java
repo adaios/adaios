@@ -1,5 +1,6 @@
 package com.adaiadai.core.infrastructure.storage;
 
+import com.adaiadai.core.domain.trading.AnchorBasis;
 import com.adaiadai.core.domain.trading.SnapshotAnchor;
 import com.adaiadai.core.domain.trading.SnapshotHolding;
 
@@ -11,6 +12,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -141,5 +143,45 @@ class TradingAnchorFileRepositoryTest {
     void legacyTwoArgUpdateHasNoInferredFlag() {
         repo.updatePositionsReplace(USER, LocalDate.of(2026, 9, 18));
         assertFalse(repo.find(USER).positionsDateInferred());
+    }
+
+    // ── 2026-10-05（P2-交易84）：锚定日的**依据**随锚定一起落盘（有据/无据可追溯） ──
+
+    /** 显式基准日（用户/前端说清「这份快照是哪天的」）→ 依据读回 EXPLICIT（有据）。 */
+    @Test
+    void keepsAnchorBasisToTellEvidenceFromGuess() {
+        repo.updatePositionsReplace(USER, LocalDate.of(2026, 9, 18), LocalDate.of(2026, 9, 18),
+                AnchorBasis.EXPLICIT);
+        repo.updateCashImport(USER, LocalDate.of(2026, 9, 18), LocalDate.of(2026, 9, 18),
+                AnchorBasis.CLOCK);
+
+        SnapshotAnchor a = repo.find(USER);
+        assertEquals(AnchorBasis.EXPLICIT, a.positionsBasis(), "显式基准日 = 有据");
+        assertTrue(a.positionsBasisWithEvidence());
+        assertEquals(AnchorBasis.CLOCK, a.cashBasis(), "时钟推断 = 无据");
+        assertFalse(a.cashBasisWithEvidence());
+    }
+
+    /** 锚定日没前进（补导更旧快照）→ 依据同样不得被没生效的文件抹掉。 */
+    @Test
+    void backdatedSnapshotDoesNotOverwriteExistingBasis() {
+        repo.updatePositionsReplace(USER, LocalDate.of(2026, 9, 17), LocalDate.of(2026, 9, 18),
+                AnchorBasis.EXPLICIT);
+        repo.updatePositionsReplace(USER, LocalDate.of(2026, 9, 10), LocalDate.of(2026, 9, 10),
+                AnchorBasis.CLOCK);
+
+        SnapshotAnchor a = repo.find(USER);
+        assertEquals(LocalDate.of(2026, 9, 17), a.positionsReplace());
+        assertEquals(AnchorBasis.EXPLICIT, a.positionsBasis(), "没生效的补导不得抹掉依据");
+    }
+
+    /** 老落盘文件没有依据字段 → null（不可判定；不诬告成「时钟推断」）。 */
+    @Test
+    void legacyFileWithoutBasisField_readsNull() {
+        repo.updatePositionsReplace(USER, LocalDate.of(2026, 9, 18));
+
+        SnapshotAnchor a = repo.find(USER);
+        assertNull(a.positionsBasis());
+        assertFalse(a.positionsBasisWithEvidence(), "依据未记录 ≠ 有据");
     }
 }

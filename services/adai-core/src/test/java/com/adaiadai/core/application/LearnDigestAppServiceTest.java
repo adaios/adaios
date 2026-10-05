@@ -18,8 +18,15 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -526,7 +533,7 @@ class LearnDigestAppServiceTest {
     }
 
     @Test
-    void submit_inflight_returnsRunningWithoutSecondAiCall() {
+    void submit_inflight_returnsNotQueuedWithoutSecondAiCall() {
         when(aiClient.generate(any(), any())).thenReturn(TRADING_JSON);
 
         LearnDigestAppService.DigestSubmitResult first =
@@ -534,11 +541,14 @@ class LearnDigestAppServiceTest {
         assertEquals(LearnDigestAppService.STATUS_PENDING, first.status());
         assertEquals(LearnDigestAppService.STATUS_RUNNING, service.digestJobStatus("adai").status());
 
-        // 在跑中二次提交 → running（不重复入队/不重复烧 AI）
+        // 在跑中二次提交 → P2-分享4（2026-10-05）：如实回「没排上」（not_queued），
+        // 不再复用它条状态说 running —— 那让分享扩展/喂入弹窗分不清「在跑」与「被丢了」。
         LearnDigestAppService.DigestSubmitResult second =
                 service.submit("adai", "另一份素材", null, null, null, null, null);
-        assertEquals(LearnDigestAppService.STATUS_RUNNING, second.status());
-        assertEquals(1, submitted.size());
+        assertEquals(LearnDigestAppService.STATUS_NOT_QUEUED, second.status());
+        assertNotNull(second.message(), "「没排上」要带一句人话（前端直接展示）");
+        assertTrue(second.message().contains("没排上"), second.message());
+        assertEquals(1, submitted.size(), "第二条不入队（刻意不做队列）");
 
         runAll();
         LearnDigestAppService.DigestJobStatus job = service.digestJobStatus("adai");
@@ -712,17 +722,514 @@ class LearnDigestAppServiceTest {
     }
 
     /**
-     * 抢占任务位失败（已有任务在跑）**不写账**——那条根本没被受理，写进去就是假账：
-     * 用户会看到「我分享了两条」，而其中一条从来不会有人处理。
+     * 抢占任务位失败（已有任务在跑）→ **如实入账「没排上」**（P2-分享4，2026-10-05）。
+     *
+     * <p>此前的口径是「没受理就不写账」，理由是怕写假账；但生产上用户看到的是「我明明分享了两条，
+     * 学习页只有一条」——第二条从世界上消失。既然扩展当时已经会提示「没排上」，账上就得有这一条，
+     * 否则事后翻学习页对不上。本用例钉住：两条分享 → 两条账，第二条 status=not_queued 且带人话。
      */
     @Test
-    void inflightSecondSubmit_doesNotRecordFakeTask() {
+    void inflightSecondSubmit_recordsNotQueuedTask() {
         LearnDigestAppService s = serviceWithTasks(capturingExecutor);
 
         s.submit("adai", "第一条素材", null, null, null, null, null);
-        s.submit("adai", "第二条素材", null, null, null, null, null);   // 被拒
+        LearnDigestAppService.DigestSubmitResult second =
+                s.submit("adai", "第二条素材", null, null, null, null, null);
 
-        verify(taskRepository, times(1)).save(eq("adai"), any(LearnDigestTask.class));
+        assertEquals(LearnDigestAppService.STATUS_NOT_QUEUED, second.status());
+        verify(taskRepository, times(2)).save(eq("adai"), any(LearnDigestTask.class));
+        LearnDigestTask notQueued = lastRecordedTask();
+        assertEquals("not_queued", notQueued.status());
+        assertNotNull(notQueued.settledAt(), "没排上也是一个结局");
+        assertFalse(notQueued.inProgress(), "不能继续显示成「正在读」");
+        assertTrue(notQueued.settled());
+        assertTrue(notQueued.message().contains("没排上"), notQueued.message());
+    }
+
+    /** 上一条正卡在「等你拍板」时再分享 → 文案指出先回上一条（出路不同，话也要不同）。 */
+    @Test
+    void inflightSecondSubmit_whileAwaitingConfirm_saysPickFirst() {
+        when(fetchService.fetchAndArchive(eq("adai"), anyString())).thenReturn(
+                new com.adaiadai.core.domain.learn.LearnSource(
+                        "bilibili", "BV1xx411c7mD", "https://www.bilibili.com/video/BV1xx411c7mD",
+                        "某视频", "某UP", "2026-05-05", null, true, "https://audio/x.m4s", 2244, List.of()));
+        when(transcriptionService.unavailableReason()).thenReturn(null);
+        when(transcriptionService.estimate(eq("adai"), any())).thenReturn(
+                new LearnTranscriptionService.CostEstimate(2244, true, 0.18d, 0, 36000, 36000, false));
+        LearnDigestAppService s = serviceWithTasks(directExecutor);
+
+        s.submit("adai", new LearnDigestAppService.DigestRequest(
+                "https://www.bilibili.com/video/BV1xx411c7mD", null, null, null, null, null));
+        assertEquals(LearnDigestAppService.STATUS_NEEDS_CONFIRMATION, s.digestJobStatus("adai").status());
+
+        LearnDigestAppService.DigestSubmitResult second =
+                s.submit("adai", "另一份素材", null, null, null, null, null);
+
+        assertEquals(LearnDigestAppService.STATUS_NOT_QUEUED, second.status());
+        assertTrue(second.message().contains("拍板"), second.message());
+        assertEquals("not_queued", lastRecordedTask().status());
+    }
+
+    // ── ① P2-learn34（2026-10-05）：决策入口过期 → 落盘账那条一并标 expired ──
+
+    /** 账上一条「待确认」，而内存里已经没有对应入口（重启/被顶掉/TTL 已过）。 */
+    private static LearnDigestTask stalePending() {
+        return new LearnDigestTask("dtask_stale", "https://www.bilibili.com/video/BV1xx411c7mD",
+                "杭州无人机外卖航线", "bilibili", "needs_confirmation", null, "预计约 0.00 元",
+                null, null, null, "2026-09-25T05:13:00", null);
+    }
+
+    /**
+     * 看整理清单（GET /digest/jobs）时，把已经没有决策入口的「待确认」如实标 expired——
+     * 生产实据：2026-09-25 05:13 那条 B 站视频，21 小时后仍显示待确认，而入口早没了。
+     */
+    @Test
+    void tasks_pendingConfirmWithoutLiveEntry_marksAccountExpired() {
+        LearnDigestAppService s = serviceWithTasks(capturingExecutor);
+        when(taskRepository.findRecent(eq("adai"), anyInt())).thenReturn(List.of(stalePending()));
+
+        s.tasks("adai", 20);
+
+        ArgumentCaptor<LearnDigestTask> captor = ArgumentCaptor.forClass(LearnDigestTask.class);
+        verify(taskRepository).save(eq("adai"), captor.capture());
+        LearnDigestTask saved = captor.getValue();
+        assertEquals("expired", saved.status());
+        assertEquals(LearnDigestAppService.EXPIRED_CONFIRM_MESSAGE, saved.message());
+        assertNotNull(saved.settledAt(), "过期也是一个结局，账上要有结账时刻");
+        assertFalse(saved.inProgress(), "不能再显示成「等用户拍板」");
+        assertTrue(saved.settled());
+    }
+
+    /** 入口没了还硬点头 → 账如实标过期 + 人话说清「已经过期」，不说含糊的「没有任务」。 */
+    @Test
+    void confirm_whenEntryGone_marksAccountExpiredAndSaysExpired() {
+        LearnDigestAppService s = serviceWithTasks(capturingExecutor);
+        when(taskRepository.findRecent(eq("adai"), anyInt())).thenReturn(List.of(stalePending()));
+
+        LearnException e = assertThrows(LearnException.class, () -> s.confirm("adai", true));
+
+        assertTrue(e.getMessage().contains("已经过期"), e.getMessage());
+        ArgumentCaptor<LearnDigestTask> captor = ArgumentCaptor.forClass(LearnDigestTask.class);
+        verify(taskRepository).save(eq("adai"), captor.capture());
+        assertEquals("expired", captor.getValue().status());
+    }
+
+    /** 反过来：没有过期账时保持老话术（不把「没有等我确认的」说成「已经过期」）。 */
+    @Test
+    void confirm_whenNothingAwaiting_keepsOriginalHumanMessage() {
+        LearnDigestAppService s = serviceWithTasks(capturingExecutor);
+        when(taskRepository.findRecent(eq("adai"), anyInt())).thenReturn(List.of());
+
+        LearnException e = assertThrows(LearnException.class, () -> s.confirm("adai", true));
+
+        assertEquals("现在没有等待确认的整理任务", e.getMessage());
+    }
+
+    /**
+     * TTL 到期（内存入口过期）→ 状态回 idle，**账上那条一并 expired**——两套生命周期对齐。
+     * 时间不可注入，用反射把内存 job 的 settledAt 拨到 31 分钟前（TTL = 30 分钟）。
+     */
+    @Test
+    void digestJobStatus_confirmTtlExpired_marksAccountExpired() throws Exception {
+        when(fetchService.fetchAndArchive(eq("adai"), anyString())).thenReturn(
+                new com.adaiadai.core.domain.learn.LearnSource(
+                        "bilibili", "BV1xx411c7mD", "https://www.bilibili.com/video/BV1xx411c7mD",
+                        "某视频", "某UP", "2026-05-05", null, true, "https://audio/x.m4s", 2244, List.of()));
+        when(transcriptionService.unavailableReason()).thenReturn(null);
+        when(transcriptionService.estimate(eq("adai"), any())).thenReturn(
+                new LearnTranscriptionService.CostEstimate(2244, true, 0.18d, 0, 36000, 36000, false));
+        LearnDigestAppService s = serviceWithTasks(directExecutor);
+
+        s.submit("adai", new LearnDigestAppService.DigestRequest(
+                "https://www.bilibili.com/video/BV1xx411c7mD", null, null, null, null, null));
+        assertEquals(LearnDigestAppService.STATUS_NEEDS_CONFIRMATION, s.digestJobStatus("adai").status());
+        assertEquals("needs_confirmation", lastRecordedTask().status(), "先入账「等你拍板」");
+
+        ageJobSettledAt(s, "adai", 31 * 60_000L);
+
+        assertEquals(LearnDigestAppService.STATUS_IDLE, s.digestJobStatus("adai").status());
+        LearnDigestTask expired = lastRecordedTask();
+        assertEquals("expired", expired.status());
+        assertEquals(LearnDigestAppService.EXPIRED_CONFIRM_MESSAGE, expired.message());
+    }
+
+    /** 把内存 job 的 settledAt 拨回过去（TTL 判定用墙钟，测试无法等待 30 分钟）。 */
+    @SuppressWarnings("unchecked")
+    private static void ageJobSettledAt(LearnDigestAppService s, String userId, long millis) throws Exception {
+        java.lang.reflect.Field jobsField = LearnDigestAppService.class.getDeclaredField("jobs");
+        jobsField.setAccessible(true);
+        Map<String, Object> jobs = (Map<String, Object>) jobsField.get(s);
+        Object job = jobs.get(userId);
+        assertNotNull(job, "内存里应有一个 job");
+        java.lang.reflect.Field settled = job.getClass().getDeclaredField("settledAt");
+        settled.setAccessible(true);
+        settled.setLong(job, System.currentTimeMillis() - millis);
+    }
+
+    /** 造一个卡在「等你拍板」的付费任务（无字幕视频路径）；返回已提交的服务实例。 */
+    private LearnDigestAppService awaitingConfirmService(Executor executor) {
+        when(fetchService.fetchAndArchive(eq("adai"), anyString())).thenReturn(
+                new com.adaiadai.core.domain.learn.LearnSource(
+                        "bilibili", "BV1xx411c7mD", "https://www.bilibili.com/video/BV1xx411c7mD",
+                        "某视频", "某UP", "2026-05-05", null, true, "https://audio/x.m4s", 2244, List.of()));
+        when(transcriptionService.unavailableReason()).thenReturn(null);
+        when(transcriptionService.estimate(eq("adai"), any())).thenReturn(
+                new LearnTranscriptionService.CostEstimate(2244, true, 0.18d, 0, 36000, 36000, false));
+        LearnDigestAppService s = serviceWithTasks(executor);
+        s.submit("adai", new LearnDigestAppService.DigestRequest(
+                "https://www.bilibili.com/video/BV1xx411c7mD", null, null, null, null, null));
+        assertEquals(LearnDigestAppService.STATUS_NEEDS_CONFIRMATION, s.digestJobStatus("adai").status());
+        return s;
+    }
+
+    /** TTL 内确认照常：付费路径不该把没过期的入口误判成过期。 */
+    @Test
+    void confirm_withinTtl_proceedsToTranscribe() {
+        when(transcriptionService.transcribe(eq("adai"), any())).thenReturn(
+                new LearnTranscriptionService.TranscriptionResult("转写稿正文", false, 2244, 0.18d, null));
+        when(aiClient.generate(any(), any())).thenReturn(TRADING_JSON);
+        LearnDigestAppService s = awaitingConfirmService(directExecutor);
+
+        LearnDigestAppService.DigestJobStatus after = s.confirm("adai", true);
+
+        verify(transcriptionService, times(1)).transcribe(eq("adai"), any());
+        assertEquals(LearnDigestAppService.STATUS_DONE, after.status(), "转写完照常落卡");
+    }
+
+    /**
+     * 对抗审查 C（2026-10-05 点名「没有任何批内测试钉住」的那条）：**客户端从不轮询**时，
+     * 超 30 分钟再点头也不能花钱——付费路径自己校验 TTL，抛过期人话、转写零调用、账上标 expired，
+     * 与读路径（轮询过）得到**同一个结果**。
+     *
+     * <p>反向验证：把 TTL 校验短路（{@code isConfirmExpired} 恒 false）→ 本用例红（不抛、照转写）。
+     */
+    @Test
+    void confirm_afterTtl_throwsExpired_andNeverTranscribes() throws Exception {
+        LearnDigestAppService s = awaitingConfirmService(directExecutor);
+        ageJobSettledAt(s, "adai", 31 * 60_000L);   // 31 分钟 > 30 分钟 TTL
+
+        LearnException e = assertThrows(LearnException.class, () -> s.confirm("adai", true));
+
+        assertEquals(LearnDigestAppService.EXPIRED_CONFIRM_MESSAGE, e.getMessage());
+        verify(transcriptionService, never()).transcribe(anyString(), any());
+        assertEquals("expired", lastRecordedTask().status(), "账上如实标过期");
+        assertEquals(LearnDigestAppService.EXPIRED_CONFIRM_MESSAGE, lastRecordedTask().message());
+    }
+
+    /**
+     * 对抗审查 D 守卫（2026-10-05）：**TTL 内、入口还在**的待确认任务，读账路径不得把它标 expired。
+     *
+     * <p>守卫 {@code if (!isConfirmExpired(alive)) continue;} 此前短路成 {@code if(false)} 时
+     * LearnDigestAppServiceTest + LearnDigestEndpointTest 104/104 依然全绿——这条缺口用本用例钉住。
+     *
+     * <p>反向验证：把该守卫短路成 {@code if (false)} → 本用例红（TTL 内被标成 expired）。
+     */
+    @Test
+    void tasks_confirmWithinTtl_doesNotMarkExpired() throws Exception {
+        LearnDigestAppService s = awaitingConfirmService(directExecutor);
+        LearnDigestTask pending = lastRecordedTask();
+        assertEquals("needs_confirmation", pending.status(), "先入账「等你拍板」");
+        when(taskRepository.findRecent(eq("adai"), anyInt())).thenReturn(List.of(pending));
+        ageJobSettledAt(s, "adai", 5 * 60_000L);   // 5 分钟，远在 30 分钟 TTL 内
+        org.mockito.Mockito.clearInvocations(taskRepository);
+
+        List<LearnDigestTask> listed = s.tasks("adai", 20);
+
+        assertEquals(1, listed.size());
+        verify(taskRepository, never()).save(anyString(), any(LearnDigestTask.class));
+        // 入口也还在：状态照旧「等你拍板」，账与内存不打架
+        assertEquals(LearnDigestAppService.STATUS_NEEDS_CONFIRMATION, s.digestJobStatus("adai").status());
+    }
+
+    /**
+     * P2-learn34 的核心契约（2026-10-05 独立审查实测补钉）：**账标 expired ⇔ 内存决策入口同时消失**。
+     *
+     * <p>两处必须同一时刻成立：只清内存不写账 → 学习页永久留一条点不动的「待确认」；
+     * **只写账不清内存 → 用户还能靠旧的内存 job 走 confirm 花掉一笔钱**（状态自相矛盾）。
+     * 变异「只标账、内存 job 原样留着」在加本用例前 103/103 全绿。
+     *
+     * <p>注意顺序：**先断言账、紧接着 confirm**——不能先调 {@code digestJobStatus}（它自己也会清理
+     * 内存入口，会把变异体的破绽顺手抹掉，用例就白写了）。
+     */
+    @Test
+    void expireStaleConfirmTasks_marksAccountExpired_andClosesThePaidEntry() throws Exception {
+        when(fetchService.fetchAndArchive(eq("adai"), anyString())).thenReturn(
+                new com.adaiadai.core.domain.learn.LearnSource(
+                        "bilibili", "BV1xx411c7mD", "https://www.bilibili.com/video/BV1xx411c7mD",
+                        "某视频", "某UP", "2026-05-05", null, true, "https://audio/x.m4s", 2244, List.of()));
+        when(transcriptionService.unavailableReason()).thenReturn(null);
+        when(transcriptionService.estimate(eq("adai"), any())).thenReturn(
+                new LearnTranscriptionService.CostEstimate(2244, true, 0.18d, 0, 36000, 36000, false));
+        LearnDigestAppService s = serviceWithTasks(directExecutor);
+
+        s.submit("adai", new LearnDigestAppService.DigestRequest(
+                "https://www.bilibili.com/video/BV1xx411c7mD", null, null, null, null, null));
+        assertEquals(LearnDigestAppService.STATUS_NEEDS_CONFIRMATION, s.digestJobStatus("adai").status());
+        LearnDigestTask pending = lastRecordedTask();
+        assertEquals("needs_confirmation", pending.status(), "先入账「等你拍板」");
+        // 账上那条就是内存 job 的那条（真实仓储按 id 对上号；测试替身要如实回放）
+        when(taskRepository.findRecent(eq("adai"), anyInt())).thenReturn(List.of(pending));
+
+        // TTL 到期：走「看清单」这条扫描路径（expireStaleConfirmTasks），不是 digestJobStatus
+        ageJobSettledAt(s, "adai", 31 * 60_000L);
+        s.tasks("adai", 20);
+
+        // ① 账上如实标过期
+        LearnDigestTask expired = lastRecordedTask();
+        assertEquals("expired", expired.status(), "① 账上必须标过期");
+        assertEquals(LearnDigestAppService.EXPIRED_CONFIRM_MESSAGE, expired.message(),
+                "过期要给人话，不能留个空状态");
+        assertFalse(expired.inProgress(), "不能再显示成「等用户拍板」");
+
+        // ② 内存决策入口必须同时消失：紧接着点头不能花钱
+        LearnException e = assertThrows(LearnException.class, () -> s.confirm("adai", true),
+                "入口已消失时 confirm 必须拒绝，不得再走一遍转写");
+        assertNotNull(e.getMessage());
+        verify(transcriptionService, never()).transcribe(anyString(), any());
+    }
+
+    // ── ③ P2-learn33（2026-10-05）：「展开」——索引卡 → 衍生全文卡 ──
+
+    private static final String EXPAND_JSON = """
+            {"title":"无人机外卖航线的成本账","summary":"低空物流先用高频小单把航线跑通",
+             "key_points":["航线固定才有成本优势","单量决定能不能活","政策先行是启动条件"],
+             "full_text":"## 一、为什么是杭州\\n\\n先把航线跑通，再谈规模。"}""";
+
+    /** 一张停在索引层的卡（有主题、有素材可查）。 */
+    private static LearnCard expandableCard() {
+        return new LearnCard("other", "杭州无人机外卖航线", "bilibili", "某UP",
+                "https://www.bilibili.com/video/BV1xx411c7mD", "2026-05-05",
+                LocalDate.of(2026, 9, 25), "new", false, null,
+                List.of("低空经济"), "航线已开通", List.of("三条航线"), List.of(), "",
+                "低空经济");
+    }
+
+    /** 展开：落衍生卡（三行要点 + 全文），**原卡不覆盖**，关系记在 derivedFrom。 */
+    @Test
+    void expandCard_generatesDerivedCardWithThreePoints_withoutTouchingOriginal() {
+        when(repository.find("adai", "other", "杭州无人机外卖航线")).thenReturn(Optional.of(expandableCard()));
+        when(repository.expandedTitle("adai", "other", "杭州无人机外卖航线")).thenReturn(null);
+        // P2-learn33 审查 A：素材按**这张卡自己记下的来源**取（不再是主题目录 rawAssets）
+        when(repository.sourceAssets("adai", "other", "杭州无人机外卖航线"))
+                .thenReturn(List.of("transcript.txt"));
+        when(repository.readRaw("adai", "transcript.txt")).thenReturn("原始转写稿：杭州开通三条无人机外卖航线……");
+        when(repository.existsOn(eq("adai"), eq("other"), any(), anyString())).thenReturn(false);
+        when(aiClient.generate(any(), any())).thenReturn(EXPAND_JSON);
+        LearnDigestAppService s = serviceWithTasks(directExecutor);
+
+        LearnDigestAppService.ExpansionResult r = s.expandCard("adai", "other", "杭州无人机外卖航线");
+
+        assertEquals("expanded", r.status());
+        assertEquals("杭州无人机外卖航线", r.derivedFrom(), "衍生关系指向原卡（不就地覆盖）");
+        ArgumentCaptor<LearnCard> captor = ArgumentCaptor.forClass(LearnCard.class);
+        verify(repository).saveDerived(eq("adai"), captor.capture(), eq("杭州无人机外卖航线"), anyString());
+        LearnCard derived = captor.getValue();
+        assertEquals("无人机外卖航线的成本账", derived.title());
+        assertEquals(3, derived.keyPoints().size(), "三行要点");
+        assertEquals("低空物流先用高频小单把航线跑通", derived.coreView());
+        assertEquals("低空经济", derived.topic(), "衍生卡留在原主题里");
+        assertTrue(derived.tags().contains("展开"), "衍生卡带「展开」标签，列表里认得出");
+        verify(repository, never()).save(eq("adai"), any(LearnCard.class), anyList());
+    }
+
+    /** 已展开过 → 幂等返回那张衍生卡，不再烧模型。 */
+    @Test
+    void expandCard_alreadyExpanded_isIdempotentWithoutBurningModel() {
+        when(repository.find("adai", "other", "杭州无人机外卖航线")).thenReturn(Optional.of(expandableCard()));
+        when(repository.expandedTitle("adai", "other", "杭州无人机外卖航线")).thenReturn("无人机外卖航线的成本账");
+        LearnDigestAppService s = serviceWithTasks(directExecutor);
+
+        LearnDigestAppService.ExpansionResult r = s.expandCard("adai", "other", "杭州无人机外卖航线");
+
+        assertEquals("exists", r.status());
+        assertEquals("无人机外卖航线的成本账", r.title());
+        verifyNoInteractions(aiClient);
+        verify(repository, never()).saveDerived(anyString(), any(LearnCard.class), anyString(), anyString());
+    }
+
+    /** 没留素材 → 人话拒绝（不硬编一篇），且不烧模型。 */
+    @Test
+    void expandCard_withoutMaterial_throwsHumanMessageWithoutBurningModel() {
+        when(repository.find("adai", "other", "杭州无人机外卖航线")).thenReturn(Optional.of(expandableCard()));
+        when(repository.expandedTitle("adai", "other", "杭州无人机外卖航线")).thenReturn(null);
+        when(repository.sourceAssets("adai", "other", "杭州无人机外卖航线")).thenReturn(List.of());
+        LearnDigestAppService s = serviceWithTasks(directExecutor);
+
+        LearnException e = assertThrows(LearnException.class,
+                () -> s.expandCard("adai", "other", "杭州无人机外卖航线"));
+
+        assertTrue(e.getMessage().contains("没留下原始素材"), e.getMessage());
+        verifyNoInteractions(aiClient);
+    }
+
+    /** 待展开清单：有素材、无衍生卡 → hasSource=true / expanded=false（前端据此亮「待展开」）。 */
+    @Test
+    void expansions_reportsPendingAndExpandedState() {
+        when(repository.list("adai", "other")).thenReturn(List.of(expandableCard()));
+        when(repository.list("adai", "ai")).thenReturn(List.of());
+        when(repository.list("adai", "trading")).thenReturn(List.of());
+        when(repository.sourceAssets("adai", "other", "杭州无人机外卖航线"))
+                .thenReturn(List.of("transcript.txt"));
+        when(repository.readRaw("adai", "transcript.txt")).thenReturn("原始转写稿：杭州开通三条无人机外卖航线……");
+        when(repository.expandedTitle("adai", "other", "杭州无人机外卖航线")).thenReturn(null);
+        LearnDigestAppService s = serviceWithTasks(directExecutor);
+
+        List<LearnDigestAppService.ExpansionState> states = s.expansions("adai");
+
+        assertEquals(1, states.size());
+        LearnDigestAppService.ExpansionState st = states.get(0);
+        assertEquals("other", st.type());
+        assertEquals("杭州无人机外卖航线", st.title());
+        assertTrue(st.hasSource(), "有素材 → 可展开");
+        assertFalse(st.expanded(), "还没有衍生卡 → 待展开");
+        assertNull(st.expandedTitle());
+    }
+
+    /**
+     * 对抗审查 A 复现（2026-10-05）：**同主题**里 A 卡有素材、B 卡没有 →
+     * 展开 B 绝不能借用 A 的素材，也不得调用模型；B 的「待展开」徽标必须是 false。
+     *
+     * <p>旧实现按**主题目录**（{@code repository.rawAssets(type, topic)}）取素材，而素材名
+     * （{@code pasted-<hash>.txt} / 转写稿）**不含卡名**、{@code _raw/} 又是主题级目录——
+     * 于是 B 的展开 prompt 里会塞进 A 的转写稿，用户点一下就得到一张内容对不上的衍生卡。
+     *
+     * <p>反向验证：把 {@code cardMaterials} 的取值改回 {@code rawAssets(type, topic)} → 本用例红。
+     */
+    @Test
+    void expandCard_cardWithoutOwnAssets_neverBorrowsSameTopicSiblingAssets() {
+        LearnCard sibling = new LearnCard("other", "同主题的另一张卡", "bilibili", "某UP",
+                "https://www.bilibili.com/video/BV1yy411c7mE", "2026-05-06",
+                LocalDate.of(2026, 9, 26), LearnCard.STATUS_NEW, false, null,
+                List.of("低空经济"), "另一张卡的观点", List.of("另一张的要点"), List.of(), "",
+                "低空经济");
+        when(repository.find("adai", "other", "同主题的另一张卡")).thenReturn(Optional.of(sibling));
+        when(repository.expandedTitle("adai", "other", "同主题的另一张卡")).thenReturn(null);
+        // 同主题目录里确实躺着 A 卡的素材（旧实现就是靠这一步把 A 的稿子喂给 B）
+        when(repository.rawAssets("adai", "other", "低空经济")).thenReturn(List.of("transcript.txt"));
+        when(repository.readRaw("adai", "transcript.txt")).thenReturn("A 卡的转写稿，跟这张卡不是一回事");
+        // B 卡自己没记下任何素材
+        when(repository.sourceAssets("adai", "other", "同主题的另一张卡")).thenReturn(List.of());
+        LearnDigestAppService s = serviceWithTasks(directExecutor);
+
+        LearnException e = assertThrows(LearnException.class,
+                () -> s.expandCard("adai", "other", "同主题的另一张卡"));
+
+        assertTrue(e.getMessage().contains("没留下原始素材"), e.getMessage());
+        verifyNoInteractions(aiClient);
+        verify(repository, never()).saveDerived(anyString(), any(LearnCard.class), anyString(), anyString());
+
+        // 双端「待展开」徽标与展开判据同源：B 卡 hasSource=false（否则用户点一下才发现没素材）
+        when(repository.list("adai", "other")).thenReturn(List.of(sibling));
+        when(repository.list("adai", "ai")).thenReturn(List.of());
+        when(repository.list("adai", "trading")).thenReturn(List.of());
+        List<LearnDigestAppService.ExpansionState> states = s.expansions("adai");
+        assertEquals(1, states.size());
+        assertFalse(states.get(0).hasSource(), "B 卡自己没素材 → 徽标不得亮");
+    }
+
+    /**
+     * 对抗审查 A 的另一半：消化落卡时就要把「这张卡用了哪些素材」记进卡自己的 frontmatter
+     * （{@code source_assets}）——素材名不含卡名，不记就没法按卡取用。
+     */
+    @Test
+    void submit_recordsSourceAssetsOnTheCardItCameFrom() {
+        when(aiClient.generate(any(), any())).thenReturn(TOPIC_JSON);
+        String pastedName = "pasted-" + LearnDigestAppService.shortHash("这是一段粘进来的正文……") + ".txt";
+        when(repository.promoteRaw(eq("adai"), eq(LearnCard.TYPE_TRADING), eq("量价关系"), anyList()))
+                .thenReturn(List.of(pastedName));
+        LearnDigestAppService direct = new LearnDigestAppService(
+                aiClient, repository, directExecutor, fetchService, transcriptionService);
+
+        direct.submit("adai", "这是一段粘进来的正文……", "trading", "web", "某人", null, null);
+
+        verify(repository).writeSourceAssets(eq("adai"), eq(LearnCard.TYPE_TRADING),
+                eq("回调一半的判定"), eq(List.of(pastedName)));
+    }
+
+    /**
+     * P2-learn33 审查 A 的**端到端闭环**（真实文件仓储 + 内存盘）：消化落卡时把素材名记进
+     * frontmatter → 展开时按这份记录读回同一份素材、喂进 prompt。
+     *
+     * <p>钉住「写进去的名字」与「展开时去读的名字」一致（归位遇同名不同内容会改名
+     * {@code versionedName}，两边一旦分家，卡就永远展开不了或读错文件）。
+     */
+    @Test
+    void expandCard_realStorage_readsBackTheAssetsRecordedOnTheCard() {
+        var storage = new com.adaiadai.core.infrastructure.storage.InMemoryFileStorage();
+        var realRepo = new com.adaiadai.core.infrastructure.storage.LearnCardFileRepository(storage);
+        when(aiClient.generate(any(), any())).thenReturn(TOPIC_JSON, EXPAND_JSON);
+        LearnDigestAppService direct = new LearnDigestAppService(
+                aiClient, realRepo, directExecutor, fetchService, transcriptionService);
+
+        direct.submit("adai", "这是一段粘进来的正文……", "trading", "web", "某人", null, null);
+
+        String materialName = "pasted-" + LearnDigestAppService.shortHash("这是一段粘进来的正文……") + ".txt";
+        assertEquals(List.of(materialName),
+                realRepo.sourceAssets("adai", LearnCard.TYPE_TRADING, "回调一半的判定"),
+                "落卡时把「这张卡用了哪份素材」记进 frontmatter");
+        assertEquals("这是一段粘进来的正文……", realRepo.readRaw("adai", materialName),
+                "素材确实归位到主题目录，按记录读得回来");
+
+        LearnDigestAppService.ExpansionResult r =
+                direct.expandCard("adai", LearnCard.TYPE_TRADING, "回调一半的判定");
+
+        assertEquals("expanded", r.status());
+        ArgumentCaptor<com.adaiadai.core.kernel.context.engine.ContextPackage> captor =
+                ArgumentCaptor.forClass(com.adaiadai.core.kernel.context.engine.ContextPackage.class);
+        verify(aiClient, times(2)).generate(captor.capture(), any());
+        String expandPrompt = captor.getAllValues().get(1).prompt();
+        assertTrue(expandPrompt.contains(materialName), "展开 prompt 里是这张卡自己记录的素材：" + expandPrompt);
+        assertTrue(expandPrompt.contains("这是一段粘进来的正文……"), "喂的是素材正文本身");
+    }
+
+    /**
+     * 对抗审查 B 复现（2026-10-05）：两端**同时**展开同一张卡 → 模型只被调 1 次、只落 1 张衍生卡，
+     * 第二次拿到如实的「正在展开」；旧实现是 check-then-act，两边各烧一次模型、可能落两张卡。
+     *
+     * <p>时序刻意做成「第一次的模型调用被卡住，第二次必须在这个窗口里进来」——否则去掉占位后
+     * 第二次会走「已展开」幂等分支，用例红不了（变异验证不到）。
+     *
+     * <p>反向验证：去掉 {@code expandInFlight} 占位 → 本用例红（模型调用 2 次、落 2 张卡）。
+     */
+    @Test
+    void expandCard_concurrentSameCard_burnsModelOnce() throws Exception {
+        when(repository.find("adai", "other", "杭州无人机外卖航线")).thenReturn(Optional.of(expandableCard()));
+        when(repository.expandedTitle("adai", "other", "杭州无人机外卖航线")).thenReturn(null);
+        when(repository.sourceAssets("adai", "other", "杭州无人机外卖航线"))
+                .thenReturn(List.of("transcript.txt"));
+        when(repository.readRaw("adai", "transcript.txt")).thenReturn("原始转写稿：杭州开通三条无人机外卖航线……");
+        when(repository.existsOn(eq("adai"), eq("other"), any(), anyString())).thenReturn(false);
+
+        CountDownLatch modelEntered = new CountDownLatch(1);
+        CountDownLatch releaseModel = new CountDownLatch(1);
+        AtomicInteger modelCalls = new AtomicInteger();
+        when(aiClient.generate(any(), any())).thenAnswer(inv -> {
+            if (modelCalls.incrementAndGet() == 1) {
+                modelEntered.countDown();
+                assertTrue(releaseModel.await(10, TimeUnit.SECONDS), "等测试放行第一次模型调用");
+            }
+            return EXPAND_JSON;
+        });
+        LearnDigestAppService s = serviceWithTasks(directExecutor);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<LearnDigestAppService.ExpansionResult> first = pool.submit(
+                    () -> s.expandCard("adai", "other", "杭州无人机外卖航线"));
+            assertTrue(modelEntered.await(10, TimeUnit.SECONDS), "第一次展开应已进入模型调用");
+            Future<LearnDigestAppService.ExpansionResult> second = pool.submit(
+                    () -> s.expandCard("adai", "other", "杭州无人机外卖航线"));
+            LearnDigestAppService.ExpansionResult secondResult = second.get(10, TimeUnit.SECONDS);
+            releaseModel.countDown();
+            LearnDigestAppService.ExpansionResult firstResult = first.get(10, TimeUnit.SECONDS);
+
+            assertEquals("expanded", firstResult.status());
+            assertEquals(1, modelCalls.get(), "并发两次展开只允许烧 1 次模型");
+            verify(repository, times(1)).saveDerived(anyString(), any(LearnCard.class), anyString(), anyString());
+            assertTrue("exists".equals(secondResult.status()) || "expanding".equals(secondResult.status()),
+                    "并发第二次必须如实回「正在展开/已展开」，实际=" + secondResult.status());
+        } finally {
+            pool.shutdownNow();
+        }
     }
 
     @Test

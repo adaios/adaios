@@ -814,3 +814,175 @@ class LearnTradingCandidateDto {
     return const [];
   }
 }
+
+/// LearnDigestTaskDto — 一次「交给阿呆整理」的追踪账（GET /learn/digest/jobs）。
+///
+/// 值复制自 adai-app（2026-10-05 learn 域三清批）：桌面端此前**没有**整理进度区，
+/// 只有 /digest/status 的提示条——于是过期/没排上的账桌面端完全看不到。补齐同一份真相源。
+/// status：running | needs_confirmation | not_queued | done | failed | cancelled | expired。
+class LearnDigestTaskDto {
+  final String id;
+  final String url;
+  final String sourceTitle;
+  final String platform;
+  final String status;
+  final String stage;
+  final String message;
+  final String type;
+  final String title;
+  final String topic;
+  final String submittedAt;
+  final String settledAt;
+
+  LearnDigestTaskDto({
+    required this.id,
+    this.url = '',
+    this.sourceTitle = '',
+    this.platform = '',
+    this.status = '',
+    this.stage = '',
+    this.message = '',
+    this.type = '',
+    this.title = '',
+    this.topic = '',
+    this.submittedAt = '',
+    this.settledAt = '',
+  });
+
+  factory LearnDigestTaskDto.fromJson(Map<String, dynamic> json) => LearnDigestTaskDto(
+        id: (json['id'] as String?) ?? '',
+        url: (json['url'] as String?) ?? '',
+        sourceTitle: (json['sourceTitle'] as String?) ?? '',
+        platform: (json['platform'] as String?) ?? '',
+        status: (json['status'] as String?) ?? '',
+        stage: (json['stage'] as String?) ?? '',
+        message: (json['message'] as String?) ?? '',
+        type: (json['type'] as String?) ?? '',
+        title: (json['title'] as String?) ?? '',
+        topic: (json['topic'] as String?) ?? '',
+        submittedAt: (json['submittedAt'] as String?) ?? '',
+        settledAt: (json['settledAt'] as String?) ?? '',
+      );
+
+  bool get isDone => status == 'done';
+  bool get isFailed => status == 'failed';
+  bool get isCancelled => status == 'cancelled';
+  bool get isAwaitingConfirm => status == 'needs_confirmation';
+  /// P2-learn34：决策入口已过期（内存 30 分钟 TTL 到期 / 重启丢失）——账上如实标 expired。
+  bool get isExpired => status == 'expired';
+  /// P2-分享4：这条**没排上**（任务位被占，刻意不排队）——不是「在跑了」。
+  bool get isNotQueued => status == 'not_queued';
+  bool get inProgress => status == 'running' || status == 'needs_confirmation';
+
+  /// 这一条是什么——用户要认得出自己交了什么（标题 > 域名 > 图片张数）。
+  String get what {
+    if (sourceTitle.isNotEmpty) return '《$sourceTitle》';
+    if (url.isNotEmpty) return Uri.tryParse(url)?.host ?? '一条链接';
+    if (platform == 'image') return '几张图';
+    return '一条内容';
+  }
+
+  /// 状态人话（第一原则：是「我和阿呆」在说话，不是系统状态标签）。
+  String get statusText => switch (status) {
+        'done' => '读好了',
+        'failed' => '没读成',
+        'cancelled' => '你说先不读',
+        'needs_confirmation' => '等你拍板',
+        'expired' => '这次没确认，过期了',
+        'not_queued' => '没排上',
+        _ => '正在读',
+      };
+
+  /// 结局那一行的细节（成功给卡片标题、失败给原因、进行中给读到了哪一步）。
+  String get detailText => switch (status) {
+        'done' => title.isEmpty ? what : '《$title》',
+        'failed' => message.isEmpty ? '素材没留下，重新发我一次就行' : message,
+        'cancelled' => '素材我留着了，回头想读说一声',
+        'needs_confirmation' => message.isEmpty ? '要我接着读吗？' : message,
+        'expired' => message.isEmpty ? '这次没确认，已经过期；要读就再分享一次' : message,
+        'not_queued' => message.isEmpty ? '这条没排上——等它读完，再分享一次' : message,
+        _ => sourceTitle.isEmpty ? '$what——先把原文抓下来' : '读明白了我告诉你',
+      };
+
+  /// 提交时刻（HH:mm；取不到给空串，不假装有时间）。
+  String get clock {
+    final t = submittedAt;
+    return t.length >= 16 ? t.substring(11, 16) : '';
+  }
+}
+
+/// LearnDigestSubmitDto — 喂入受理回执（POST /learn/digest 响应）。
+///
+/// P2-分享4（2026-10-05）：抢占任务位失败时后端回 `status=not_queued`（这条**没排上**）
+/// + 一句人话；喂入弹窗直接展示它，不再自己编一句更含糊的。
+class LearnDigestSubmitDto {
+  final String status;
+  final String message;
+
+  const LearnDigestSubmitDto({required this.status, this.message = ''});
+
+  factory LearnDigestSubmitDto.fromJson(Map<String, dynamic> json) => LearnDigestSubmitDto(
+        status: (json['status'] as String?) ?? '',
+        message: (json['message'] as String?) ?? '',
+      );
+
+  bool get isNotQueued => status == 'not_queued';
+  bool get isRecorded => status == 'recorded';
+}
+
+/// LearnExpansionDto — 一张卡的「展开」状态（GET /learn/cards/expansions，P2-learn33）。
+///
+/// [pending] = 有素材、还没展开 → 桌面端左目录亮「待展开」，右侧给一键入口。
+class LearnExpansionDto {
+  final String type;
+  final String title;
+  final String topic;
+  final bool hasSource;
+  final bool expanded;
+  final String expandedTitle;
+
+  const LearnExpansionDto({
+    required this.type,
+    required this.title,
+    this.topic = '',
+    this.hasSource = false,
+    this.expanded = false,
+    this.expandedTitle = '',
+  });
+
+  factory LearnExpansionDto.fromJson(Map<String, dynamic> json) => LearnExpansionDto(
+        type: (json['type'] as String?) ?? '',
+        title: (json['title'] as String?) ?? '',
+        topic: (json['topic'] as String?) ?? '',
+        hasSource: (json['hasSource'] as bool?) ?? false,
+        expanded: (json['expanded'] as bool?) ?? false,
+        expandedTitle: (json['expandedTitle'] as String?) ?? '',
+      );
+
+  bool get pending => hasSource && !expanded;
+}
+
+/// LearnExpansionResultDto — 展开动作结果（POST /learn/cards/expand）。
+class LearnExpansionResultDto {
+  final String type;
+  final String title;
+  final String derivedFrom;
+  final String status; // expanded | exists
+  final String message;
+
+  const LearnExpansionResultDto({
+    required this.type,
+    required this.title,
+    this.derivedFrom = '',
+    this.status = '',
+    this.message = '',
+  });
+
+  factory LearnExpansionResultDto.fromJson(Map<String, dynamic> json) => LearnExpansionResultDto(
+        type: (json['type'] as String?) ?? '',
+        title: (json['title'] as String?) ?? '',
+        derivedFrom: (json['derivedFrom'] as String?) ?? '',
+        status: (json['status'] as String?) ?? '',
+        message: (json['message'] as String?) ?? '',
+      );
+}

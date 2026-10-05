@@ -1484,7 +1484,7 @@ class TradingControllerTest {
     void importPositions_importsAndReportsMissingStopLoss() throws Exception {
         TradingAppService trading = mock(TradingAppService.class);
         // 2026-09-13：Controller 改调 5 参重载（加券商当日盈亏 brokerTodayPnl）
-        when(trading.importPositions(any(), any(), anyBoolean(), any(), any())).thenReturn(
+        when(trading.importPositions(any(), any(), anyBoolean(), any(), any(), any())).thenReturn(
                 new TradingAppService.PositionImportResult(2,
                         java.util.List.of("600519 贵州茅台", "000725 京东方A")));
         MockMvc mvc = buildMvc(trading);
@@ -1502,7 +1502,7 @@ class TradingControllerTest {
         // 2026-09-13 用户实测：持仓股导出的「当日盈亏」列一直被丢（前端不解析、后端无入参），
         // 账户卡只能退回系统自算。本用例锁住「该列能一路传到 service」。
         TradingAppService trading = mock(TradingAppService.class);
-        when(trading.importPositions(any(), any(), anyBoolean(), any(), any())).thenReturn(
+        when(trading.importPositions(any(), any(), anyBoolean(), any(), any(), any())).thenReturn(
                 new TradingAppService.PositionImportResult(1, java.util.List.of()));
         MockMvc mvc = buildMvc(trading);
 
@@ -1517,16 +1517,48 @@ class TradingControllerTest {
         org.mockito.ArgumentCaptor<java.math.BigDecimal> cap =
                 org.mockito.ArgumentCaptor.forClass(java.math.BigDecimal.class);
         verify(trading).importPositions(any(), any(), eq(true),
-                eq(java.time.LocalDate.of(2026, 9, 11)), cap.capture());
+                eq(java.time.LocalDate.of(2026, 9, 11)), cap.capture(), any());
         assertEquals(0, new java.math.BigDecimal("-1759.00").compareTo(cap.getValue()),
                 "券商当日盈亏必须原样传到 service（实际 " + cap.getValue() + "）");
+    }
+
+
+    /**
+     * 2026-10-05（P2-交易84）：`basedOn`（显式数据基准日）必须一路传到 service，且锚定日的
+     * **依据**要在回执里如实带出（有据/无据）——不许静默归一化。
+     */
+    @Test
+    void importPositions_passesExplicitBasisAndReturnsAnchorReceipt() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.importPositions(any(), any(), anyBoolean(), any(), any(), any())).thenReturn(
+                new TradingAppService.PositionImportResult(1, java.util.List.of(),
+                        new TradingAppService.AnchorDecision(java.time.LocalDate.of(2026, 9, 18),
+                                java.time.LocalDate.of(2026, 9, 18), java.time.LocalDate.of(2026, 9, 18),
+                                com.adaiadai.core.domain.trading.AnchorBasis.EXPLICIT)));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(post("/api/v1/trading/positions/import")
+                        .param("replace", "true")
+                        .param("snapshotDate", "2026-09-18")
+                        .param("basedOn", "2026-09-18")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[{\"symbol\":\"600206\",\"name\":\"有研新材\",\"quantity\":100,\"avgCost\":46.0}]"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.anchor.basis").value("EXPLICIT"))
+                .andExpect(jsonPath("$.anchor.withEvidence").value(true))
+                .andExpect(jsonPath("$.anchor.anchorDate").value("2026-09-18"))
+                .andExpect(jsonPath("$.anchor.note").value(containsString("有据")));
+
+        verify(trading).importPositions(any(), any(), eq(true),
+                eq(java.time.LocalDate.of(2026, 9, 18)), any(),
+                eq(java.time.LocalDate.of(2026, 9, 18)));
     }
 
     @Test
     void importPositions_success_triggersDailyReviewAfterSync() throws Exception {
         // RFC 20260922 B 批 B3：账同步完成 → 触发收盘复盘（收盘前/后、今天发过没，由推送服务内部判定）
         TradingAppService trading = mock(TradingAppService.class);
-        when(trading.importPositions(any(), any(), anyBoolean(), any(), any())).thenReturn(
+        when(trading.importPositions(any(), any(), anyBoolean(), any(), any(), any())).thenReturn(
                 new TradingAppService.PositionImportResult(2, java.util.List.of()));
         com.adaiadai.core.application.TradingSessionPushService sync =
                 mock(com.adaiadai.core.application.TradingSessionPushService.class);
@@ -1544,7 +1576,7 @@ class TradingControllerTest {
     void importPositions_noRows_doesNotTriggerSync() throws Exception {
         // 空导入不算「账同步完成」——否则一次什么都没导的操作也会让复盘冒出来
         TradingAppService trading = mock(TradingAppService.class);
-        when(trading.importPositions(any(), any(), anyBoolean(), any(), any())).thenReturn(
+        when(trading.importPositions(any(), any(), anyBoolean(), any(), any(), any())).thenReturn(
                 new TradingAppService.PositionImportResult(0, java.util.List.of()));
         com.adaiadai.core.application.TradingSessionPushService sync =
                 mock(com.adaiadai.core.application.TradingSessionPushService.class);
@@ -1966,7 +1998,7 @@ class TradingControllerTest {
     @Test
     void importCash_returnsResult() throws Exception {
         TradingAppService trading = mock(TradingAppService.class);
-        when(trading.importCashQuery(any(), any(), any())).thenReturn(
+        when(trading.importCashQuery(any(), any(), any(), any())).thenReturn(
                 new TradingAppService.CashImportResult(new java.math.BigDecimal("292.88"), new java.math.BigDecimal("110504.88"), 5));
         MockMvc mvc = buildMvc(trading);
         mvc.perform(post("/api/v1/trading/imports/cash")
@@ -1982,7 +2014,7 @@ class TradingControllerTest {
         // P2-交易83 二审：资金侧同病——旧的 int 计数 `unparsedRows` 必须保持数字不变（旧客户端兼容），
         // 新增的 `unparsed`/`unparsedCount` 要如实带出行号+原文+原因。
         TradingAppService trading = mock(TradingAppService.class);
-        when(trading.importCashQuery(any(), any(), any())).thenReturn(
+        when(trading.importCashQuery(any(), any(), any(), any())).thenReturn(
                 new TradingAppService.CashImportResult(new BigDecimal("292.88"), new BigDecimal("110504.88"), 5,
                         List.of("第 6 行「1 60080 山西汾酒」：证券代码「60080」不是 6 位数字")));
         MockMvc mvc = buildMvc(trading);
@@ -1999,6 +2031,34 @@ class TradingControllerTest {
                 .andExpect(jsonPath("$.unparsed[0]").value(containsString("第 6 行")))
                 .andExpect(jsonPath("$.unparsed[0]").value(containsString("不是 6 位数字")))
                 .andExpect(jsonPath("$.unparsedCount").value(1));
+    }
+
+
+    /**
+     * 2026-10-05（P2-交易84）：资金侧同样接受显式基准日，并把依据带回回执
+     * （资金锚定与持仓锚定同一套「有据/无据」口径）。
+     */
+    @Test
+    void importCash_passesExplicitBasisAndReturnsAnchorReceipt() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.importCashQuery(any(), any(), any(), any())).thenReturn(
+                new TradingAppService.CashImportResult(new java.math.BigDecimal("292.88"),
+                        new java.math.BigDecimal("110504.88"), 0, java.util.List.of(),
+                        new TradingAppService.AnchorDecision(java.time.LocalDate.of(2026, 9, 17),
+                                java.time.LocalDate.of(2026, 9, 18), null,
+                                com.adaiadai.core.domain.trading.AnchorBasis.CLOCK)));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(post("/api/v1/trading/imports/cash")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"余额:292.88  资产:110504.88\",\"basedOn\":\"2026-09-17\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.anchor.basis").value("CLOCK"))
+                .andExpect(jsonPath("$.anchor.withEvidence").value(false))
+                .andExpect(jsonPath("$.anchor.note").value(containsString("无据")));
+
+        verify(trading).importCashQuery(any(), any(), any(),
+                eq(java.time.LocalDate.of(2026, 9, 17)));
     }
 
     // ── RFC 20260825：批次视图 + 导入同步模式响应 ──
@@ -2402,8 +2462,9 @@ class TradingControllerTest {
     @Test
     void tradingProfile_get_returnsStatsAndSubjective() throws Exception {
         TradingProfileService profile = mock(TradingProfileService.class);
+        // P2-认知2（2026-10-05）：统计口径改为逐笔回合 → 字段 soldCount 改名 roundCount
         when(profile.computeStats(any())).thenReturn(new TradingProfileService.TradingProfileStats(
-                168, 33.3, -1.54, 91, 54.2, 12,
+                232, 33.3, -1.54, 91, 54.2, 12,
                 java.util.Map.of("盈利了结", 57, "扛单超 5%", 37, "短持仓亏损", 54)));
         when(profile.computeAdviceAdherence(any())).thenReturn(
                 new TradingProfileService.AdviceAdherence(12, 8, 66.7));
@@ -2412,7 +2473,7 @@ class TradingControllerTest {
 
         profileMvc(profile).perform(get("/api/v1/trading/profile").header("X-User-Id", "default"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.stats.soldCount").value(168))
+                .andExpect(jsonPath("$.stats.roundCount").value(232))
                 .andExpect(jsonPath("$.stats.winRatePct").value(33.3))
                 .andExpect(jsonPath("$.stats.disciplineViolationCount").value(91))
                 .andExpect(jsonPath("$.adviceAdherence.followedCount").value(8))

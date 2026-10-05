@@ -87,7 +87,9 @@ class BriefAppServiceTest {
                 todoRepository,
                 rhythmRepository,
                 // G-2：PluginService（trading 插件开启——简报交易活动信号测试用）
-                pluginService("trading")
+                pluginService("trading"),
+                // REVIEW P2-交易73：真实判据（走 mock 的 TodoRepository）——测「有未完成才提 / 无则沉默」
+                new ActionReviewService(todoRepository, new TodoAppService(todoRepository, memoryService))
         );
     }
 
@@ -294,6 +296,73 @@ class BriefAppServiceTest {
         briefAppService.generateBrief("default");
 
         assertFalse(recordingAi.lastPrompt.contains("每天跑步"), "暂停的节律不得注入");
+    }
+
+    // ── REVIEW P2-交易73：对话里给出的动作优先捞回（有据 / 有界 / 完成后不再提）──
+
+    @Test
+    void buildBriefPrompt_pendingActionsSurfacedAsCallback() {
+        when(todoRepository.findAll(TodoStatus.OPEN, "default")).thenReturn(List.of(
+                new Todo("todo_action", "把云南锗业的白线调出来看看", TodoStatus.OPEN,
+                        java.time.LocalDate.now().plusDays(1), "rec_conv_1",
+                        java.time.LocalDate.now(), java.time.LocalDate.now()),
+                new Todo("todo_manual", "我自己加的事", TodoStatus.OPEN, null,
+                        java.time.LocalDate.now(), java.time.LocalDate.now())));
+
+        briefAppService.generateBrief("default");
+
+        String prompt = recordingAi.lastPrompt;
+        assertNotNull(prompt, "应捕获到简报 prompt");
+        assertTrue(prompt.contains("Things you asked this user to do earlier"),
+                "有未完成的对话动作 → 注入回看段");
+        assertTrue(prompt.contains("把云南锗业的白线调出来看看"), "回看的是动作原话");
+        assertTrue(prompt.contains("Open todos (not done"), "普通待办仍走既有那一段");
+        assertTrue(prompt.contains("我自己加的事"));
+    }
+
+    @Test
+    void buildBriefPrompt_noPendingAction_callbackSectionAbsent() {
+        when(todoRepository.findAll(TodoStatus.OPEN, "default")).thenReturn(List.of(
+                new Todo("todo_manual", "我自己加的事", TodoStatus.OPEN, null,
+                        java.time.LocalDate.now(), java.time.LocalDate.now())));
+
+        briefAppService.generateBrief("default");
+
+        String prompt = recordingAi.lastPrompt;
+        assertFalse(prompt.contains("Things you asked this user to do earlier"),
+                "没有对话动作 → 回看段一个字都不加（沉默是默认项）");
+        assertTrue(prompt.contains("Open todos (not done"), "手动待办照旧注入");
+    }
+
+    @Test
+    void buildBriefPrompt_pendingActionDone_nothingSurfaced() {
+        // 完成后的动作不在 OPEN 清单里（findAll(OPEN) 不返回）→ 不该再被捞回
+        when(todoRepository.findAll(TodoStatus.OPEN, "default")).thenReturn(List.of());
+
+        briefAppService.generateBrief("default");
+
+        assertFalse(recordingAi.lastPrompt.contains("Things you asked this user to do earlier"));
+        assertFalse(recordingAi.lastPrompt.contains("Open todos (not done"),
+                "完成后不再捞回——沉默是默认项");
+    }
+
+    @Test
+    void buildBriefPrompt_pendingActions_boundedByMaxBriefTodos() {
+        when(todoRepository.findAll(TodoStatus.OPEN, "default")).thenReturn(List.of(
+                new Todo("todo_a1", "动作一", TodoStatus.OPEN, null, "rec_1",
+                        java.time.LocalDate.now(), java.time.LocalDate.now()),
+                new Todo("todo_a2", "动作二", TodoStatus.OPEN, null, "rec_2",
+                        java.time.LocalDate.now(), java.time.LocalDate.now()),
+                new Todo("todo_a3", "动作三", TodoStatus.OPEN, null, "rec_3",
+                        java.time.LocalDate.now(), java.time.LocalDate.now()),
+                new Todo("todo_a4", "动作四", TodoStatus.OPEN, null, "rec_4",
+                        java.time.LocalDate.now(), java.time.LocalDate.now())));
+
+        briefAppService.generateBrief("default");
+
+        String prompt = recordingAi.lastPrompt;
+        assertTrue(prompt.contains("动作四"), "最近的动作优先（id 逆序）");
+        assertFalse(prompt.contains("动作一"), "超出 MAX_BRIEF_TODOS 的动作不注入（有界）");
     }
 
     /** 记录最后一次 prompt 的 AiClient 装饰器（其余行为委托 TestAiClient）。 */

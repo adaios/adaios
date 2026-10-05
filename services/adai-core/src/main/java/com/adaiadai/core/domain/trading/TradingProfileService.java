@@ -17,8 +17,15 @@ import java.util.Map;
  * <p>
  * 双层画像：
  * <ul>
- *   <li><b>客观层</b>：全部数字由系统从清仓史（sold）实时推导——纪律遵守率、胜率、持仓节奏、
- *       行为签名频次。不落盘（实时算最真），红线①：数字只能系统给。</li>
+ *   <li><b>客观层</b>：全部数字由系统从 <b>逐笔回合</b>（买入批次 → 卖清，见
+ *       {@link TradingRoundPort}，实现为流水批次重放）实时推导——纪律遵守率、胜率、持仓节奏、
+ *       行为签名频次。不落盘（实时算最真），红线①：数字只能系统给。
+ *       <br><b>P2-认知2（2026-09-05 用户拍板 B，2026-10-05 落地 v2）</b>：客观层原先建在
+ *       {@code sold.json}（清仓表）上，那是**标的级总账**——「首买 → 末卖」的纸上区间收益，
+ *       同一只票做两轮各 +24% 会被读成 +224%。现全部切到逐笔回合口径。
+ *       <br>⚠️ 仍走清仓表的只有 {@link #computeAdviceAdherence}（建议遵守率，以清仓日回查卖前建议）
+ *       与 {@link #symbolHistoryNote}（逐票历史对照）——它们不是「收益统计」，
+ *       但注入文本里会与本节的「回合」并列，读的时候注意单位（回合 vs 清仓笔）。</li>
  *   <li><b>主观层</b>：用户补全的情绪/签名确认，存 {@code data/{userId}/trading/profile.md}
  *       （试点记忆卡提问式采集后由 AI 回填），本服务只读并随客观层一起注入。</li>
  * </ul>
@@ -34,18 +41,30 @@ public class TradingProfileService {
     private final FileStorage fileStorage;
     /** RFC 20260905 P2：建议遵守率（B 反哺 A）——查建议留痕对照实际清仓。 */
     private final com.adaiadai.core.domain.trading.AdviceHistoryRepository adviceHistoryRepository;
+    /**
+     * 逐笔回合数据源（P2-认知2，2026-10-05）：画像客观层的数据源。
+     * 端口在 domain（{@link TradingRoundPort}），实现是 application 的批次重放服务——
+     * domain 不反向依赖 application（分层红线）。
+     */
+    private final TradingRoundPort tradingRoundPort;
 
     public TradingProfileService(SoldTradeRepository soldTradeRepository,
                                  FileStorage fileStorage,
-                                 com.adaiadai.core.domain.trading.AdviceHistoryRepository adviceHistoryRepository) {
+                                 com.adaiadai.core.domain.trading.AdviceHistoryRepository adviceHistoryRepository,
+                                 TradingRoundPort tradingRoundPort) {
         this.soldTradeRepository = soldTradeRepository;
         this.fileStorage = fileStorage;
         this.adviceHistoryRepository = adviceHistoryRepository;
+        this.tradingRoundPort = tradingRoundPort;
     }
 
-    /** 结构化画像统计（客观层；供端点返回 / 测试断言）。 */
+    /**
+     * 结构化画像统计（客观层；供端点返回 / 测试断言）。
+     *
+     * @param roundCount 已了结**回合**数（不是清仓表行数——同一标的做过 N 轮就是 N 个回合）
+     */
     public record TradingProfileStats(
-            int soldCount,
+            int roundCount,
             double winRatePct,
             double medianPnlPct,
             int disciplineViolationCount,
@@ -54,79 +73,95 @@ public class TradingProfileService {
             Map<String, Integer> verdictBreakdown
     ) {}
 
-    /** 计算客观画像统计（空/损坏清仓史 → 全零，不抛错）。 */
+    /**
+     * 计算客观画像统计（数据源 = 逐笔回合；空/损坏 → 全零，不抛错）。
+     * <p>
+     * <b>逐指标口径（P2-认知2，2026-10-05）</b>：
+     * <ul>
+     *   <li>笔数 {@code roundCount}：已了结回合数（批次剩余归零；成本不可测的回合不计）。</li>
+     *   <li>胜率：回合收益率 &gt; 0 的回合占比（= 回合已实现盈亏为正）。</li>
+     *   <li>盈亏中位数：回合收益率中位数（realizedPnl / 买入成本，费用已扣），排序取上中位
+     *       （偶数个取 {@code pnls.get(size/2)}，与旧实现同法，便于对照）。</li>
+     *   <li>纪律违反：回合**没有 verdict 字段**（verdict 长在清仓表行上）→ 从回合数据重新推导：
+     *       复用 {@link SoldTradeVerdict#compute(double, int)} 同一套规则与阈值
+     *       （亏损 ≥ 5% = R66 扛单 / 亏损且持仓 ≤ 5 天 = R53 短持仓），故纪律口径与旧版一致，
+     *       只是数字来自回合而非清仓表。</li>
+     *   <li>平均持仓天数：回合 buyDate → closeDate 的自然日（数据不可得计 0，不猜测）。</li>
+     *   <li>结果分布：上述重推 verdict 的首段文案分组（键空间与旧版相同：「盈利了结 / 扛单超 5% /
+     *       短持仓亏损 / 亏损持仓」，前端与注入文本无需改契约）。</li>
+     * </ul>
+     */
     public TradingProfileStats computeStats(String userId) {
-        List<SoldTrade> sold = safeSold(userId);
-        if (sold.isEmpty()) {
+        List<TradingRoundPort.ClosedRound> rounds = safeRounds(userId);
+        if (rounds.isEmpty()) {
             return new TradingProfileStats(0, 0, 0, 0, 0, 0, Map.of());
         }
         int wins = 0;
-        double sum = 0;
         List<Double> pnls = new ArrayList<>();
         int violations = 0;
         int holdSum = 0;
         Map<String, Integer> breakdown = new java.util.LinkedHashMap<>();
-        for (SoldTrade t : sold) {
-            sum += t.holdPnlPct();
-            pnls.add(t.holdPnlPct());
-            holdSum += t.holdDays();
-            if (t.holdPnlPct() > 0) wins++;
-            String key = t.verdict() != null && !t.verdict().isBlank()
-                    ? t.verdict().split("——")[0].strip() : "未知";
+        for (TradingRoundPort.ClosedRound r : rounds) {
+            pnls.add(r.pnlPct());
+            holdSum += r.holdDays();
+            if (r.pnlPct() > 0) wins++;
+            // 回合无 verdict → 用同一套规则从回合数据重推（阈值/规则引用与清仓表判决一致）
+            String verdict = SoldTradeVerdict.compute(r.pnlPct(), r.holdDays());
+            String key = verdict.split("——")[0].strip();
             breakdown.merge(key, 1, Integer::sum);
             // 纪律违反（P2-认知1，2026-09-05 用户拍板 A：只算真破纪律两类）：
             //   扛单超5%（R66 不止损）+ 短打亏损（R53 没涨不拍）——「亏损持仓」类（小亏拿很久）
             //   属普通亏损非破纪律，从违纪剔除（原实现三分类全算 → 违纪率≈亏损率，标签误导）
-            if (t.verdict() != null && (t.verdict().contains("扛单")
-                    || t.verdict().contains("短持仓亏损"))) {
+            if (verdict.contains("扛单") || verdict.contains("短持仓亏损")) {
                 violations++;
             }
         }
         pnls.sort(Double::compareTo);
         double median = pnls.get(pnls.size() / 2);
-        double avgHold = (double) holdSum / sold.size();
+        double avgHold = (double) holdSum / rounds.size();
         return new TradingProfileStats(
-                sold.size(),
-                round1(wins * 100.0 / sold.size()),
+                rounds.size(),
+                round1(wins * 100.0 / rounds.size()),
                 round1(median),
                 violations,
-                round1(violations * 100.0 / sold.size()),
+                round1(violations * 100.0 / rounds.size()),
                 (int) Math.round(avgHold),
                 breakdown);
     }
 
     /** 客观画像注入文本（AI 可读，主语是你，全数字系统算）。
      *  🤔18（2026-09-05 对抗审）：样本 <10 笔不注入胜率/纪律率/平均持仓（小样本统计易误读成画像事实），
-     *  只给笔数与提示积累中——1 笔就下「纪律违反率 0%/100%」判断会误导 AI 与用户。 */
+     *  只给笔数与提示积累中——1 笔就下「纪律违反率 0%/100%」判断会误导 AI 与用户。
+     *  样本量口径随 P2-认知2（2026-10-05）改为**回合数**（门槛数值不变）。 */
     public String objectiveProfileText(String userId) {
         TradingProfileStats s = computeStats(userId);
-        if (s.soldCount() == 0) return "";
+        if (s.roundCount() == 0) return "";
         StringBuilder sb = new StringBuilder();
-        sb.append("## 你的交易画像（客观统计，系统从你的清仓史推导）\n\n");
-        if (s.soldCount() < 10) {
-            sb.append("- 已清仓 ").append(s.soldCount()).append(" 笔（样本不足，暂不统计胜率/纪律率——"
-                    + "积累到 10 笔以上再看规律）\n");
-            sb.append("> 参考：清仓史会随导入逐步积累，画像随之变准。\n");
+        sb.append("## 你的交易画像（客观统计，系统从你的逐笔回合推导）\n\n");
+        if (s.roundCount() < 10) {
+            sb.append("- 已了结 ").append(s.roundCount()).append(" 个回合（样本不足，暂不统计胜率/纪律率——"
+                    + "积累到 10 个回合以上再看规律）\n");
+            sb.append("> 参考：回合会随逐笔流水的导入/补录逐步积累，画像随之变准。\n");
             return sb.toString();
         }
-        sb.append("- 已清仓 ").append(s.soldCount()).append(" 笔，胜率 ").append(s.winRatePct()).append("%");
-        if (s.soldCount() >= 5) {
+        sb.append("- 已了结 ").append(s.roundCount()).append(" 个回合，胜率 ").append(s.winRatePct()).append("%");
+        if (s.roundCount() >= 5) {
             sb.append("，盈亏中位数 ").append(s.medianPnlPct()).append("%");
         }
         sb.append("\n");
         sb.append("- 纪律违反率 ").append(s.disciplineViolationRatePct())
-                .append("%（").append(s.disciplineViolationCount()).append(" 笔违反止损/短持纪律）\n");
+                .append("%（").append(s.disciplineViolationCount()).append(" 个回合违反止损/短持纪律）\n");
         sb.append("- 平均持仓 ").append(s.avgHoldDays()).append(" 天\n");
         if (!s.verdictBreakdown().isEmpty()) {
-            sb.append("- 清仓结果分布：");
+            sb.append("- 回合结果分布：");
             List<String> parts = new ArrayList<>();
-            s.verdictBreakdown().forEach((k, v) -> parts.add(k + " " + v + " 笔"));
+            s.verdictBreakdown().forEach((k, v) -> parts.add(k + " " + v + " 个"));
             sb.append(String.join("，", parts)).append("\n");
         }
-        // P2-认知2（2026-09-05 用户拍板 B）：标注口径——清仓表是「首买→末卖」纸上区间收益，
-        // 非实际回合收益（如航天发展 +224% 实为两轮 +24%）；画像 v2 应切逐笔流水回合。
-        sb.append("> 参考：这是你的历史统计（**清仓表口径：首买→末卖纸上区间收益**，非实际逐笔回合），"
-                + "帮你对照「这次操作像不像过去的你」。\n");
+        // P2-认知2（2026-09-05 用户拍板 B；2026-10-05 v2 落地）：口径标注 = 逐笔回合。
+        // 旧标注「清仓表口径：首买→末卖纸上区间收益」已随数据源切换一并删除（文档即行为）。
+        sb.append("> 参考：这是你的历史统计（**逐笔回合口径：一次买入批次到卖清算一个回合**，"
+                + "回合盈亏按该批实际买卖算），帮你对照「这次操作像不像过去的你」。\n");
         return sb.toString();
     }
 
@@ -260,6 +295,17 @@ public class TradingProfileService {
         } catch (Exception e) {
             throw new com.adaiadai.core.infrastructure.storage.StorageException(
                     "保存个人画像失败 | userId=" + userId + " | " + e.getMessage(), e);
+        }
+    }
+
+    /** 逐笔回合读取（失败/为空 → 空表，画像降级为空，不抛错）。 */
+    private List<TradingRoundPort.ClosedRound> safeRounds(String userId) {
+        try {
+            List<TradingRoundPort.ClosedRound> list = tradingRoundPort.closedRounds(userId);
+            return list != null ? list : List.of();
+        } catch (Exception e) {
+            log.warn("读取逐笔回合失败（画像降级为空）| userId={} | {}", userId, e.getMessage());
+            return List.of();
         }
     }
 

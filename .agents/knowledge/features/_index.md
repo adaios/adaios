@@ -78,7 +78,7 @@ tags: [meta, index, feature, 功能主轴]
 | `trade.alert` | 行情异动推送 | shipped | [20260923-market-data-resilience](../../direction/rfc/20260923-market-data-resilience.md) · [20260928-market-source-consolidation](../../direction/rfc/20260928-market-source-consolidation.md) | trading-features §二 | — |
 | `trade.equity` | 资金曲线与周期盈亏 | shipped | —（2026-09-04 晚间自主批 IV 直接实施，无 RFC）| trading-features §一 | — |
 | `trade.case` | 案例库与三维打分 | shipped | [20260830-trading-perfect-case-library](../../direction/rfc/20260830-trading-perfect-case-library.md) | trading-features §十 | — |
-| `trade.cognition` | 认知 / 画像（第五层）| building | [20260905-trading-cognition-layer](../../direction/rfc/20260905-trading-cognition-layer.md) | trading-features §一（端点）· §三（**认知层整体待建**）| P2-认知2、P2-认知3 |
+| `trade.cognition` | 认知 / 画像（第五层）| building | [20260905-trading-cognition-layer](../../direction/rfc/20260905-trading-cognition-layer.md) | trading-features §一（端点）· §三（**认知层整体待建**）| P2-认知3 |
 | `trade.app-form` | App 端交易形态（重做中）| rfc | [20260924-trading-app-form](../../direction/rfc/20260924-trading-app-form.md)（draft）| trading-features §五 | — |
 
 ### learn（学习插件）

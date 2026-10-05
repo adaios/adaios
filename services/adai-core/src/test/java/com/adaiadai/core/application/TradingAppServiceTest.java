@@ -897,10 +897,14 @@ void soldImport_preservesExistingPsychology() {
 @org.junit.jupiter.api.Test
 void soldImport_parseFailedRow_keepsExistingFields() {
     // 2026-09-13（P2-交易41 同型「字段级静默落零」封堵）：解析器取不到数时落 null/0
-    // （parseDateSafe→null、parseIntSafe→0、parseDoubleSafe→0.0），而这里是**整体覆盖**既有行 →
-    // 介入/清仓日期被清空（连带 /sold/{symbol}/psychology-questions 走 404）、
+    // （parseIntSafe→0、parseDoubleSafe→0.0），而这里是**整体覆盖**既有行 →
     // 持仓天数与持仓期涨幅归零（再连带 verdict 用被置 0 的 holdPnlPct 重算出错误结论）。
-    // 判据：A 股 T+1，真实清仓行的两个日期与持仓天数（≥1）必然存在 → 缺失只可能是「没解析出来」。
+    // 判据：A 股 T+1，真实清仓行的持仓天数（≥1）必然存在 → 0 只可能是「没解析出来」。
+    // 2026-10-04 P2-交易85 口径变更（本例夹具随之调整）：**核心列（代码/介入日期/清仓日期）
+    // 读不到的行已在解析层直接丢行上报、不会进这里**——对既有档案是更强的保护（那一行根本不写盘）。
+    // 新用例见 TradingImportParserTest.parseSoldWithReport_truncatedRow_reportedInsteadOfLandingHalfArchive
+    // 与本文件 soldImport_truncatedRow_reportedAndNotWritten。本例改用「核心日期列正常、
+    // 非核心数值列坏」的行，继续钉住服务层对**非核心列**的字段级保护（P2-交易43）。
     PositionRepository repo = mock(PositionRepository.class);
     SoldTradeRepository sold = mock(SoldTradeRepository.class);
     when(sold.findAll(any())).thenReturn(new java.util.ArrayList<>(java.util.List.of(
@@ -912,16 +916,16 @@ void soldImport_parseFailedRow_keepsExistingFields() {
             mock(MarketDataSource.class), mock(TradingLotService.class),
             TradingAppServiceTest.defaultRuleRepo());
 
-    // 第二份导出这一行数值列全空（截断/列错位）→ 解析结果退化为 null/0
+    // 第二份导出这一行的**数值列**全空（截断/列错位）→ 解析结果退化为 0/空（核心日期列仍读到）
     String content = "代码\t名称\t介入日期\t清仓日期\t持仓天数\t买卖次数\t持仓期涨幅%\n"
-            + "600206\t有研新材\t\t\t\t\t\n";
+            + "600206\t有研新材\t20260731\t20260803\t\t\t\n";
     service.soldImport("default", content);
 
     ArgumentCaptor<java.util.List<SoldTrade>> cap = ArgumentCaptor.forClass(java.util.List.class);
     verify(sold).saveAll(eq("default"), cap.capture());
     SoldTrade saved = cap.getValue().get(0);
-    assertEquals("2026-07-31", saved.buyDate().toString(), "介入日期解析失败不得清空既有值");
-    assertEquals("2026-08-03", saved.sellDate().toString(), "清仓日期解析失败不得清空既有值（否则情绪提问 404）");
+    assertEquals("2026-07-31", saved.buyDate().toString(), "介入日期不得被清空（P2-交易85 起由解析层保证非空）");
+    assertEquals("2026-08-03", saved.sellDate().toString(), "清仓日期不得被清空（否则情绪提问 404）");
     assertEquals(3, saved.holdDays(), "持仓天数解析失败不得归零（否则 verdict 误判为短线）");
     assertEquals(-12.82, saved.holdPnlPct(), 1e-9, "持仓期涨幅解析失败不得归零（否则 verdict 重算错）");
     assertEquals("1+1", saved.tradeCount(), "买卖次数空值不得清空");
@@ -1095,6 +1099,60 @@ void soldImport_unrecognizedHeader_failsClosedInsteadOfSilentZero() {
     assertThrows(TradingException.class, () -> service.soldImport("default", ""),
             "空文件同样 fail-closed");
     verify(sold, never()).saveAll(any(), any());
+}
+
+// ── 2026-10-04 P2-交易85：列被截断行（核心日期列读不到）绝不作为「半条档案」落盘 ──
+
+@org.junit.jupiter.api.Test
+void soldImport_truncatedRow_reportedAndNotWritten() {
+    // 审查官实测复现：`600519\t贵州茅台\t20260101`（无清仓日期列）原实现 trades=1/sellDate=null/unparsed=0，
+    // 服务层照常 upsert → 静默落一条没有清仓日期的档案。现在解析层不收该行、回执带丢行明细，
+    // 服务层既不落盘也不再是「导入 1 笔」的假象。
+    SoldTradeRepository sold = mock(SoldTradeRepository.class);
+    when(sold.findAll(any())).thenReturn(new java.util.ArrayList<>());
+    TradingAppService service = new TradingAppService(mock(PositionRepository.class),
+            mock(RecordRepository.class), mock(TradingHistoryRepository.class),
+            mock(WatchlistRepository.class), sold, mock(AccountSnapshotRepository.class),
+            mock(TransferRepository.class), mock(MarketDataSource.class), mock(TradingLotService.class),
+            TradingAppServiceTest.defaultRuleRepo());
+
+    String content = "代码\t名称\t介入日期\t清仓日期\t持仓天数\t买卖次数\t持仓期涨幅%\n"
+            + "600519\t贵州茅台\t20260101\n";
+    TradingAppService.SoldImportResult r = service.soldImport("default", content);
+
+    assertEquals(0, r.imported(), "没有清仓日期的行不算一笔可导入的清仓记录");
+    assertEquals(1, r.unparsedRows().size(), "丢行明细必须回到回执（用户看得到）");
+    String dropped = r.unparsedRows().get(0);
+    assertTrue(dropped.startsWith("第 2 行"), "行号 = 原文件行号（1 起算，含表头行）：" + dropped);
+    assertTrue(dropped.contains("贵州茅台"), "原文要带上：" + dropped);
+    assertTrue(dropped.contains("清仓日期"), "原因要指名缺的列：" + dropped);
+    verify(sold, never()).saveAll(any(), any()); // 半条档案绝不落盘（比字段级保护更强）
+}
+
+@org.junit.jupiter.api.Test
+void soldImport_mixedTruncatedRow_onlyValidRowWritten() {
+    // 正常行 + 截断行同文件：正常行照常 upsert，截断行进丢行明细且**不落档案**
+    SoldTradeRepository sold = mock(SoldTradeRepository.class);
+    when(sold.findAll(any())).thenReturn(new java.util.ArrayList<>());
+    TradingAppService service = new TradingAppService(mock(PositionRepository.class),
+            mock(RecordRepository.class), mock(TradingHistoryRepository.class),
+            mock(WatchlistRepository.class), sold, mock(AccountSnapshotRepository.class),
+            mock(TransferRepository.class), mock(MarketDataSource.class), mock(TradingLotService.class),
+            TradingAppServiceTest.defaultRuleRepo());
+
+    String content = "代码\t名称\t介入日期\t清仓日期\t持仓天数\t买卖次数\t持仓期涨幅%\n"
+            + "600206\t有研新材\t20260731\t20260803\t3\t1+1\t-12.82\n"
+            + "600519\t贵州茅台\t20260101\n";
+    TradingAppService.SoldImportResult r = service.soldImport("default", content);
+
+    assertEquals(1, r.imported(), "正常行照常导入");
+    assertEquals(1, r.unparsedRows().size(), "截断行如实上报");
+    ArgumentCaptor<java.util.List<SoldTrade>> cap = ArgumentCaptor.forClass(java.util.List.class);
+    verify(sold).saveAll(eq("default"), cap.capture());
+    assertEquals(1, cap.getValue().size(), "档案里只应有正常那一笔");
+    assertEquals("600206", cap.getValue().get(0).symbol());
+    assertTrue(cap.getValue().stream().noneMatch(t -> "600519".equals(t.symbol())),
+            "被截断的行不得以 sellDate=null 的形态落进档案：" + cap.getValue());
 }
 
 @org.junit.jupiter.api.Test

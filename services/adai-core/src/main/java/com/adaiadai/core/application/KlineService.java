@@ -79,13 +79,22 @@ public class KlineService {
     /**
      * 兜底源主动探测的默认频率：**交易时段内每 30 分钟**（2026-10-04，REVIEW P2-交易58 收口）。
      * <p>
-     * 触发点 09:00/09:30/…/11:30、13:00/…/14:30，再由 {@link #inTradingSession(LocalTime)} 收口到
+     * 触发点 09:00/09:30/…/11:30、13:00/…/15:00，再由 {@link #inTradingSession(LocalTime)} 收口到
      * 09:30–11:30 / 13:00–15:00（09:00 那次会被过滤——那时行情还是上一交易日的）。
      * 非交易时段**不探**：日 K 一天一变，盘后重复探没有信息增量，只是白打网络。
      * <p>
+     * <b>为什么下午段必须是 {@code 13-15}（REVIEW P2-交易86，2026-10-05）</b>：窗口判据
+     * {@link #inTradingSession(LocalTime)} 把 <b>15:00 这一刻算作盘中</b>（收盘价落定、仍是行情时段的边界），
+     * 而原来的 {@code 13-14} 最后一次触发停在 **14:30** ⇒ <b>14:30–15:00 整段无探测</b>，
+     * 与窗口语义不自洽（兜底若恰好在这半小时里挂掉，当天就体检不到）。补上 {@code 15} 后
+     * 每交易日实际探测 **10 次**：09:30 / 10:00 / 10:30 / 11:00 / 11:30 / 13:00 / 13:30 / 14:00 / 14:30 / 15:00，
+     * 09:00 与 15:30（若配到）那两次由窗口过滤。该口径由
+     * {@code KlineServiceTest.probeFallback_cronTicks_coverCloseAt1500_andYieldTenProbesPerTradingDay} 用
+     * Spring {@code CronExpression} 真算触发点钉住（不是只在注释里承诺）。
+     * <p>
      * 覆盖方式：{@code adai.trading.kline.fallback-probe-cron}（env {@code ADAI_TRADING_KLINE_FALLBACK_PROBE_CRON}）。
      */
-    static final String CRON_FALLBACK_PROBE = "0 0/30 9-11,13-14 * * MON-FRI";
+    static final String CRON_FALLBACK_PROBE = "0 0/30 9-11,13-15 * * MON-FRI";
 
     /** 探测标的：贵州茅台（流动性最好、常年有数据，不存在停牌误报）。 */
     static final String PROBE_SYMBOL = "600519";
@@ -142,12 +151,32 @@ public class KlineService {
     // 链路侧那条告警只在「主源熔断 + 兜底也拿不到」时才响——那时兜底已经是被打挂的状态；
     // 这里补的是**平时**的低频体检：每 30 分钟（仅交易时段）真发一次轻量请求，把「兜底是否活着」
     // 变成 health() 里的一个字段，而不是等主源熔断那天才发现它也没了。
-    /** 兜底源最近一次主动探测是否通过（null = 尚未探测过 / 兜底已关闭）。 */
-    private volatile Boolean fallbackHealthy;
-    /** 最近一次主动探测的时刻（0 = 从未探测）。 */
-    private volatile long fallbackLastProbeAtMs;
+    /**
+     * 兜底源最近一次主动探测的**一致快照**（healthy + 探测时刻；null = 尚未探测过 / 兜底已关闭）。
+     * <p>
+     * <b>为什么是一个引用而不是两个 volatile 字段（REVIEW P2-交易86 第 4 条）</b>：{@link #health()}
+     * 原先分两次读 {@code fallbackHealthy} 与 {@code fallbackLastProbeAtMs}，两次读之间若恰好插进一次探测，
+     * 端点就会输出「上一轮的健康 + 这一轮的时刻」这种**从未真实存在过**的组合。
+     * 一个 record 引用天然是一次一致快照，写入侧也只是换引用，成本为零。
+     */
+    private volatile ProbeSnapshot fallbackProbe;
     /** 探测失败的告警冷却（见 {@link #FALLBACK_PROBE_ALERT_COOLDOWN_MS}）。 */
     private volatile long fallbackProbeAlertedUntil;
+    /**
+     * 连续探测通过次数（REVIEW P2-交易86 第 3 条：**确认恢复**才清零冷却）。
+     * <p>
+     * 为什么不能「一成功就清零」：抖动源（fail→ok→fail）每 30 分钟就能把冷却洗掉一次，
+     * 于是每 30 分钟一条 ERROR，与设计的「1 小时最多一条」不符。现在只有**连续
+     * {@value #RECOVERY_CONFIRM_STREAK} 次**通过才认定真恢复并清零冷却；单次 ok 只把连续计数 +1
+     * （并留一条「从失败回到成功」的 INFO，供人看转折），一旦失败立即归零。
+     */
+    private volatile int fallbackProbeSuccessStreak;
+
+    /** 确认恢复所需的连续成功次数（2 次 = 跨过一次失败之后的下一次探测再通过，约 30 分钟）。 */
+    static final int RECOVERY_CONFIRM_STREAK = 2;
+
+    /** 兜底探测快照：healthy 与探测时刻必须同时可见，不能拆成两次 volatile 读。 */
+    private record ProbeSnapshot(Boolean healthy, long lastProbeAtMs) {}
 
     /**
      * @param tdxEnabled  本地数据包开关（{@code adai.market.tdx-enabled}，生产可经 {@code ADAI_TDX_ENABLED} 覆盖）
@@ -335,39 +364,60 @@ public class KlineService {
      * 异常一律吞掉只记日志——探测失败**绝不**影响 {@link #kline} 主链路，也不动熔断计数与
      * {@code ok/lastSuccessSource}（那是链路级状态，探测只反映兜底源自己）。
      * <p>
+     * <b>异常一律不外逃（REVIEW P2-交易86 第 2 条，2026-10-05）</b>：连窗口判定 {@link #isProbeWindow()}
+     * 也在最外层 try 之内——当前判据只是 DayOfWeek + 静态节假日 Set、不会抛，但一旦将来改得会抛，
+     * 也绝不允许从 {@code @Scheduled} 入口逃逸（逃逸会污染调度日志、让人误以为体检在跑），
+     * 且必须**如实记 ERROR**而不是静默吞掉。
+     * <p>
+     * <b>冷却只在确认恢复后才清零（第 3 条）</b>：判据见 {@link #RECOVERY_CONFIRM_STREAK}，抖动源
+     * （fail→ok→fail）不再能靠单次 ok 洗掉冷却而每 30 分钟刷一条 ERROR。
+     * <p>
      * 频率走 {@code adai.trading.kline.fallback-probe-cron}（env {@code ADAI_TRADING_KLINE_FALLBACK_PROBE_CRON}），
      * 默认 {@link #CRON_FALLBACK_PROBE}。
      */
     @Scheduled(cron = "${adai.trading.kline.fallback-probe-cron:" + CRON_FALLBACK_PROBE + "}")
     public void probeFallbackSource() {
-        if (fallback == null) return;   // 兜底关闭 → 没有体检对象（health 该字段恒 null）
-        if (!isProbeWindow()) return;   // 非交易日 / 非交易时段 → 不白打网络
-
-        boolean healthy;
+        // 最外层兜底（P2-交易86 第 2 条）：探测体 + 窗口判定 + 状态写入 + 告警全收进一个 try，
+        // 任何异常都不得从 @Scheduled 入口逃逸。
         try {
-            healthy = fallback.probe(PROBE_SYMBOL);
-        } catch (Exception e) {
-            // probe() 的约定是不抛；这里再兜一层，保证调度线程不会因一次探测炸掉
-            healthy = false;
-            log.warn("{}兜底探测抛异常（已吞掉，不影响主链路） | symbol={} | {}",
-                    FALLBACK_NAME, PROBE_SYMBOL, e.getMessage());
-        }
+            if (fallback == null) return;   // 兜底关闭 → 没有体检对象（health 该字段恒 null）
+            if (!isProbeWindow()) return;   // 非交易日 / 非交易时段 → 不白打网络
 
-        Boolean before = fallbackHealthy;
-        fallbackHealthy = healthy;
-        fallbackLastProbeAtMs = System.currentTimeMillis();
-
-        if (healthy) {
-            // 恢复即清零冷却：下一次失败属于**新的**故障周期，该重新给 ERROR（不被上一轮的冷却吃掉）
-            fallbackProbeAlertedUntil = 0;
-            if (Boolean.FALSE.equals(before)) {
-                log.info("{}兜底源探测恢复（此前未通过） | symbol={}", FALLBACK_NAME, PROBE_SYMBOL);
-            } else {
-                log.debug("{}兜底源探测通过 | symbol={}", FALLBACK_NAME, PROBE_SYMBOL); // 常态 → 不刷 INFO
+            boolean healthy;
+            try {
+                healthy = fallback.probe(PROBE_SYMBOL);
+            } catch (Exception e) {
+                // probe() 的约定是不抛；这里再兜一层，保证调度线程不会因一次探测炸掉
+                healthy = false;
+                log.warn("{}兜底探测抛异常（已吞掉，不影响主链路） | symbol={} | {}",
+                        FALLBACK_NAME, PROBE_SYMBOL, e.getMessage());
             }
-            return;
+
+            ProbeSnapshot before = fallbackProbe;   // 一次读 → 拿到上一轮的一致快照
+            fallbackProbe = new ProbeSnapshot(healthy, System.currentTimeMillis());
+
+            if (healthy) {
+                int streak = ++fallbackProbeSuccessStreak;
+                if (before != null && Boolean.FALSE.equals(before.healthy())) {
+                    // 失败 → 成功：这是人关心的转折，留一条 INFO（口径不变）
+                    log.info("{}兜底源探测恢复（此前未通过；连续 {} 次通过才解除告警冷却） | symbol={}",
+                            FALLBACK_NAME, RECOVERY_CONFIRM_STREAK, PROBE_SYMBOL);
+                } else {
+                    log.debug("{}兜底源探测通过 | symbol={}", FALLBACK_NAME, PROBE_SYMBOL); // 常态 → 不刷 INFO
+                }
+                // 只有「确认恢复」（连续 N 次通过）才清零冷却：
+                // 抖动源的单次 ok（fail→ok→fail）洗不掉冷却，第二次失败仍只降 WARN。
+                if (streak >= RECOVERY_CONFIRM_STREAK) {
+                    fallbackProbeAlertedUntil = 0;
+                }
+                return;
+            }
+            fallbackProbeSuccessStreak = 0;   // 失败 → 「确认恢复」进度归零
+            alertFallbackProbeFailed();
+        } catch (Exception e) {
+            log.error("{}兜底源探测体异常（已吞掉，不影响 @Scheduled 调度与主链路） | symbol={}",
+                    FALLBACK_NAME, PROBE_SYMBOL, e);
         }
-        alertFallbackProbeFailed();
     }
 
     /** 现在是否该探兜底：交易日 且 在交易时段内（可覆写——测试固定它，免得吃真实日历）。 */
@@ -395,6 +445,10 @@ public class KlineService {
      * <p>
      * 冷却独立于 {@link #alertFallbackAlsoDown}：同一次探测失败**不代表**主源也挂了，
      * 两条告警讲的是不同事实，不共用冷却名额。
+     * <p>
+     * <b>清零条件（REVIEW P2-交易86 第 3 条）</b>：冷却**不再**被单次成功清零，只有
+     * {@link #RECOVERY_CONFIRM_STREAK} 次连续通过（确认恢复）才清零——抖动源因此稳定在
+     * 「1 小时最多一条 ERROR」而不是「每 30 分钟一条」。
      */
     private void alertFallbackProbeFailed() {
         long now = System.currentTimeMillis();
@@ -455,8 +509,9 @@ public class KlineService {
                     + "）——资金曲线、自选信号、案例匹配可能不全，我在自动重试";
         }
         LocalDate td = tdxLastDate;
-        Boolean fbHealthy = fallback == null ? null : fallbackHealthy;
-        long probeAt = fallbackLastProbeAtMs;
+        ProbeSnapshot probe = fallbackProbe;   // 一次读：healthy 与时刻必来自同一轮探测（P2-交易86 第 4 条）
+        Boolean fbHealthy = fallback == null || probe == null ? null : probe.healthy();
+        long probeAt = probe == null ? 0 : probe.lastProbeAtMs();
         return new Health(ok, note, okAt == 0 ? null : ts(okAt), lastSuccessSource,
                 failAt == 0 ? null : ts(failAt), consecutiveAllFailures, lastFailedSymbol,
                 List.copyOf(sources), td == null ? null : td.toString(),

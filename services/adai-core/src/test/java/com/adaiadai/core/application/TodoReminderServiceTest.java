@@ -156,4 +156,33 @@ class TodoReminderServiceTest {
         service.morningReminder();
         assertTrue(channel.pushed.isEmpty());
     }
+
+    // ── REVIEW P2-交易73：对话里给的动作 → 次日早盘被既有提醒捞回（不新建推送通道）──
+
+    @Test
+    void capturedAction_isRecalledNextMorning_byExistingReminder() {
+        ActionReviewService actionReview = new ActionReviewService(todoRepository,
+                new TodoAppService(todoRepository, mock(com.adaiadai.core.kernel.memory.MemoryService.class)));
+        LocalDate today = LocalDate.now();
+
+        actionReview.captureFromConversation("adai", "rec_conv_1", List.of("把云南锗业的白线调出来看看"));
+
+        assertTrue(service.dueToday("adai", today).isEmpty(), "落盘当天不打扰（不是立刻催）");
+        List<Todo> nextMorning = service.dueToday("adai", today.plusDays(1));
+        assertEquals(1, nextMorning.size(), "次日早盘 08:00 被既有待办提醒捞回");
+        assertEquals("把云南锗业的白线调出来看看", nextMorning.get(0).title());
+    }
+
+    @Test
+    void capturedAction_notRecalled_afterDone() {
+        ActionReviewService actionReview = new ActionReviewService(todoRepository,
+                new TodoAppService(todoRepository, mock(com.adaiadai.core.kernel.memory.MemoryService.class)));
+        LocalDate today = LocalDate.now();
+        actionReview.captureFromConversation("adai", "rec_conv_1", List.of("把白线调出来"));
+        Todo todo = todoRepository.findAll("adai").get(0);
+        todoRepository.save("adai", new Todo(todo.id(), todo.title(), TodoStatus.DONE, todo.due(),
+                todo.sourceRecordId(), todo.createdAt(), todo.updatedAt()));
+
+        assertTrue(service.dueToday("adai", today.plusDays(1)).isEmpty(), "完成后次日早盘不再提");
+    }
 }

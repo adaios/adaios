@@ -322,8 +322,12 @@ class LearnDigestFetchFlowTest {
         submitUrl("https://www.bilibili.com/video/BV1xx411c7mD");
         LearnDigestAppService.DigestSubmitResult second = submitUrl("https://www.bilibili.com/video/BV2yy411c7mD");
 
-        assertEquals(LearnDigestAppService.STATUS_NEEDS_CONFIRMATION, second.status(),
-                "等确认期间再次提交 → 如实回待确认状态（不覆盖待确认任务、不重复抓取）");
+        // P2-分享4（2026-10-05）：等确认期间再次提交 → 如实回「没排上」（not_queued）。
+        // 此前复用了 needs_confirmation，让调用方（分享扩展/喂入弹窗）分不清「这条在等你拍板」
+        // 与「这条根本没排上」——两条是不同的事实。
+        assertEquals(LearnDigestAppService.STATUS_NOT_QUEUED, second.status(),
+                "等确认期间再次提交 → 如实回「没排上」（不覆盖待确认任务、不重复抓取）");
+        assertTrue(second.message().contains("没排上"), second.message());
         verify(fetchService, times(1)).fetchAndArchive(anyString(), anyString());
     }
 

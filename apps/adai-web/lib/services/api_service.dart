@@ -661,10 +661,12 @@ class ApiService {
   }
 
   Future<PositionImportResult> importPositions(List<Map<String, dynamic>> items,
-      {bool replace = false, String? snapshotDate, double? todayPnl}) async {
+      {bool replace = false, String? snapshotDate, double? todayPnl, String? basedOn}) async {
     final params = <String, String>{
       if (replace) 'replace': 'true',
       if (snapshotDate != null && snapshotDate.isNotEmpty) 'snapshotDate': snapshotDate,
+      // 2026-10-05（P2-交易84）：显式数据基准日——给了它就优先于「导入时刻」推断。
+      if (basedOn != null && basedOn.isNotEmpty) 'basedOn': basedOn,
       if (todayPnl != null) 'todayPnl': todayPnl.toStringAsFixed(2),
     };
     final uri = Uri.parse('$baseUrl/api/v1/trading/positions/import')
@@ -811,6 +813,28 @@ class ApiService {
     _check(resp);
     return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
   }
+
+  /// P2-交易72（2026-10-05）：当天事后的状态回填——「今天没动」/「想动没动」。
+  ///
+  /// 落点与「今天买了/卖了」同属**这一天自己的记录**（`plans/{date}.json` 的 dayStatus），
+  /// **不改动已有计划条目**（后端只改这一个字段）；同日同状态重复提交后端幂等，
+  /// 返回 `recorded=false` —— 调用方据此如实说「已经记着了」，**不许假报落库**。
+  /// 取值常量见 [dayStatusNoTrade] / [dayStatusWantedNotActed]（与后端 TradingPlan 逐字一致）。
+  Future<Map<String, dynamic>> setPlanDayStatus(String date, String status) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/plans/$date/status'),
+      headers: _headers,
+      body: jsonEncode({'status': status}),
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 今天没动（「没动」是完整信息，不是缺数据——R119「零仓位也是交易」）。
+  static const String dayStatusNoTrade = 'NO_TRADE';
+
+  /// 想动没动（同上；连续出现可作「手痒」的对照）。
+  static const String dayStatusWantedNotActed = 'WANTED_NOT_ACTED';
 
   /// 收盘对账（计划 vs 实际 + ⚠️ 计划外成交）——**只陈述事实**。
   Future<Map<String, dynamic>> reviewPlan(String date) async {
@@ -1132,7 +1156,7 @@ class ApiService {
   /// 资金快照**对账**（POST /api/v1/trading/imports/cash + dryRun，RFC 20261003 C4）：
   /// **只读不落盘**——返回 {brokerCash, systemCash, diff, since[], ledgerOnlyCount, note}，
   /// 让人先看见「券商现金 vs 系统推算」差多少、差在哪，再决定要不要覆盖。
-  Future<Map<String, dynamic>> reconcileCash(String content, {String? snapshotDate}) async {
+  Future<Map<String, dynamic>> reconcileCash(String content, {String? snapshotDate, String? basedOn}) async {
     final resp = await _client.post(
       Uri.parse('$baseUrl/api/v1/trading/imports/cash'),
       headers: _headers,
@@ -1140,6 +1164,8 @@ class ApiService {
         'content': content,
         'dryRun': 'true',
         if (snapshotDate != null && snapshotDate.isNotEmpty) 'snapshotDate': snapshotDate,
+        // 2026-10-05（P2-交易84）：对账口径与落盘锚定同判据——显式基准日优先
+        if (basedOn != null && basedOn.isNotEmpty) 'basedOn': basedOn,
       }));
     _check(resp);
     return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
@@ -1148,13 +1174,16 @@ class ApiService {
   /// 资金股份查询导入（POST /api/v1/trading/imports/cash：现金 + 精确成本）。
   /// [snapshotDate]（2026-09-12）= 快照文件自身日期（`yyyy-MM-dd`），优先于导入日——
   /// 后端用它做锚定日（cashImport）。不传则退回导入日。
-  Future<CashImportResult> importCash(String content, {String? snapshotDate}) async {
+  /// [basedOn]（2026-10-05，P2-交易84）= **显式数据基准日**（`yyyy-MM-dd`）——现金锚定日随之确定，
+  /// 不再靠「导入时刻」推断；不传则退回既有归一化（后端回执标「无据」）。
+  Future<CashImportResult> importCash(String content, {String? snapshotDate, String? basedOn}) async {
     final resp = await _client.post(
       Uri.parse('$baseUrl/api/v1/trading/imports/cash'),
       headers: _headers,
       body: jsonEncode(<String, dynamic>{
         'content': content,
         if (snapshotDate != null && snapshotDate.isNotEmpty) 'snapshotDate': snapshotDate,
+        if (basedOn != null && basedOn.isNotEmpty) 'basedOn': basedOn,
       }));
     _check(resp);
     final d = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
@@ -1354,6 +1383,23 @@ class ApiService {
     String? author,
     String? published,
   }) async {
+    final result = await submitLearnDigestDetailed(
+      url: url, content: content, type: type,
+      platform: platform, author: author, published: published,
+    );
+    return result.status;
+  }
+
+  /// 同上，但把**受理回执原样**带回来（P2-分享4，2026-10-05）：抢占任务位失败时后端回
+  /// `status=not_queued`（这条**没排上**，不是「在跑了」）+ 一句人话，弹窗直接展示。
+  Future<LearnDigestSubmitDto> submitLearnDigestDetailed({
+    String? url,
+    String? content,
+    String? type,
+    String? platform,
+    String? author,
+    String? published,
+  }) async {
     assert((url != null && url.trim().isNotEmpty) ||
         (content != null && content.trim().isNotEmpty),
         '链接与素材至少给一个，否则我没法开始整理');
@@ -1370,8 +1416,56 @@ class ApiService {
       }),
     );
     _check(resp);
-    final json = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
-    return (json['status'] as String?) ?? '';
+    return LearnDigestSubmitDto.fromJson(
+        jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  /// 整理任务账（GET /learn/digest/jobs，2026-10-05 桌面端补上）：「我分享过哪些、成了没有」。
+  ///
+  /// 与 [getLearnDigestStatus] 的分工：那个是**现在这一个**的执行态（内存、会过期），
+  /// 这个是**落盘的账**（含 expired / not_queued 两个如实状态）。查询失败由调用方静默降级。
+  Future<List<LearnDigestTaskDto>> getLearnDigestJobs({int limit = 20}) async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/learn/digest/jobs?limit=$limit'),
+      headers: _headers,
+    );
+    _check(resp);
+    final json = jsonDecode(utf8.decode(resp.bodyBytes));
+    if (json is Map && json['tasks'] is List) {
+      return (json['tasks'] as List)
+          .map((e) => LearnDigestTaskDto.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    return const [];
+  }
+
+  /// 展开状态清单（GET /learn/cards/expansions，P2-learn33）：桌面端「待展开」可见状态的真相源。
+  Future<List<LearnExpansionDto>> getLearnExpansions() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/learn/cards/expansions'),
+      headers: _headers,
+    );
+    _check(resp);
+    final json = jsonDecode(utf8.decode(resp.bodyBytes));
+    if (json is Map && json['items'] is List) {
+      return (json['items'] as List)
+          .map((e) => LearnExpansionDto.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    return const [];
+  }
+
+  /// 展开一张索引卡（P2-learn33）：POST /learn/cards/expand → 衍生全文卡 + 三行要点。
+  /// 同步跑一次 LLM（单次生成）→ 走 `_aiClient`（120s），15s 默认超时会误杀。
+  Future<LearnExpansionResultDto> expandLearnCard({required String type, required String title}) async {
+    final resp = await _aiClient.post(
+      Uri.parse('$baseUrl/api/v1/learn/cards/expand'),
+      headers: _headers,
+      body: jsonEncode({'type': type, 'title': title}),
+    );
+    _check(resp);
+    return LearnExpansionResultDto.fromJson(
+        jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
   }
 
   /// 转写费用确认（RFC 20260912 §3.8 条 5）：抓到没字幕的视频 → 先把时长和钱说清 → 你点头我才花钱。
@@ -3037,9 +3131,14 @@ class CashImportResult {
   // 让用户知道「是**哪只票**的精确成本没更新」，不再只有一个数字。旧后端缺字段 → 空列表 / 0。
   final List<String> unparsed;
   final int unparsedCount;
+  // 2026-10-05（P2-交易84）：锚定日的**依据**人话（有据/无据）——后端 additive 字段，
+  // 旧后端缺字段 → null（不显示、不编造）。导入回执据此说明「这一天是怎么定下来的」。
+  final String? anchorNote;
+  final bool anchorWithEvidence;
 
   CashImportResult({required this.cash, required this.assets, required this.updatedCost,
-      this.unparsedRows = 0, this.unparsed = const [], this.unparsedCount = 0});
+      this.unparsedRows = 0, this.unparsed = const [], this.unparsedCount = 0,
+      this.anchorNote, this.anchorWithEvidence = false});
 
   factory CashImportResult.fromJson(dynamic j) {
     final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
@@ -3051,6 +3150,8 @@ class CashImportResult {
       unparsedRows: (m['unparsedRows'] as num?)?.toInt() ?? 0,
       unparsed: lines,
       unparsedCount: _unparsedCount(j, lines),
+      anchorNote: _anchorNote(j),
+      anchorWithEvidence: _anchorWithEvidence(j),
     );
   }
 }
@@ -3077,8 +3178,12 @@ class ImportFileSaveResult {
 class PositionImportResult {
   final int imported;
   final List<String> missingStopLoss;
+  // 2026-10-05（P2-交易84）：锚定日依据人话（有据/无据）；旧后端缺字段 → null。
+  final String? anchorNote;
+  final bool anchorWithEvidence;
 
-  PositionImportResult({required this.imported, required this.missingStopLoss});
+  PositionImportResult({required this.imported, required this.missingStopLoss,
+      this.anchorNote, this.anchorWithEvidence = false});
 
   factory PositionImportResult.fromJson(dynamic json) {
     if (json is! Map<String, dynamic>) {
@@ -3089,8 +3194,27 @@ class PositionImportResult {
       missingStopLoss: ((json['missingStopLoss'] as List?) ?? [])
           .map((e) => e.toString())
           .toList(),
+      anchorNote: _anchorNote(json),
+      anchorWithEvidence: _anchorWithEvidence(json),
     );
   }
+}
+
+/// 锚定依据人话（P2-交易84）：后端 `anchor.note`；缺字段/旧后端 → null（不显示、不编造）。
+String? _anchorNote(dynamic json) {
+  if (json is! Map<String, dynamic>) return null;
+  final a = json['anchor'];
+  if (a is! Map<String, dynamic>) return null;
+  final note = a['note']?.toString();
+  return (note == null || note.isEmpty) ? null : note;
+}
+
+/// 锚定日是否**有据**（P2-交易84）：缺字段 → false（不冒充确定）。
+bool _anchorWithEvidence(dynamic json) {
+  if (json is! Map<String, dynamic>) return false;
+  final a = json['anchor'];
+  if (a is! Map<String, dynamic>) return false;
+  return a['withEvidence'] == true;
 }
 
 /// 批量导入结果 DTO（POST /api/v1/trading/trades/batch）。

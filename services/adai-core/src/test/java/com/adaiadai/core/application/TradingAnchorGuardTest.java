@@ -2,6 +2,7 @@ package com.adaiadai.core.application;
 
 import com.adaiadai.core.domain.trading.AccountSnapshot;
 import com.adaiadai.core.domain.trading.AccountSnapshotRepository;
+import com.adaiadai.core.domain.trading.AnchorBasis;
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.domain.trading.SnapshotAnchor;
@@ -197,7 +198,10 @@ class TradingAnchorGuardTest {
         service.importPositions(USER, List.of(new TradingAppService.PositionImportItem(
                 "600000", "浦发银行", 100, new BigDecimal("10.0"), null, null, null, null)), true);
         verify(repo, times(1)).saveAll(anyString(), any());
-        verify(anchor, times(1)).updatePositionsReplace(eq(USER), any(LocalDate.class), any());
+        // 2026-10-05（P2-交易84）：锚定写入多带一个「依据」——没有文件日期也没有显式基准日时
+        // 只能是时钟推断（CLOCK = 无据），既有的归一化行为不变。
+        verify(anchor, times(1)).updatePositionsReplace(eq(USER), any(LocalDate.class), any(),
+                eq(AnchorBasis.CLOCK));
     }
 
     @Test
@@ -210,7 +214,7 @@ class TradingAnchorGuardTest {
 
         service.importPositions(USER, List.of(new TradingAppService.PositionImportItem(
                 "600000", "浦发银行", 100, new BigDecimal("10.0"), null, null, null, null)), false);
-        verify(anchor, never()).updatePositionsReplace(anyString(), any(LocalDate.class), any());
+        verify(anchor, never()).updatePositionsReplace(anyString(), any(LocalDate.class), any(), any());
     }
 
     @Test
@@ -228,6 +232,7 @@ class TradingAnchorGuardTest {
                 """;
         TradingAppService.CashImportResult r = service.importCashQuery(USER, cashText);
         assertEquals(0, r.cash().compareTo(new BigDecimal("292.88")));
-        verify(anchor, times(1)).updateCashImport(eq(USER), any(LocalDate.class), any());
+        verify(anchor, times(1)).updateCashImport(eq(USER), any(LocalDate.class), any(),
+                eq(AnchorBasis.CLOCK));
     }
 }

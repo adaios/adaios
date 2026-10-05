@@ -1,9 +1,10 @@
 package com.adaiadai.core.application;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.core.io.ClassPathResource;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -24,11 +25,22 @@ class MarketAlertCronConfigTest {
 
     @Test
     void applicationYmlMustNotConfigurePollCron() throws Exception {
-        String yml = new String(new ClassPathResource("application.yml").getInputStream().readAllBytes(),
-                StandardCharsets.UTF_8);
+        // 2026-10-05 修两处（本守护原先形同虚设 + 会被注释误伤）：
+        //  ① 原实现读 ClassPathResource("application.yml")，而 src/test/resources/application.yml
+        //     在 classpath 上**优先命中**——于是它一直在检查那份**测试副本**，真有人把该键写回
+        //     生产 yml 它也不会红（守护失效）。改为**显式读生产 yml**（gradle test / 直跑均以
+        //     services/adai-core 为工作目录）。
+        //  ② 原判据 `yml.contains("poll-cron")` 是**整串匹配**，注释里提及该键（刻意的反面教材留痕）
+        //     也会误报。改为**只看非注释行**——注释不是配置。
+        String yml = Files.readString(Path.of("src/main/resources/application.yml"), StandardCharsets.UTF_8);
 
-        assertFalse(yml.contains("poll-cron"),
-                "application.yml 里不得出现 poll-cron——唯一真相源是 MarketAlertService.CRON_POLL。"
+        boolean configured = yml.lines()
+                .map(String::trim)
+                .filter(line -> !line.startsWith("#"))
+                .anyMatch(line -> line.contains("poll-cron"));
+
+        assertFalse(configured,
+                "生产 application.yml 里不得**配置** poll-cron——唯一真相源是 MarketAlertService.CRON_POLL。"
                         + "配置值会覆盖代码默认值（2026-08-30 的修复正是这样空转的）；"
                         + "临时调整请用环境变量 ADAI_MARKET_ALERT_POLL_CRON");
     }

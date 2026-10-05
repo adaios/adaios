@@ -149,4 +149,38 @@ void main() {
     expect(rec['diff'], 400);
     expect(rec['ledgerOnlyCount'], 1);
   });
+
+  // ── P2-交易72（2026-10-05）：当天事后的状态回填 ──
+  // 「今天没动 / 想动，没动」落的是**同一天自己的记录**（plans/{date} 的 dayStatus），不是另立一处。
+  test('setPlanDayStatus：POST 到 /plans/{date}/status，body 带 status；如实解析 recorded', () async {
+    http.Request? seen;
+    final api = ApiService(
+      baseUrl: 'http://test',
+      client: MockClient((req) async {
+        seen = req;
+        return http.Response(
+            jsonEncode({
+              'date': '2026-10-12',
+              'note': '',
+              'dayStatus': 'NO_TRADE',
+              // 幂等命中（早就记着了）→ false；调用方据此说「已经记着了」，不许假报落库。
+              'recorded': false,
+              'items': [],
+            }),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'});
+      }),
+    );
+
+    final r = await api.setPlanDayStatus('2026-10-12', ApiService.dayStatusNoTrade);
+
+    expect(seen!.method, 'POST');
+    expect(seen!.url.path, '/api/v1/trading/plans/2026-10-12/status',
+        reason: '落点是这一天的记录本身（与计划同址），不是另一个存储');
+    expect((jsonDecode(seen!.body) as Map)['status'], 'NO_TRADE');
+    expect(r['dayStatus'], 'NO_TRADE');
+    expect(r['recorded'], false);
+    expect(ApiService.dayStatusWantedNotActed, 'WANTED_NOT_ACTED',
+        reason: '「想动，没动」与「今天没动」是两个值（与后端 TradingPlan 逐字一致）');
+  });
 }

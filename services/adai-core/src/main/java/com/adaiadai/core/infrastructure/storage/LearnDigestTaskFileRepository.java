@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -63,19 +64,32 @@ public class LearnDigestTaskFileRepository implements LearnDigestTaskRepository 
         if (task == null || task.id() == null || task.id().isBlank()) return;
         synchronized (lockFor(userId)) {
             JsonNode root = readRootQuietly(userId);
-            ArrayNode tasks = MAPPER.createArrayNode();
             JsonNode previous = root == null ? null : root.path(FIELD_TASKS);
+            List<JsonNode> tasks = new ArrayList<>();
+            boolean replaced = false;
             if (previous != null && previous.isArray()) {
                 for (JsonNode n : previous) {
-                    // 同 id 覆盖：状态推进时反复写，不留重复行
-                    if (!task.id().equals(n.path("id").asText())) tasks.add(n);
+                    if (task.id().equals(n.path("id").asText())) {
+                        // 同 id 覆盖：状态推进反复写，不留重复行；**原地替换、保留原位置**——
+                        // 否则给一条旧账标「过期」会把它顶到「最近」第 0 位（P3，2026-10-05）。
+                        tasks.add(toNode(task));
+                        replaced = true;
+                    } else {
+                        tasks.add(n);
+                    }
                 }
             }
-            tasks.insert(0, toNode(task));
+            if (!replaced) tasks.add(0, toNode(task));
+            // 位次口径 = 提交时刻倒序（submittedAt 是 ISO local date-time，字典序即时间序）；
+            // 同一时刻保持原有先后（稳定排序），缺该字段的旧账沉底。滚动窗口 MAX_KEPT 不变。
+            tasks.sort(Comparator.comparing(LearnDigestTaskFileRepository::submittedAtOf).reversed());
             while (tasks.size() > MAX_KEPT) tasks.remove(tasks.size() - 1);
 
+            ArrayNode ordered = MAPPER.createArrayNode();
+            tasks.forEach(ordered::add);
+
             ObjectNode next = MAPPER.createObjectNode();
-            next.set(FIELD_TASKS, tasks);
+            next.set(FIELD_TASKS, ordered);
             try {
                 fileStorage.write(userId, TASKS_PATH,
                         MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(next));
@@ -139,6 +153,12 @@ public class LearnDigestTaskFileRepository implements LearnDigestTaskRepository 
     private static String text(JsonNode n, String field) {
         JsonNode v = n.path(field);
         return v.isMissingNode() || v.isNull() ? null : v.asText();
+    }
+
+    /** 文件里那条的提交时刻（缺失/显式 null → 空串：排序时沉底，不冒充「最新」）。 */
+    private static String submittedAtOf(JsonNode n) {
+        JsonNode v = n.path("submittedAt");
+        return v.isMissingNode() || v.isNull() ? "" : v.asText();
     }
 
     /** 读记录文件：不存在 = 全新用户（返回 null）；读/解析失败 = 记 WARN 后按空处理（fail-open）。 */

@@ -4,6 +4,7 @@ import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
 import com.adaiadai.core.kernel.ai.AiClient;
 import com.adaiadai.core.kernel.ai.AiUnderstanding;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
+import com.adaiadai.core.infrastructure.storage.CardLockRegistry;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.account.AccountRepository;
@@ -22,6 +23,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -48,6 +50,8 @@ public class RecordRetryService {
     private final CardFileRepository cardRepository;
     private final AccountRepository accountRepository;
     private final PluginService pluginService;
+    /** 共享 per-card 锁池（与 append / end / 迁移是同一个 Spring 单例；REVIEW P2-工程13 发现1）。 */
+    private final CardLockRegistry cardLockRegistry;
 
     public RecordRetryService(RecordRepository recordRepository,
                               RecordUnderstandingService understandingService,
@@ -55,7 +59,8 @@ public class RecordRetryService {
                               MemoryService memoryService,
                               CardFileRepository cardRepository,
                               AccountRepository accountRepository,
-                              PluginService pluginService) {
+                              PluginService pluginService,
+                              CardLockRegistry cardLockRegistry) {
         this.recordRepository = recordRepository;
         this.understandingService = understandingService;
         this.aiClient = aiClient;
@@ -63,6 +68,7 @@ public class RecordRetryService {
         this.cardRepository = cardRepository;
         this.accountRepository = accountRepository;
         this.pluginService = pluginService;
+        this.cardLockRegistry = cardLockRegistry;
     }
 
     /**
@@ -233,19 +239,26 @@ public class RecordRetryService {
         String summary = understanding.summary();
         List<String> tags = understanding.tags() != null ? understanding.tags() : List.of();
 
-        // 更新卡片 summary + tags。保留原 updatedAt —— 重补是后台修复，不是用户活跃，
-        // 若置为 now 会把历史卡片重新归到"今天"（Feed 日期按 updatedAt 归日）。
-        CardRecord updated = new CardRecord(
-                card.id(), card.type(), card.status(),
-                tags, card.turns(), summary,
-                card.createdAt(), card.updatedAt() != null ? card.updatedAt() : card.createdAt()
-        );
-        cardRepository.save(userId, updated);
+        // 写回段：REVIEW P2-工程13 发现1（2026-10-05 独立并发审查）——这里是全仓第 5 个
+        // cardRepository.save 调用点，也是此前**唯一**没进 CardLockRegistry 的：候选卡来自
+        // retryCards 的 findAll **快照**，而每张卡要等 AI 调用（超时 120s）+ sleep(3s)，
+        // BATCH_LIMIT=10 ⇒ 第 10 张写回距快照已过数分钟。用户在窗口内对同一张卡继续发消息
+        // （ensureCardWithUserTurn 持 cardLock）会被旧快照静默覆盖（聊天记录少几条）。
+        // 修法（最小）：findById → 重建 → save 收进同一把 cardLock；AI 调用与 sleep 留在锁外；
+        // 写回前**锁内重读**，只覆盖本次重补负责的 summary/tags，turns 与幂等键一律以锁内
+        // 读到的最新为准（绝不回写快照 turns）。
+        CardRecord effective = writeBackSummary(userId, card.id(), summary, tags);
+        if (effective == null) {
+            // 卡已在窗口内被删除，或 summary 已被别的路径（如 end）补齐 → 放弃本次写回，
+            // 也不再落记录/记忆（否则会制造与卡片不一致的重复记录）。
+            return;
+        }
 
         // 新建一条记录沉淀对话（E-A 写侧保真：正文 = 卡片还原的对话原文，转述降入 summary；
         // source 由 ai_summary 改为 user_input 作「正文是原话」标记，与 ConversationController 同口径）
+        // 正文取**锁内读到的最新 turns**——窗口内 append 的新轮次不得在重补记录里缺席。
         String recordId = RecordFileRepository.generateId();
-        String originalText = ConversationText.fromTurns(card.turns());
+        String originalText = ConversationText.fromTurns(effective.turns());
         String recordBody = originalText.isBlank() ? summary : originalText;
         ContentRecord record = new ContentRecord(
                 recordId, "conversation", "user_input",
@@ -263,6 +276,49 @@ public class RecordRetryService {
 
         log.info("重补卡片完成 | cardId={} | summary=\"{}\" | tags={}",
                 card.id(), truncate(summary, 40), tags);
+    }
+
+    /**
+     * 锁内写回重补结果（REVIEW P2-工程13 发现1）。
+     * <p>
+     * 以**锁内重读**的最新卡为基底，只替换本次重补负责的 {@code summary}/{@code tags}：
+     * <ul>
+     *   <li>{@code turns} 一律取锁内读到的最新值——绝不回写调用方手里的旧快照 turns，
+     *       否则窗口内 append 的轮次会被静默抹掉（本发现要修的就是这个）；</li>
+     *   <li>{@code conversationRecordId}/{@code conversationTurnsHash} 同样取最新值
+     *       （REVIEW P2-工程15：重写路径必须显式携带幂等键，且不得用陈旧键覆盖新键）；</li>
+     *   <li>{@code updatedAt} 保留最新值——重补是后台修复，不是用户活跃，置 now 会把历史卡片
+     *       重新归到「今天」（Feed 日期按 updatedAt 归日）；</li>
+     *   <li>锁内重读发现 summary 已被别的路径（如窗口内的 end 总结）补齐 → **跳过**，
+     *       不用一段旧对话的重补总结覆盖它。</li>
+     * </ul>
+     * 锁内只有卡片的一次读-改-写；AI 调用与 sleep 都在锁外（见 {@link #processCard}）。
+     *
+     * @return 写回后的卡片（供锁外落记录/记忆使用最新 turns）；未写回时返回 {@code null}
+     */
+    private CardRecord writeBackSummary(String userId, String cardId, String summary, List<String> tags) {
+        synchronized (cardLockRegistry.cardLock(userId, cardId)) {
+            Optional<CardRecord> latestOpt = cardRepository.findById(userId, cardId);
+            if (latestOpt.isEmpty()) {
+                log.warn("重补卡片写回跳过：卡已不存在 | cardId={}", cardId);
+                return null;
+            }
+            CardRecord latest = latestOpt.get();
+            if (latest.summary() != null && !latest.summary().isBlank()) {
+                log.info("重补卡片写回跳过：summary 已在窗口内被补齐（不覆盖更新的总结） | cardId={}", cardId);
+                return null;
+            }
+            // 显式写回前钩子（P2-工程13 发现11）：并发用例在此确定性挂起，不再靠「第 N 次 findById」
+            cardRepository.beforeWriteback(userId, cardId);
+            CardRecord updated = new CardRecord(
+                    latest.id(), latest.type(), latest.status(),
+                    tags, latest.turns(), summary,
+                    latest.createdAt(), latest.updatedAt() != null ? latest.updatedAt() : latest.createdAt(),
+                    latest.conversationRecordId(), latest.conversationTurnsHash()
+            );
+            cardRepository.save(userId, updated);
+            return updated;
+        }
     }
 
     private static String truncate(String s, int maxLen) {

@@ -585,6 +585,28 @@ class ApiService {
     return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
   }
 
+  /// P2-交易72（2026-10-05）：当天事后的状态回填——「今天没动」/「想动没动」。
+  ///
+  /// 落点与「今天买了/卖了」同属**这一天自己的记录**（`plans/{date}.json` 的 dayStatus），
+  /// **不改动已有计划条目**（后端只改这一个字段）；同日同状态重复提交后端幂等，
+  /// 返回 `recorded=false` —— 调用方据此如实说「已经记着了」，**不许假报落库**。
+  /// 取值常量见 [dayStatusNoTrade] / [dayStatusWantedNotActed]（与后端 TradingPlan 逐字一致）。
+  Future<Map<String, dynamic>> setPlanDayStatus(String date, String status) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/plans/$date/status'),
+      headers: _headers,
+      body: jsonEncode({'status': status}),
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 今天没动（「没动」是完整信息，不是缺数据——R119「零仓位也是交易」）。
+  static const String dayStatusNoTrade = 'NO_TRADE';
+
+  /// 想动没动（同上；连续出现可作「手痒」的对照）。
+  static const String dayStatusWantedNotActed = 'WANTED_NOT_ACTED';
+
   /// 收盘对账（计划 vs 实际 + ⚠️ 计划外成交）——**只陈述事实**。
   Future<Map<String, dynamic>> reviewPlan(String date) async {
     final resp = await _client.get(
@@ -1075,6 +1097,25 @@ class ApiService {
     String? author,
     String? published,
   }) async {
+    final result = await submitLearnDigestDetailed(
+      url: url, content: content, type: type,
+      platform: platform, author: author, published: published,
+    );
+    return result.status;
+  }
+
+  /// 同上，但把**受理回执原样**带回来（P2-分享4，2026-10-05）。
+  ///
+  /// 为什么需要：抢占任务位失败时后端回 `status=not_queued` + 一句人话（这条**没排上**，
+  /// 不是「在跑了」）；喂入弹窗要能直接展示这句话，而不是自己猜一个状态。
+  Future<LearnDigestSubmitDto> submitLearnDigestDetailed({
+    String? url,
+    String? content,
+    String? type,
+    String? platform,
+    String? author,
+    String? published,
+  }) async {
     final body = <String, dynamic>{
       if (url != null && url.isNotEmpty) 'url': url,
       if (content != null && content.isNotEmpty) 'content': content,
@@ -1089,8 +1130,39 @@ class ApiService {
       body: jsonEncode(body),
     );
     _check(resp);
-    final json = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
-    return (json['status'] as String?) ?? '';
+    return LearnDigestSubmitDto.fromJson(
+        jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  /// 展开一张索引卡（P2-learn33，2026-10-05）：POST /learn/cards/expand。
+  ///
+  /// 同步跑一次 LLM 生成（全文 + 三行要点）→ 走 `_aiClient`（120s），15s 默认超时会误杀。
+  /// 产物是**衍生卡**（不覆盖原卡）；已展开过后端幂等返回那张。
+  Future<LearnExpansionResultDto> expandLearnCard({required String type, required String title}) async {
+    final resp = await _aiClient.post(
+      Uri.parse('$baseUrl/api/v1/learn/cards/expand'),
+      headers: _headers,
+      body: jsonEncode({'type': type, 'title': title}),
+    );
+    _check(resp);
+    return LearnExpansionResultDto.fromJson(
+        jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  /// 展开状态清单（GET /learn/cards/expansions，P2-learn33）：学习页「待展开」可见状态的真相源。
+  Future<List<LearnExpansionDto>> getLearnExpansions() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/learn/cards/expansions'),
+      headers: _headers,
+    );
+    _check(resp);
+    final json = jsonDecode(utf8.decode(resp.bodyBytes));
+    if (json is Map && json['items'] is List) {
+      return (json['items'] as List)
+          .map((e) => LearnExpansionDto.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    return const [];
   }
 
   /// 转写费用确认（2026-09-12）：POST /learn/digest/confirm，body {"confirm": true|false}。

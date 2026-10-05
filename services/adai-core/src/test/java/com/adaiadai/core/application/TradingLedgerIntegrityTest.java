@@ -1,6 +1,7 @@
 package com.adaiadai.core.application;
 
 import com.adaiadai.core.domain.trading.AccountSnapshotRepository;
+import com.adaiadai.core.domain.trading.AnchorBasis;
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.domain.trading.SnapshotAnchor;
@@ -514,6 +515,36 @@ class TradingLedgerIntegrityTest {
         assertFalse(report.note().contains("⚠️"), "不该报警，实际: " + report.note());
         assertFalse(report.note().contains("重导"), "不该要人重导，实际: " + report.note());
         assertFalse(report.note().contains("没进持仓"), "不该提这茬，实际: " + report.note());
+    }
+
+    /**
+     * 2026-10-05（P2-交易84）：**显式基准日**（用户/前端说清「这份快照是哪天的」）→ 依据随锚定落盘
+     * → 归一化被判「有据」→ 当天成交不再被当成可疑推断（静默），且对账回执带上依据人话。
+     * <p>对照组是 {@link #integrity_warnsWhenAnchorDayInferredAndTradesFallOnIt()}：同样
+     * 「锚定日 ≠ 导出日、导出日还是交易日」，但**依据是时钟推断** → 照旧 ⚠️。
+     */
+    @Test
+    void integrity_explicitBasisNormalization_isSilentAndReported() {
+        LocalDate anchorDate = LocalDate.of(2026, 9, 17); // 用户指定的数据基准日
+        LocalDate fileDate = LocalDate.of(2026, 9, 18);   // 文件里的导出日（交易日）
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(anyString())).thenReturn(List.of(pos("600206", 100, "46.0")));
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll(anyString())).thenReturn(List.of(
+                record("600206", TradeDirection.BUY, 100, "46.85", anchorDate,
+                        LocalTime.of(14, 53), "65872510", new BigDecimal("1.79"))));
+        TradingAppService service = service(repo, history, anchorOf(
+                new SnapshotAnchor(anchorDate, null, fileDate, null, AnchorBasis.EXPLICIT, null),
+                List.of(new SnapshotHolding("600206", "有研新材", 100))));
+
+        TradingAppService.IntegrityReport report = service.integrity(USER);
+
+        assertEquals(1, report.degraded().size(), report.note());
+        assertFalse(report.degraded().get(0).inferred(), "显式基准日 = 有据 → 不算「可疑推断」");
+        assertFalse(report.note().contains("⚠️"), "不该报警，实际: " + report.note());
+        // 依据进入回执（可追溯，不许静默）
+        assertEquals("EXPLICIT", report.anchor().positionsBasis());
+        assertEquals("2026-09-17：按你指定的数据基准日（有据）", report.anchor().basisNote());
     }
 
     /** 锚定日当天没有成交 → 不产生降级行（不误报）；锚定日前后有成交也不该被算进来。 */

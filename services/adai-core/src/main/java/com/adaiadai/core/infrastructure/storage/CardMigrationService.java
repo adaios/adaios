@@ -34,10 +34,14 @@ public class CardMigrationService {
 
     private final FileStorage fileStorage;
     private final CardFileRepository cardRepository;
+    /** 共享 per-card 锁池（与 append / end / 重补写回是同一个 Spring 单例；REVIEW P2-工程13 发现3）。 */
+    private final CardLockRegistry cardLockRegistry;
 
-    public CardMigrationService(FileStorage fileStorage, CardFileRepository cardRepository) {
+    public CardMigrationService(FileStorage fileStorage, CardFileRepository cardRepository,
+                                CardLockRegistry cardLockRegistry) {
         this.fileStorage = fileStorage;
         this.cardRepository = cardRepository;
+        this.cardLockRegistry = cardLockRegistry;
     }
 
     /**
@@ -80,12 +84,27 @@ public class CardMigrationService {
 
                 // 写入新位置（frontmatter id 同步改写为 card_ 前缀，避免与新文件名不一致
                 // → 否则 findAll 解析出的 id 无前缀，save() 按 id 写回时落到旧路径，产生同 id 双文件）
-                String migratedContent = rewriteIdInFrontmatter(content, card.id());
+                //
+                // REVIEW P2-工程13 发现3（2026-10-05 独立并发审查）：**迁移写盘必须与 append/end 共锁**。
+                // 迁移重建卡片内容后直接写新文件、删旧文件，全程不取锁 ⇒ 迁移期间正在聊的卡会被
+                // 交错覆盖（丢轮次），或产生同 id 双文件（读侧去重掩盖、写侧继续分裂）。
+                // 锁顺序：迁移只取 cardLock，**绝不**取 endLock（反序 = 死锁环，见 CardLockRegistry）。
+                String migratedContent = rewriteForMigration(content, card);
                 String newPath = pathInCardsDir(card);
-                fileStorage.write(userId, newPath, migratedContent);
-                // 迁移即移动：成功后删除旧文件，防止同 id 双文件（findAll 去重的根源数据）
-                if (!oldPath.equals(newPath)) {
-                    fileStorage.delete(userId, oldPath);
+                synchronized (cardLockRegistry.cardLock(userId, card.id())) {
+                    // 锁内重读目标文件：已存在说明该卡已按新格式写过（append / end / 重补 / 前次迁移），
+                    // 此时**不得**用旧目录里的内容覆盖——否则即便共锁，这一次 write 仍会抹掉窗口内的新轮次。
+                    // 只做「删旧文件」这一步（迁移的 move/去重语义），新文件保持现状。
+                    String existingNew = fileStorage.read(userId, newPath);
+                    if (existingNew == null || existingNew.isBlank()) {
+                        fileStorage.write(userId, newPath, migratedContent);
+                    } else {
+                        log.info("卡片迁移跳过覆盖：目标已存在，保留更新的一份 | new={}", newPath);
+                    }
+                    // 迁移即移动：成功后删除旧文件，防止同 id 双文件（findAll 去重的根源数据）
+                    if (!oldPath.equals(newPath)) {
+                        fileStorage.delete(userId, oldPath);
+                    }
                 }
                 migrated.add(oldPath + " → " + newPath);
                 log.info("卡片迁移成功 | old={} | new={}", oldPath, newPath);
@@ -140,7 +159,26 @@ public class CardMigrationService {
 
         List<Turn> turns = parseTurns(body);
 
-        return new CardRecord(cardId, "conversation", status, tags, turns, summary, createdAt, updatedAt);
+        // REVIEW P2-工程15（2026-09-26 夜间批 4 官深审）：幂等键必须从原卡解析出来。
+        // 旧代码在此用 8 参构造器 → 键被静默置 null，迁移重写路径就成了「把有键卡写成无键卡」的
+        // 隐患（下一次 end 被当成新对话：重复落盘 + 重复调模型）。解析口径与读侧
+        // CardFileRepository.parseFromFile 完全一致（空/非法 → null，不造键）。
+        String conversationRecordId = fields.get("conversationRecordId");
+        if (conversationRecordId != null && conversationRecordId.isBlank()) {
+            conversationRecordId = null;
+        }
+        Integer conversationTurnsHash = null;
+        String hashRaw = fields.get("conversationTurnsHash");
+        if (hashRaw != null && !hashRaw.isBlank()) {
+            try {
+                conversationTurnsHash = Integer.valueOf(hashRaw.trim());
+            } catch (NumberFormatException e) {
+                log.warn("卡片迁移：conversationTurnsHash 非法，按缺失处理 | file={} | raw={}", oldPath, hashRaw);
+            }
+        }
+
+        return new CardRecord(cardId, "conversation", status, tags, turns, summary, createdAt, updatedAt,
+                conversationRecordId, conversationTurnsHash);
     }
 
     private String pathInCardsDir(CardRecord card) {
@@ -167,6 +205,51 @@ public class CardMigrationService {
             newFrontmatter = frontmatter + "\nid: " + newId;
         }
         // 重拼：---\n{frontmatter}\n---\n{body}（body 从 group(2) 取，避免 end(1) 起点的分隔符错位）
+        return "---\n" + newFrontmatter + "\n---\n" + matcher.group(2);
+    }
+
+    /**
+     * 迁移重写：改写 id（card_ 前缀）+ 把**解析出的幂等键显式写回**。
+     * <p>REVIEW P2-工程15（2026-09-26 夜间批 4 官深审）：迁移是「重写路径」，必须显式携带
+     * {@code conversationRecordId} / {@code conversationTurnsHash}——只要解析环节把它们丢了
+     * （旧 8 参构造器就是这么干的），重写出的卡就变成无键卡，下一次 end 被当成新对话
+     * （重复落盘 + 重复调模型）。这里以解析出的卡片为准写回，保证迁移前后键一致。
+     */
+    private String rewriteForMigration(String content, CardRecord card) {
+        return writeIdempotencyKeys(rewriteIdInFrontmatter(content, card.id()), card);
+    }
+
+    /**
+     * 按卡片的幂等键重写 frontmatter 的键行：**有键必写（值与原卡一致）、无键不造键**。
+     * <p>先剔除旧的键行再按解析结果补回，避免重复/陈旧行；被剔除的情形只有两类，都属「安全方向」：
+     * ① 原卡本来无键（剔除的是空行）；② {@code conversationTurnsHash} 非法/非数字——
+     * 读侧 {@code CardFileRepository.parseFromFile} 同样按「缺失」处理 → 下一次 end 本就会新落一条，
+     * 这里只是把文件与内存口径对齐，不会让「本来可用的键」丢失。
+     */
+    private String writeIdempotencyKeys(String content, CardRecord card) {
+        Matcher matcher = FRONTMATTER_PATTERN.matcher(content);
+        if (!matcher.find()) {
+            return content;
+        }
+        StringBuilder kept = new StringBuilder();
+        for (String line : matcher.group(1).split("\n", -1)) {
+            int colon = line.indexOf(':');
+            String key = colon > 0 ? line.substring(0, colon).trim() : "";
+            if ("conversationRecordId".equals(key) || "conversationTurnsHash".equals(key)) {
+                continue; // 剔除旧键行，统一按解析结果重写
+            }
+            kept.append(line).append('\n');
+        }
+        if (card.conversationRecordId() != null && !card.conversationRecordId().isBlank()) {
+            kept.append("conversationRecordId: ").append(card.conversationRecordId()).append('\n');
+        }
+        if (card.conversationTurnsHash() != null) {
+            kept.append("conversationTurnsHash: ").append(card.conversationTurnsHash()).append('\n');
+        }
+        String newFrontmatter = kept.toString();
+        if (newFrontmatter.endsWith("\n")) {
+            newFrontmatter = newFrontmatter.substring(0, newFrontmatter.length() - 1);
+        }
         return "---\n" + newFrontmatter + "\n---\n" + matcher.group(2);
     }
 

@@ -22,9 +22,9 @@ package com.adaiadai.core.domain.learn;
  * @param url         提交的来源链接（可能为空的仅粘贴素材场景为空串）
  * @param sourceTitle 抓取到的原文标题（抓取成功前为 null）
  * @param platform    来源平台展示值（weibo/wechat/bilibili/文章域名…，抓取后回填）
- * @param status      running / needs_confirmation / done / failed / cancelled
+ * @param status      running / needs_confirmation / not_queued / done / failed / cancelled / expired
  * @param stage       进行中阶段 fetching / reading / transcribing / structuring（终态为 null）
- * @param message     失败原因或等确认报价（人话，可直接展示）
+ * @param message     失败原因 / 等确认报价 / 过期与没排上的如实说明（人话，可直接展示）
  * @param type        结果卡片 type（done 时）
  * @param title       结果卡片标题（done 时——「哪一条」必须指名道姓）
  * @param topic       结果卡片主题（done 时，供前端分组或无痛打开）
@@ -50,10 +50,46 @@ public record LearnDigestTask(
         return "running".equals(status) || "needs_confirmation".equals(status);
     }
 
-    /** 是否已有结局（成功或失败或取消）——由「账」决定，不受内存 job 过期影响。 */
+    /** 是否已有结局（成功或失败或取消或过期或没排上）——由「账」决定，不受内存 job 过期影响。 */
     public boolean settled() {
-        return "done".equals(status) || "failed".equals(status) || "cancelled".equals(status);
+        return "done".equals(status) || "failed".equals(status) || "cancelled".equals(status)
+                || STATUS_EXPIRED.equals(status) || STATUS_NOT_QUEUED.equals(status);
     }
+
+    /**
+     * 等确认的决策入口已经不在（内存态 30 分钟 TTL 到期 / 重启丢失）→ 这条账如实转为
+     * {@value #STATUS_EXPIRED}（P2-learn34，2026-10-05）。
+     *
+     * <p><b>为什么必须有它</b>：可决策状态活在内存（{@code CONFIRM_TTL_MS = 30 分钟}），而这本账
+     * 活得久得多——只做按条数的滚动窗口、不按状态过期。于是账上永久留一条「待确认」，
+     * 用户看到却无处可点（生产实据：2026-09-25 提交的一条 B 站视频，21 小时后仍显示待确认）。
+     * 如实标成过期，比留一个点不动的「待确认」诚实。
+     */
+    public LearnDigestTask expired(String humanMessage, String settledAt) {
+        return outcome(STATUS_EXPIRED, humanMessage, settledAt);
+    }
+
+    /**
+     * 抢占任务位失败、**这条根本没排上**（P2-分享4，2026-10-05）→ 如实入账。
+     *
+     * <p>单任务槽位（刻意不做队列，2026-09-23 用户拍板）下第二条必然被丢；此前只改了分享扩展的
+     * 提示文案，账上却查不到这条——用户事后翻学习页看不到「我分享过这条」。本条只负责留痕，
+     * 不改变「不入队」的取舍。
+     */
+    public LearnDigestTask notQueued(String humanMessage, String settledAt) {
+        return outcome(STATUS_NOT_QUEUED, humanMessage, settledAt);
+    }
+
+    private LearnDigestTask outcome(String newStatus, String humanMessage, String settledAt) {
+        return new LearnDigestTask(id, url, sourceTitle, platform, newStatus, null, humanMessage,
+                type, title, topic, submittedAt, settledAt);
+    }
+
+    /** 等确认的决策入口没了（内存 job 过期/重启丢失）→ 账上如实标「过期」。 */
+    public static final String STATUS_EXPIRED = "expired";
+
+    /** 任务位被占、这条**没排上**（不排队，如实拒绝；2026-10-05 P2-分享4）。 */
+    public static final String STATUS_NOT_QUEUED = "not_queued";
 
     /**
      * 提交那一刻的记录（还不知道抓不抓得到、更不知道会产出什么）。

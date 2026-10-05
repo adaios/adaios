@@ -1933,6 +1933,83 @@ void main() {
       expect(find.textContaining('这张截图有'), findsNothing);
       expect(find.textContaining('行没记'), findsNothing);
     });
+
+    // ── P2-交易72（2026-10-05）：今天没买卖也有落点（「今天没动」/「想动，没动」）──
+    // 用户原话：「那我今天没有买卖 怎么告诉你呢 你还在等我的数据」——系统在等一个他**没有地方填**的状态。
+    // 本条补的是**当天事后**的回填入口（事前路径＝前晚写「明天不动」，RFC 20261003 已有）。
+    // 两条判据：① 点 chip → 请求 → **如实回执**；② 重复点**不重复落**（本地已知就不发请求，如实说
+    // 「已经记着了」）；后端 `recorded=false` 时同样不许假报一次落库。
+    group('P2-交易72 今天没动 / 想动，没动', () {
+      testWidgets('点「今天没动」→ 写今天自己的记录 + 如实回执；重复点不再落一次', (tester) async {
+        final b = _Backend();
+        mockBase(b);
+        final writes = <Map<String, dynamic>>[];
+        b.handlers['/api/v1/trading/plans/$_todayStr/status'] = (req) async {
+          writes.add(jsonDecode(req.body) as Map<String, dynamic>);
+          return _json({
+            'date': _todayStr, 'note': '', 'dayStatus': 'NO_TRADE',
+            'recorded': true, 'items': <Object>[],
+          });
+        };
+
+        await pumpTrading(tester, b);
+        expect(find.text('今天没买卖的话，点一下就行——没动也是一天的完整记录。'), findsOneWidget);
+
+        await tester.ensureVisible(find.text('今天没动'));
+        await tester.tap(find.text('今天没动'));
+        await tester.pumpAndSettle();
+
+        expect(writes.length, 1, reason: '点一次只落一次');
+        expect(writes.first['status'], 'NO_TRADE', reason: '落的是「今天没动」，不是别的状态');
+        expect(find.text('记下了：今天没动。'), findsOneWidget);
+        expect(find.text('今天记的是：没动'), findsOneWidget);
+
+        await tester.tap(find.text('今天没动'));
+        await tester.pumpAndSettle();
+
+        expect(writes.length, 1, reason: '重复点同一个 chip 不得再落一次（本地已知连请求都不发）');
+        expect(find.text('今天已经记着了：没动。'), findsOneWidget);
+      });
+
+      testWidgets('点「想动，没动」→ 落的是另一种状态；后端说没写盘时如实说「已经记着了」', (tester) async {
+        final b = _Backend();
+        mockBase(b);
+        final writes = <Map<String, dynamic>>[];
+        // 后端幂等命中（另一端刚记过）→ recorded=false，前端**不许**假报「记下了」。
+        b.handlers['/api/v1/trading/plans/$_todayStr/status'] = (req) async {
+          writes.add(jsonDecode(req.body) as Map<String, dynamic>);
+          return _json({
+            'date': _todayStr, 'note': '', 'dayStatus': 'WANTED_NOT_ACTED',
+            'recorded': false, 'items': <Object>[],
+          });
+        };
+
+        await pumpTrading(tester, b);
+        await tester.ensureVisible(find.text('想动，没动'));
+        await tester.tap(find.text('想动，没动'));
+        await tester.pumpAndSettle();
+
+        expect(writes.length, 1);
+        expect(writes.first['status'], 'WANTED_NOT_ACTED',
+            reason: '「想动，没动」与「今天没动」是两种状态，不得折叠');
+        expect(find.text('今天已经记着了：想动，但没动。'), findsOneWidget,
+            reason: '后端 recorded=false → 必须如实说「早就记着了」，不许假报落库');
+        expect(find.text('今天记的是：想动，但没动'), findsOneWidget);
+      });
+
+      testWidgets('进页带上今天已记的状态（不编造、不再问一遍）', (tester) async {
+        final b = _Backend();
+        mockBase(b);
+        b.handlers['/api/v1/trading/plans/$_todayStr'] = (_) async => _json({
+              'date': _todayStr, 'note': '', 'dayStatus': 'NO_TRADE', 'items': <Object>[],
+            });
+
+        await pumpTrading(tester, b);
+
+        expect(find.text('今天记的是：没动'), findsOneWidget);
+        expect(find.text('今天没买卖的话，点一下就行——没动也是一天的完整记录。'), findsNothing);
+      });
+    });
   });
 
   // ── P2-交易48/43 DTO 解析（旧后端缺字段不炸），2026-09-14 ──

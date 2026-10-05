@@ -1,5 +1,7 @@
 package com.adaiadai.core.interfaces;
 
+import com.adaiadai.core.application.ActionReviewService;
+import com.adaiadai.core.application.TodoAppService;
 import com.adaiadai.core.kernel.ai.AiClient;
 import com.adaiadai.core.kernel.ai.AiUnderstanding;
 import com.adaiadai.core.infrastructure.ai.llm.TestAiClient;
@@ -8,6 +10,8 @@ import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.infrastructure.storage.TagIndexService;
+import com.adaiadai.core.infrastructure.storage.TodoFileRepository;
+import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
 import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.ContentRecord;
@@ -36,18 +40,28 @@ class ConversationControllerTest {
     private RecordFileRepository recordRepository;
     private CardFileRepository cardRepository;
     private MemoryService memoryService;
+    private InMemoryFileStorage fileStorage;
+
+    /**
+     * REVIEW P2-交易73：动作搬运器（真实落盘，供「对话里给的动作 → 既有待办」端到端断言）。
+     */
+    private static ActionReviewService actionReviewService(InMemoryFileStorage storage) {
+        TodoFileRepository todoRepo = new TodoFileRepository(storage);
+        return new ActionReviewService(todoRepo, new TodoAppService(todoRepo, new MemoryService(storage)));
+    }
 
     @BeforeEach
     void setUp() {
         mapper = new ObjectMapper();
-        InMemoryFileStorage fileStorage = new InMemoryFileStorage();
+        fileStorage = new InMemoryFileStorage();
         TagIndexService tagIndexService = new TagIndexService(fileStorage);
         recordRepository = new RecordFileRepository(fileStorage);
         recordRepository.setTagIndexService(tagIndexService);
         cardRepository = new CardFileRepository(fileStorage);
         memoryService = new MemoryService(fileStorage);
         ConversationController controller = new ConversationController(
-                new TestAiClient(), recordRepository, cardRepository, memoryService
+                new TestAiClient(), recordRepository, cardRepository, memoryService,
+                actionReviewService(fileStorage)
         );
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
@@ -99,7 +113,8 @@ class ConversationControllerTest {
         TagIndexService tis = new TagIndexService(storage);
         RecordFileRepository repo = new RecordFileRepository(storage);
         repo.setTagIndexService(tis);
-        ConversationController ctrl = new ConversationController(new TestAiClient(), repo, new CardFileRepository(storage), new MemoryService(storage));
+        ConversationController ctrl = new ConversationController(new TestAiClient(), repo, new CardFileRepository(storage), new MemoryService(storage),
+                actionReviewService(storage));
         MockMvc localMvc = MockMvcBuilders.standaloneSetup(ctrl).build();
 
         String body = mapper.writeValueAsString(Map.of(
@@ -124,7 +139,8 @@ class ConversationControllerTest {
         RecordFileRepository repo = new RecordFileRepository(storage);
         repo.setTagIndexService(tis);
         ConversationController ctrl = new ConversationController(
-                new TestAiClient(), repo, new CardFileRepository(storage), new MemoryService(storage));
+                new TestAiClient(), repo, new CardFileRepository(storage), new MemoryService(storage),
+                actionReviewService(storage));
         MockMvc localMvc = MockMvcBuilders.standaloneSetup(ctrl).build();
 
         String body = mapper.writeValueAsString(Map.of(
@@ -199,7 +215,7 @@ class ConversationControllerTest {
             @Override
             public String recognizeIntent(String content) { return "log"; }
         };
-        ConversationController ctrl = new ConversationController(failingClient, repo, cardRepo, memoryService);
+        ConversationController ctrl = new ConversationController(failingClient, repo, cardRepo, memoryService, actionReviewService(storage));
         MockMvc localMvc = MockMvcBuilders.standaloneSetup(ctrl).build();
 
         // 预建 card（controller 只更新已存在的 card）
@@ -250,6 +266,96 @@ class ConversationControllerTest {
         assertEquals(1, recordRepository.findAll("default").size(), "同卡只允许一条 conversation 记录");
         assertEquals(firstId, cardRepository.findById("default", "card_idem_1").orElseThrow().conversationRecordId(),
                 "卡片须记下幂等键（跨请求/重启后仍幂等）");
+    }
+
+    // ── REVIEW P2-工程14：幂等键悬空（记录文件被删/损坏/迁移丢失）不得返回幽灵 recordId ──
+
+    /**
+     * 「卡片带幂等键 + 记录文件已删」→ 不得再把那个查不到的 id 当成功返回。
+     * <p>
+     * 幂等键在 card_*.md 上、记录在 rec_*.md 上，分属两个文件且无跨文件事务：记录被删 / 损坏 /
+     * 迁移丢失后键会悬空。修复前：命中键直接回旧 id，前端拿到一个**打不开**的 recordId（假成功）。
+     * 修复后：失效该键 → 走 doEnd 新落一条，返回**真实存在、可打开**的 id，且只落一条。
+     */
+    @Test
+    void endConversation_idempotentHitButRecordDeleted_returnsLiveRecordNotGhostId() throws Exception {
+        saveActiveCard("card_ghost_1", List.of("第一句", "回一句"));
+        String body = mapper.writeValueAsString(Map.of(
+                "turns", List.of("第一句", "回一句"),
+                "cardId", "card_ghost_1"
+        ));
+
+        String first = mockMvc.perform(post("/api/v1/conversations/end")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String firstId = mapper.readTree(first).get("recordId").asText();
+        assertTrue(recordRepository.findById("default", firstId).isPresent(), "首次落盘后记录应可查");
+
+        // 模拟记录文件被删/迁移丢失（卡片上的幂等键仍在——这正是「键与卡片分属两个文件」的裂缝）
+        recordRepository.deleteById("default", firstId);
+        assertTrue(recordRepository.findById("default", firstId).isEmpty(), "前置：记录文件确已不在");
+        assertEquals(firstId,
+                cardRepository.findById("default", "card_ghost_1").orElseThrow().conversationRecordId(),
+                "前置：卡片仍带着悬空的幂等键");
+
+        String second = mockMvc.perform(post("/api/v1/conversations/end")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String secondId = mapper.readTree(second).get("recordId").asText();
+
+        assertNotEquals(firstId, secondId, "不得再把已删记录的 id 当成功返回（幽灵 id）");
+        assertTrue(recordRepository.findById("default", secondId).isPresent(),
+                "返回的 recordId 必须真实存在、可打开，实际：" + secondId);
+        assertEquals(1, recordRepository.findAll("default").size(), "只落一条，不得重复落盘");
+        assertEquals(secondId,
+                cardRepository.findById("default", "card_ghost_1").orElseThrow().conversationRecordId(),
+                "悬空的幂等键要被新 id 覆盖（下次同内容重试才复用）");
+    }
+
+    /**
+     * 正常幂等命中（记录仍在）→ 行为不变：返回同一条 id、不重复落盘、**不重复调 AI**（不重复花钱）。
+     */
+    @Test
+    void endConversation_idempotentHitWithLiveRecord_reusesWithoutCallingAiAgain() throws Exception {
+        saveActiveCard("card_live_1", List.of("甲", "乙"));
+
+        java.util.concurrent.atomic.AtomicInteger aiCalls = new java.util.concurrent.atomic.AtomicInteger();
+        TestAiClient delegate = new TestAiClient();
+        AiClient countingClient = new AiClient() {
+            @Override
+            public AiUnderstanding understand(ContextPackage contextPackage) {
+                aiCalls.incrementAndGet();
+                return delegate.understand(contextPackage);
+            }
+
+            @Override
+            public String generate(ContextPackage contextPackage, String systemPrompt) {
+                return delegate.generate(contextPackage, systemPrompt);
+            }
+
+            @Override
+            public String recognizeIntent(String content) {
+                return delegate.recognizeIntent(content);
+            }
+        };
+        MockMvc localMvc = MockMvcBuilders.standaloneSetup(new ConversationController(
+                countingClient, recordRepository, cardRepository, memoryService,
+                actionReviewService(fileStorage))).build();
+
+        String body = mapper.writeValueAsString(Map.of(
+                "turns", List.of("甲", "乙"), "cardId", "card_live_1"));
+
+        String first = localMvc.perform(post("/api/v1/conversations/end")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String second = localMvc.perform(post("/api/v1/conversations/end")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+
+        assertEquals(mapper.readTree(first).get("recordId").asText(),
+                mapper.readTree(second).get("recordId").asText(), "记录仍在 → 幂等命中，复用同一条");
+        assertEquals(1, aiCalls.get(), "幂等命中不得重复调 AI（不重复花钱）");
+        assertEquals(1, recordRepository.findAll("default").size(), "幂等命中不得重复落盘");
     }
 
     /**
@@ -333,7 +439,8 @@ class ConversationControllerTest {
             }
         };
         ConversationController controller = new ConversationController(
-                countingClient, recordRepository, cardRepository, memoryService);
+                countingClient, recordRepository, cardRepository, memoryService,
+                actionReviewService(fileStorage));
 
         var request = new ConversationController.EndConversationRequest(List.of("甲", "乙"), "card_race_1");
         java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
@@ -371,5 +478,121 @@ class ConversationControllerTest {
                 List.of(), turnList, null,
                 java.time.LocalDateTime.now(), java.time.LocalDateTime.now()
         ));
+    }
+
+    // ── REVIEW P2-交易73：对话里给出的动作 → 既有待办 + 记忆的待行动事项 ──
+
+    /**
+     * 模拟「阿呆在对话里给了动作」：rawResponse 是带 {@code actions} 数组的回执 JSON
+     * ——正是 {@code LlmResponseParser.parseActions} 的输入形态。
+     */
+    private static AiClient actionsClient(String... actions) {
+        String json = "{\"summary\":\"收盘后三件事\",\"tags\":[\"交易\"],\"sentiment\":\"neutral\","
+                + "\"actionable\":false,\"actionSuggestion\":null,\"actions\":["
+                + java.util.Arrays.stream(actions)
+                        .map(a -> "\"" + a + "\"")
+                        .collect(java.util.stream.Collectors.joining(","))
+                + "]}";
+        return new AiClient() {
+            @Override
+            public AiUnderstanding understand(ContextPackage contextPackage) {
+                return new AiUnderstanding("收盘后三件事", "收盘后要做的事", null, null,
+                        List.of("交易"), "neutral", "life", false, null, json);
+            }
+            @Override
+            public String generate(ContextPackage contextPackage, String systemPrompt) { return "[Test]"; }
+            @Override
+            public String recognizeIntent(String content) { return "log"; }
+        };
+    }
+
+    @Test
+    void endConversation_capturesActionsIntoExistingTodos_andMemory() throws Exception {
+        InMemoryFileStorage storage = new InMemoryFileStorage();
+        TagIndexService tis = new TagIndexService(storage);
+        RecordFileRepository repo = new RecordFileRepository(storage);
+        repo.setTagIndexService(tis);
+        MemoryService memory = new MemoryService(storage);
+        ConversationController ctrl = new ConversationController(
+                actionsClient("把云南锗业的白线调出来看看", "数一下亨通光电持有几天"),
+                repo, new CardFileRepository(storage), memory, actionReviewService(storage));
+        MockMvc localMvc = MockMvcBuilders.standaloneSetup(ctrl).build();
+
+        String body = mapper.writeValueAsString(Map.of(
+                "turns", List.of("今天收盘后做点什么", "三件事，我说给你听")));
+        String response = localMvc.perform(post("/api/v1/conversations/end")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String recordId = mapper.readTree(response).get("recordId").asText();
+
+        // ① 落点 = 既有待办（data/{userId}/todos/），带来源锚点 + 次日到期（次日早盘捞回）
+        List<com.adaiadai.core.kernel.todo.Todo> todos =
+                new TodoFileRepository(storage).findAll("default");
+        assertEquals(2, todos.size(), "对话里给的两条动作都应落进既有待办");
+        assertTrue(todos.stream().allMatch(t -> recordId.equals(t.sourceRecordId())), "待办带来源锚点");
+        assertTrue(todos.stream().allMatch(t -> java.time.LocalDate.now().plusDays(1).equals(t.due())),
+                "到期日 = 次日");
+        assertTrue(todos.stream().anyMatch(t -> t.title().contains("云南锗业")));
+
+        // ② 记忆的「待行动事项」——ContextEngine 下次对话据此捞回
+        Memory persisted = memory.findByRecordId("default", recordId).orElseThrow();
+        assertTrue(persisted.actionable(), "动作要落成 actionable 记忆（下次对话的待行动事项）");
+        assertTrue(persisted.suggestion().contains("云南锗业"), "行动建议 = 动作原话");
+    }
+
+    @Test
+    void endConversation_withoutActions_landsNoTodo() throws Exception {
+        // TestAiClient 的 rawResponse 不是 JSON 回执 → 解析不出 actions → 沉默（一个待办都不该有）
+        InMemoryFileStorage storage = new InMemoryFileStorage();
+        TagIndexService tis = new TagIndexService(storage);
+        RecordFileRepository repo = new RecordFileRepository(storage);
+        repo.setTagIndexService(tis);
+        ConversationController ctrl = new ConversationController(
+                new TestAiClient(), repo, new CardFileRepository(storage), new MemoryService(storage),
+                actionReviewService(storage));
+        MockMvc localMvc = MockMvcBuilders.standaloneSetup(ctrl).build();
+
+        localMvc.perform(post("/api/v1/conversations/end")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("turns", List.of("闲聊", "嗯")))))
+                .andExpect(status().isOk());
+
+        assertTrue(new TodoFileRepository(storage).findAll("default").isEmpty(),
+                "没有动作就一个待办都不该有——沉默是默认项");
+    }
+
+    @Test
+    void endConversation_sameCardTwice_doesNotDuplicateTodos() throws Exception {
+        InMemoryFileStorage storage = new InMemoryFileStorage();
+        TagIndexService tis = new TagIndexService(storage);
+        RecordFileRepository repo = new RecordFileRepository(storage);
+        repo.setTagIndexService(tis);
+        CardFileRepository cards = new CardFileRepository(storage);
+        ConversationController ctrl = new ConversationController(
+                actionsClient("把白线调出来"), repo, cards, new MemoryService(storage),
+                actionReviewService(storage));
+        MockMvc localMvc = MockMvcBuilders.standaloneSetup(ctrl).build();
+
+        String cardId = "card_actions_1";
+        // 卡片必须落在**这份** storage 里（controller 读的是同一份，幂等键才认得出）
+        cards.save("default", new CardRecord(
+                cardId, "conversation", "active", List.of(),
+                List.of(new CardRecord.Turn(true, "收盘后做什么", "14:00"),
+                        new CardRecord.Turn(false, "把白线调出来", "14:00")),
+                null, java.time.LocalDateTime.now(), java.time.LocalDateTime.now()));
+        String body = mapper.writeValueAsString(Map.of(
+                "turns", List.of("收盘后做什么", "把白线调出来"), "cardId", cardId));
+
+        localMvc.perform(post("/api/v1/conversations/end")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+        localMvc.perform(post("/api/v1/conversations/end")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        assertEquals(1, new TodoFileRepository(storage).findAll("default").size(),
+                "同卡重复 end（幂等命中）不得重复落待办");
     }
 }

@@ -39,6 +39,15 @@ Future<int> _longEdge(Uint8List bytes) async {
   return edge;
 }
 
+/// 把 PNG 的 IHDR 之后（含 IDAT）的字节打乱——**图片头仍然合法**，像素数据已经解不出来。
+Uint8List _corruptPixels(Uint8List png) {
+  final copy = Uint8List.fromList(png);
+  for (var i = 40; i < copy.length - 12; i++) {
+    copy[i] = copy[i] ^ 0xFF;
+  }
+  return copy;
+}
+
 void main() {
   test('小图原样返回：字节不变且 mime 为空（沿用原类型）', () async {
     final small = await _png(800, 600);
@@ -71,5 +80,62 @@ void main() {
     expect(ImageDownscale.asPngName('shot.HEIC'), 'shot.png');
     expect(ImageDownscale.asPngName('noext'), 'noext.png');
     expect(ImageDownscale.asPngName('a.b.jpeg'), 'a.b.png');
+  });
+
+  // ——— REVIEW P2-UI14（2026-10-05）：免全图解码，用调用路径（onStage 诊断钩子）做间接证据 ———
+  //
+  // `dart:ui` 在 Web 上没有「只读头部」通道（`ImageDescriptor.width` 在 web 直接抛 UnsupportedError、
+  // `instantiateImageCodecWithSize` 内部仍是两次整图解码），所以这里用 `ImageHeader` 纯字节解析
+  // 顶掉旧实现「先整图 decode 只为量宽高」的那一次解码。
+  test('P2-UI14 小图：只走零解码的头部探测，绝不整图解码', () async {
+    final small = await _png(800, 600);
+    final stages = <String>[];
+    final out = await ImageDownscale.run(small, onStage: stages.add);
+
+    expect(identical(out.bytes, small), isTrue);
+    expect(out.mime, isEmpty);
+    expect(stages, <String>['header'],
+        reason: '出现 decode 就说明又做了一次整图解码——这正是本条目要消灭的动作');
+  });
+
+  test('P2-UI14 大图：先读头 → 整图解码**只发生一次**（旧实现为两次）', () async {
+    final big = await _png(2400, 600);
+    final stages = <String>[];
+    final out = await ImageDownscale.run(big, onStage: stages.add);
+
+    expect(stages, <String>['header', 'decode'],
+        reason: 'header 判定超限后只允许解码一次：那次解码是「拿真实尺寸 + 缩放」所必需，'
+            '不再是「先整图解一遍量宽高、再整图解一遍缩放」');
+    expect(await _longEdge(out.bytes), ImageDownscale.defaultMaxEdge);
+    expect(out.mime, ImageDownscale.pngMime);
+  });
+
+  test('P2-UI14 体积已超 maxBytes：不必探测头部，直接解码（跳过 header 阶段）', () async {
+    final png = await _png(400, 200);
+    final stages = <String>[];
+    final out = await ImageDownscale.run(png, maxEdge: 100, maxBytes: 1, onStage: stages.add);
+    expect(stages, <String>['decode'], reason: '小图判定要求「长边不超限 **且** 字节不超限」，体积都超了就无须读头');
+    expect(await _longEdge(out.bytes), 100, reason: '跳过读头也照样降采样');
+  });
+
+  test('P2-UI14 头部合法但像素损坏的小图：零解码直达，不抛、原样返回', () async {
+    final broken = _corruptPixels(await _png(800, 600));
+    final stages = <String>[];
+    final out = await ImageDownscale.run(broken, onStage: stages.add);
+
+    expect(stages, <String>['header'], reason: '头部已证明是小图 → 根本不碰解码器，损坏与否都无关');
+    expect(identical(out.bytes, broken), isTrue);
+    expect(out.mime, isEmpty);
+  });
+
+  test('P2-UI14 头部认不出来（非 PNG/JPEG/GIF/WebP）→ 老实降级解码，不猜尺寸', () async {
+    // 破坏 PNG 签名：ImageHeader 认不出 → 只能走解码探测（旧路径）；而解码器同样认不出 → 原样返回
+    final masked = Uint8List.fromList(await _png(800, 600))..[1] = 0x00;
+    final stages = <String>[];
+    final out = await ImageDownscale.run(masked, onStage: stages.add);
+
+    expect(stages, <String>['decode'], reason: '认不出格式就解码，绝不凭猜测提前返回');
+    expect(identical(out.bytes, masked), isTrue);
+    expect(out.mime, isEmpty);
   });
 }

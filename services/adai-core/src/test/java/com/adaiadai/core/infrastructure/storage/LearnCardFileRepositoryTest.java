@@ -14,6 +14,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -1308,5 +1309,103 @@ class LearnCardFileRepositoryTest {
         String after = storage.read("adai", path);
         assertTrue(after.contains("origin: product"), "标记真的写回了文件");
         assertTrue(after.contains("review_at: 2026-09-20"), "认回只加 origin 一行，未知键原样保留（File First）");
+    }
+
+    // ── 展开：衍生卡（P2-learn33，2026-10-05） ──
+
+    private static LearnCard expandDerived(String title) {
+        return new LearnCard(LearnCard.TYPE_AI, title, "bilibili", "马克的技术工作坊",
+                "https://b23.tv/xxx", "2026-05-05", LocalDate.of(2026, 10, 5),
+                LearnCard.STATUS_NEW, false, null,
+                List.of("harness", "展开"), "一句话总结",
+                List.of("要点一", "要点二", "要点三"), List.of(), "");
+    }
+
+    /** 衍生卡：记 derived_from + 落展开全文段；**原卡一字不动**（衍生而非覆盖）。 */
+    @Test
+    void saveDerived_recordsDerivedFromAndFullText_originalUntouched() {
+        LearnCard original = sample(LearnCard.TYPE_AI, "索引卡", LocalDate.of(2026, 9, 6));
+        repository.save("adai", original);
+        String before = repository.readCard("adai", LearnCard.TYPE_AI, "索引卡");
+        assertTrue(before != null && before.contains("索引卡"));
+
+        repository.saveDerived("adai", expandDerived("索引卡 · 展开"), "索引卡", "## 一、展开正文\n\n这里是全文。");
+
+        String derived = repository.readCard("adai", LearnCard.TYPE_AI, "索引卡 · 展开");
+        assertTrue(derived.contains("derived_from: 索引卡"), "衍生关系落在 frontmatter（用户改标题也不丢）");
+        assertTrue(derived.contains("## 展开全文"), "全文落在未知段（编辑手术原样保留）");
+        assertTrue(derived.contains("这里是全文。"));
+        assertEquals(before, repository.readCard("adai", LearnCard.TYPE_AI, "索引卡"), "原卡一字不动");
+    }
+
+    /** 「待展开」判据：没有衍生卡 → null；有 → 衍生卡标题。 */
+    @Test
+    void expandedTitle_findsDerivedCard_andNullWhenPending() {
+        repository.save("adai", sample(LearnCard.TYPE_AI, "索引卡", LocalDate.of(2026, 9, 6)));
+
+        assertNull(repository.expandedTitle("adai", LearnCard.TYPE_AI, "索引卡"), "还没有衍生卡 → 待展开");
+
+        repository.saveDerived("adai", expandDerived("索引卡 · 展开"), "索引卡", "正文");
+
+        assertEquals("索引卡 · 展开", repository.expandedTitle("adai", LearnCard.TYPE_AI, "索引卡"));
+        assertNull(repository.expandedTitle("adai", LearnCard.TYPE_TRADING, "索引卡"), "按 type 隔离，不串组");
+    }
+
+    // ── P2-learn33 对抗审查 A（2026-10-05）：卡片记下「我用了哪些素材」 ──
+
+    /**
+     * {@code source_assets} 落 frontmatter、能原样读回；**老卡（没有这个键）读出来是空**——
+     * 展开据此按「这张卡没留原始素材」处理，而不是回退去扫主题目录。
+     */
+    @Test
+    void sourceAssets_roundTrip_andLegacyCardHasNone() {
+        LearnCard card = sample(LearnCard.TYPE_AI, "记了素材的卡", LocalDate.of(2026, 10, 5));
+        repository.save("adai", card);
+        assertTrue(repository.sourceAssets("adai", LearnCard.TYPE_AI, card.title()).isEmpty(),
+                "刚落卡还没有来源记录 → 空（与老卡同一判据）");
+
+        repository.writeSourceAssets("adai", LearnCard.TYPE_AI, card.title(),
+                List.of("pasted-abc12345.txt", "transcript-BV1xx411c7mD.txt"));
+
+        assertEquals(List.of("pasted-abc12345.txt", "transcript-BV1xx411c7mD.txt"),
+                repository.sourceAssets("adai", LearnCard.TYPE_AI, card.title()));
+        assertTrue(repository.readCard("adai", LearnCard.TYPE_AI, card.title()).contains("source_assets"),
+                "来源记在卡自己的 frontmatter 里（File First：可查、可 diff）");
+    }
+
+    /** 编辑卡走「受管键手术重写」时，{@code source_assets} 是未知键 → 原样保留，不得被抹掉。 */
+    @Test
+    void sourceAssets_survivesManagedRewrite() {
+        LearnCard card = sample(LearnCard.TYPE_AI, "后来编辑过的卡", LocalDate.of(2026, 10, 5));
+        repository.save("adai", card);
+        repository.writeSourceAssets("adai", LearnCard.TYPE_AI, card.title(),
+                List.of("transcript-BV1xx411c7mD.txt"));
+
+        repository.applyEdit("adai", LearnCard.TYPE_AI, card.title(),
+                new LearnCardPatch("改过的观点", null, null, null, null, null, null));
+
+        assertEquals(List.of("transcript-BV1xx411c7mD.txt"),
+                repository.sourceAssets("adai", LearnCard.TYPE_AI, card.title()),
+                "编辑卡不该把素材来源抹掉（否则展开又会失去依据）");
+    }
+
+    /** 只读的外部同名卡：写来源走严格写定位 → 人话拒绝且文件不动。 */
+    @Test
+    void writeSourceAssets_onReadOnlyCard_isRefused() {
+        String path = "learn/ai/未归类/01-外部卡.md";
+        storage.write("adai", path, """
+                ---
+                title: 外部卡
+                type: ai
+                created: 2026-10-05
+                ---
+
+                ## 核心观点
+                别处整理的
+                """);
+
+        assertThrows(LearnException.class, () -> repository.writeSourceAssets(
+                "adai", LearnCard.TYPE_AI, "外部卡", List.of("transcript-x.txt")));
+        assertFalse(storage.read("adai", path).contains("source_assets"), "只读卡一个字节都不该动");
     }
 }

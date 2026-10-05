@@ -1,5 +1,6 @@
 package com.adaiadai.core.infrastructure.storage;
 
+import com.adaiadai.core.domain.trading.AnchorBasis;
 import com.adaiadai.core.domain.trading.SnapshotAnchor;
 import com.adaiadai.core.domain.trading.SnapshotHolding;
 import com.adaiadai.core.domain.trading.TradingAnchorRepository;
@@ -66,7 +67,10 @@ public class TradingAnchorFileRepository implements TradingAnchorRepository {
                     parseDate(node.path("cashImport").asText()),
                     // 2026-09-21（P1-交易61）：文件原始日期（判断锚定日是否为推断值）
                     parseDate(node.path("positionsFileDate").asText()),
-                    parseDate(node.path("cashFileDate").asText()));
+                    parseDate(node.path("cashFileDate").asText()),
+                    // 2026-10-05（P2-交易84）：基准日依据（有据/无据）——老文件没有 → null（不可判定）
+                    parseBasis(node.path("positionsBasis").asText()),
+                    parseBasis(node.path("cashBasis").asText()));
         } catch (Exception e) {
             // 损坏 → 空锚定；调用方（导入重放）会 fail-closed，不再静默按旧行为重放
             log.warn("读取快照锚定失败（按空锚定处理，需要改账的导入将被拒绝）| userId={} | {}",
@@ -109,40 +113,55 @@ public class TradingAnchorFileRepository implements TradingAnchorRepository {
 
     @Override
     public void updatePositionsReplace(String userId, LocalDate date) {
-        updatePositionsReplace(userId, date, date);
+        updatePositionsReplace(userId, date, date, null);
     }
 
     @Override
     public void updatePositionsReplace(String userId, LocalDate date, LocalDate fileDate) {
+        updatePositionsReplace(userId, date, fileDate, null);
+    }
+
+    @Override
+    public void updatePositionsReplace(String userId, LocalDate date, LocalDate fileDate, AnchorBasis basis) {
         synchronized (lockFor(userId)) {
             SnapshotAnchor cur = find(userId);
             // 只前进不后退（2026-09-12）：补导旧快照文件不得把锚定日推后
             LocalDate next = maxDate(cur.positionsReplace(), date);
             // 2026-09-21（P1-交易61）：锚定日没前进（补导更旧的快照，本次没生效）→ 保留既有文件日期，
             // 否则一份「没生效的文件」会把原有的推断信息抹掉；真正前进时才更新。
-            LocalDate nextFileDate = java.util.Objects.equals(next, cur.positionsReplace())
-                    ? cur.positionsFileDate() : fileDate;
+            boolean advanced = !java.util.Objects.equals(next, cur.positionsReplace());
+            LocalDate nextFileDate = advanced ? fileDate : cur.positionsFileDate();
+            // 2026-10-05（P2-交易84）：依据同理——只有锚定日真的前进才更新，否则保留既有（不抹掉证据）
+            AnchorBasis nextBasis = advanced ? basis : cur.positionsBasis();
             // 保留既有快照持仓基线（2026-09-12 修复：旧写法传 null 会把基线从文件里抹掉，
             // 害得对账闸门永远「无法判定」——资金导入同样不能抹掉持仓基线）
-            saveLocked(userId, new SnapshotAnchor(next, cur.cashImport(), nextFileDate, cur.cashFileDate()),
+            saveLocked(userId, new SnapshotAnchor(next, cur.cashImport(), nextFileDate, cur.cashFileDate(),
+                            nextBasis, cur.cashBasis()),
                     existingHoldings(userId));
         }
     }
 
     @Override
     public void updateCashImport(String userId, LocalDate date) {
-        updateCashImport(userId, date, date);
+        updateCashImport(userId, date, date, null);
     }
 
     @Override
     public void updateCashImport(String userId, LocalDate date, LocalDate fileDate) {
+        updateCashImport(userId, date, fileDate, null);
+    }
+
+    @Override
+    public void updateCashImport(String userId, LocalDate date, LocalDate fileDate, AnchorBasis basis) {
         synchronized (lockFor(userId)) {
             SnapshotAnchor cur = find(userId);
             LocalDate next = maxDate(cur.cashImport(), date);
-            LocalDate nextFileDate = java.util.Objects.equals(next, cur.cashImport())
-                    ? cur.cashFileDate() : fileDate;
+            boolean advanced = !java.util.Objects.equals(next, cur.cashImport());
+            LocalDate nextFileDate = advanced ? fileDate : cur.cashFileDate();
+            AnchorBasis nextBasis = advanced ? basis : cur.cashBasis();
             saveLocked(userId, new SnapshotAnchor(cur.positionsReplace(), next,
-                    cur.positionsFileDate(), nextFileDate), existingHoldings(userId));
+                    cur.positionsFileDate(), nextFileDate, cur.positionsBasis(), nextBasis),
+                    existingHoldings(userId));
         }
     }
 
@@ -173,6 +192,10 @@ public class TradingAnchorFileRepository implements TradingAnchorRepository {
             // 2026-09-21（P1-交易61）：保留快照文件原始日期（判断锚定日是否为「推断值」的唯一依据）
             obj.put("positionsFileDate", anchor.positionsFileDate() != null ? anchor.positionsFileDate().toString() : "");
             obj.put("cashFileDate", anchor.cashFileDate() != null ? anchor.cashFileDate().toString() : "");
+            // 2026-10-05（P2-交易84）：保留基准日**依据**——「这个锚定日是怎么定下来的」随锚定一起落盘，
+            // 导入回执与对账闸门据此说「有据/无据」，不再只有日期本身。
+            obj.put("positionsBasis", anchor.positionsBasis() != null ? anchor.positionsBasis().name() : "");
+            obj.put("cashBasis", anchor.cashBasis() != null ? anchor.cashBasis().name() : "");
             obj.put("recordedAt", java.time.LocalDateTime.now().toString());
             if (holdings != null) {
                 obj.put("holdingsRecorded", true);
@@ -197,6 +220,16 @@ public class TradingAnchorFileRepository implements TradingAnchorRepository {
         try {
             return LocalDate.parse(s);
         } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** 依据解析：空/未知取值 → null（不可判定，沿用既有语义——不诬告成「时钟推断」）。 */
+    private static AnchorBasis parseBasis(String s) {
+        if (s == null || s.isBlank()) return null;
+        try {
+            return AnchorBasis.valueOf(s.trim());
+        } catch (IllegalArgumentException e) {
             return null;
         }
     }

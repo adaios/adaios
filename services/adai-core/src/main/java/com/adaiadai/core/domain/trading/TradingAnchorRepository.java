@@ -47,6 +47,23 @@ public interface TradingAnchorRepository {
     }
 
     /**
+     * 记录一次持仓全量 replace 导入 + 原始文件日期 + **基准日依据**（2026-10-05，P2-交易84）。
+     * <p>
+     * {@code basis} 说明「归一化后的数据基准日是怎么定下来的」——显式基准日 / 文件日期 / 休市日归一化
+     * 均为**有据**，时钟推断为**无据**（{@link AnchorBasis}）。导入回执与对账闸门据此如实说话。
+     * <p>
+     * default 实现忽略 basis（旧实现 / 测试替身零改动）。
+     */
+    default void updatePositionsReplace(String userId, LocalDate date, LocalDate fileDate, AnchorBasis basis) {
+        updatePositionsReplace(userId, date, fileDate);
+    }
+
+    /** 记录一次资金股份查询导入 + 原始文件日期 + 基准日依据（语义同 {@link #updatePositionsReplace(String, LocalDate, LocalDate, AnchorBasis)}）。 */
+    default void updateCashImport(String userId, LocalDate date, LocalDate fileDate, AnchorBasis basis) {
+        updateCashImport(userId, date, fileDate);
+    }
+
+    /**
      * 记录快照当日的逐标的持仓基线（与锚定同文件，2026-09-12 账实一致性批）：
      * 对账闸门用它 + 锚点之后流水净增减推出应有持仓，与落地持仓比对，
      * 差异即「账实不符」（防「口径塌了却没人报警」）。空列表 = 本次快照无持仓（会覆盖旧基线）。

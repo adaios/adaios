@@ -338,14 +338,22 @@ class _FeedPageState extends State<FeedPage> {
       ));
     });
     _scrollToBottom();
+    final LearnDigestSubmitDto result;
     try {
-      await widget.api.submitLearnDigest(url: url);
+      result = await widget.api.submitLearnDigestDetailed(url: url);
     } catch (e) {
       if (!mounted || gen != _learnGen) return;
       _setLearnBubble(cardId, '这个链接我没接住：${_learnErrorLine(e)}。你看看是不是发全了，再来一次？');
       return;
     }
     if (!mounted || gen != _learnGen) return;
+    // P2-分享4（2026-10-05）：这条**没排上**（任务位被占）→ 停止轮询——否则会读到正在跑的
+    // 另一条的状态，把「别人读好了」当成自己的结果报出来。
+    if (result.isNotQueued) {
+      _setLearnBubble(cardId,
+          result.message.isEmpty ? '我正在读上一条，这条没排上——等它读完，再给我一次。' : '${result.message}。');
+      return;
+    }
     await _pollLearnDigest(cardId, gen);
   }
 

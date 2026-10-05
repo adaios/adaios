@@ -15,16 +15,45 @@ import java.util.List;
  * <p>存储：{@code data/{userId}/trading/plans/YYYY-MM-DD.json}（与 transfers.json / sold.json 同惯例）。
  * 文件日期 = 该计划**管的那一天**（前晚写、次日执行）。
  *
+ * <p><b>P2-交易72（2026-10-05）：当天事后的「今日状态」也落这一份记录。</b>
+ * 事前写的是「明天不动」，事后回填的是「今天没动」——**同一份记录、同一语义、时间方向相反**。
+ * 为什么不另建存储：这份记录本就是「这一天我怎么打算 / 我动没动」的载体，且
+ * {@code TradingPlanService.review} 已把它与当天真实成交对账（含计划外成交）；
+ * 另立一处才是孤岛。为什么**不塞进流水**（{@code TradeRecord}）：那是**成交**，
+ * 「没动」写成 volume=0 的假流水会污染持仓重建 / 现金 / 盈亏 / 复盘的所有下游。
+ *
  * @param date      计划管的那一天
  * @param items     计划条目（标的三要素：标的 · 条件 · 动作）
  * @param note      用户的自我约束（如「只做计划内的票，不追高」）
+ * @param dayStatus 当天事后的状态回填（P2-交易72）：{@code ""} 没填 /
+ *                  {@link #DAY_STATUS_NO_TRADE} 今天没动 / {@link #DAY_STATUS_WANTED_NOT_ACTED} 想动但没动。
+ *                  **与 items 互不覆盖**：回填状态不碰用户已写的计划条目。
  * @param createdAt 落盘时间
  */
-public record TradingPlan(LocalDate date, List<PlanItem> items, String note, LocalDateTime createdAt) {
+public record TradingPlan(LocalDate date, List<PlanItem> items, String note, String dayStatus,
+                          LocalDateTime createdAt) {
+
+    /** 没填（缺省）。 */
+    public static final String DAY_STATUS_NONE = "";
+    /** 今天没动（P2-交易72 用户原话三选一之一）。 */
+    public static final String DAY_STATUS_NO_TRADE = "NO_TRADE";
+    /** 想动但没动（同上；连续出现可作「手痒」的对照，R119「零仓位也是交易」）。 */
+    public static final String DAY_STATUS_WANTED_NOT_ACTED = "WANTED_NOT_ACTED";
+
+    /** 是否为可落盘的状态值（**未填不算**——清空状态走 items/note 之外的显式语义，不在这里放行）。 */
+    public static boolean isKnownDayStatus(String s) {
+        return DAY_STATUS_NO_TRADE.equals(s) || DAY_STATUS_WANTED_NOT_ACTED.equals(s);
+    }
 
     public TradingPlan {
         if (items == null) items = List.of();
         if (note == null) note = "";
+        if (dayStatus == null) dayStatus = DAY_STATUS_NONE;
+    }
+
+    /** 兼容构造（P2-交易72 之前写入/构造的调用点）：dayStatus 缺省为空，旧调用零改动。 */
+    public TradingPlan(LocalDate date, List<PlanItem> items, String note, LocalDateTime createdAt) {
+        this(date, items, note, DAY_STATUS_NONE, createdAt);
     }
 
     /**

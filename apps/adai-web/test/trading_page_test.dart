@@ -731,7 +731,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.enterText(
-        find.byType(TextField),
+        find.byKey(const Key('tradeImportContent')),
         '代码\t名称\t成本价\t证券数量\n600123\t立昂微\t25.30\t200\n600519\t贵州茅台\t1350\t100\n',
       );
       await tester.tap(find.text('导入'));
@@ -744,6 +744,56 @@ void main() {
       expect(sentUri!.queryParameters['replace'], 'true');
       expect(find.textContaining('持仓导入 2 只'), findsOneWidget);
       expect(find.textContaining('未设止损 1 只'), findsOneWidget);
+    });
+
+    // ── P2-交易84（2026-10-05）：显式「数据基准日」——09:26 导出、09:28 导入不再被退到上一交易日 ──
+    testWidgets('填了数据基准日 → 请求带 basedOn，回执如实说依据（有据）', (tester) async {
+      Uri? importUri;
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions' && request.method == 'GET') {
+          return _json([_positionJson()]);
+        }
+        if (path == '/api/v1/trading/positions/import' && request.method == 'POST') {
+          if (request.url.queryParameters['dryRun'] == 'true') {
+            // 对账阶段：逐只相符 → 不打扰，直接进正式导入
+            return _json({'dryRun': true, 'fileCount': 1, 'systemCount': 1, 'diffs': [], 'note': '一致'});
+          }
+          importUri = request.url;
+          return _json({
+            'imported': 1,
+            'missingStopLoss': <String>[],
+            'anchor': {
+              'basis': 'EXPLICIT',
+              'withEvidence': true,
+              'note': '锚定日 2026-09-18：按你指定的数据基准日（有据）',
+            },
+          });
+        }
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('导入持仓'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('tradeImportBasis')), '2026-09-18');
+      await tester.enterText(find.byKey(const Key('tradeImportContent')),
+          '代码\t名称\t成本价\t证券数量\n600123\t立昂微\t25.30\t200\n');
+      await tester.tap(find.text('导入'));
+      await tester.pumpAndSettle();
+
+      expect(importUri, isNotNull, reason: '应发出正式导入请求');
+      expect(importUri!.queryParameters['basedOn'], '2026-09-18',
+          reason: '用户显式说清的基准日必须一路传到后端（不许被前端吞掉）');
+      expect(find.textContaining('按你指定的数据基准日（有据）'), findsOneWidget,
+          reason: '锚定日的依据必须如实回执，不许静默');
     });
 
     // ── 负成本事故（2026-09-13）核心行为：看不懂的行 → 拒绝全量覆盖，不发请求 ──
@@ -775,7 +825,7 @@ void main() {
       await tester.pumpAndSettle();
       // 第 2 行成本列不是数字（真看不懂）→ 整份不得覆盖
       await tester.enterText(
-        find.byType(TextField),
+        find.byKey(const Key('tradeImportContent')),
         '证券代码\t证券名称\t股票余额\t成本价\n'
         '600206\t有研新材\t900\t46.012\n'
         '600601\t方正科技\t100\t--\n',
@@ -815,7 +865,7 @@ void main() {
       await tester.pumpAndSettle();
       // 用户那份生产文件的同构内容：3 只有持仓（含负成本）+ 1 行 0 股残留
       await tester.enterText(
-        find.byType(TextField),
+        find.byKey(const Key('tradeImportContent')),
         '代码\t名称\t成本价\t持仓量\n'
         '600206\t有研新材\t46.012\t900\n'
         '002428\t云南锗业\t53.765\t400\n'
@@ -860,7 +910,7 @@ void main() {
       await tester.pumpAndSettle();
       // 清仓股文本（无成本价列）不应被当作持仓导入，也不应走交易 CSV 的「买点」校验
       await tester.enterText(
-        find.byType(TextField),
+        find.byKey(const Key('tradeImportContent')),
         '代码\t名称\t介入日期\t清仓日期\t持仓天数\t买卖次数\t持仓期涨幅%\n600519\t贵州茅台\t20260801\t20260810\t9\t1\t-5.0\n',
       );
       await tester.tap(find.text('导入'));
@@ -2932,6 +2982,52 @@ void main() {
       expect(parseSnapshotDateFromFilename('导出20261345.txt'), isNull, reason: '假日期不当作锚定日');
       expect(parseSnapshotDateFromFilename('导出20260230.txt'), isNull, reason: '2/30 不存在');
     });
+
+    // ── P2-交易84（2026-10-05）：显式「数据基准日」输入 ──
+    test('基准日输入解析（合法才传，非法不猜）', () {
+      expect(parseBasisDateInput('2026-09-18'), '2026-09-18');
+      expect(parseBasisDateInput(' 2026/09/18 '), '2026-09-18');
+      expect(parseBasisDateInput('20260918'), '2026-09-18');
+      expect(parseBasisDateInput(''), isNull, reason: '留空 = 不传该字段（后端走既有归一化并标「无据」）');
+      expect(parseBasisDateInput('   '), isNull);
+      expect(parseBasisDateInput('2026-13-01'), isNull, reason: '非法月份不猜');
+      expect(parseBasisDateInput('2026-02-30'), isNull, reason: '不存在的日期不猜');
+      expect(parseBasisDateInput('昨天'), isNull, reason: '人话不能当日期');
+    });
+
+    test('导入回执的锚定依据可解析（旧后端缺字段 → 不编造）', () {
+      final p = PositionImportResult.fromJson(<String, dynamic>{
+        'imported': 1,
+        'missingStopLoss': <String>[],
+        'anchor': <String, dynamic>{
+          'basis': 'EXPLICIT',
+          'withEvidence': true,
+          'note': '锚定日 2026-09-18：按你指定的数据基准日（有据）',
+        },
+      });
+      expect(p.anchorWithEvidence, isTrue);
+      expect(p.anchorNote, contains('有据'));
+
+      final legacy = PositionImportResult.fromJson(<String, dynamic>{
+        'imported': 1,
+        'missingStopLoss': <String>[],
+      });
+      expect(legacy.anchorNote, isNull, reason: '旧后端没有该字段 → 不显示也不编造');
+      expect(legacy.anchorWithEvidence, isFalse);
+
+      final c = CashImportResult.fromJson(<String, dynamic>{
+        'cash': 1,
+        'assets': 2,
+        'updatedCost': 0,
+        'anchor': <String, dynamic>{
+          'basis': 'CLOCK',
+          'withEvidence': false,
+          'note': '锚定日 2026-09-17：按导入时间推断（无据）',
+        },
+      });
+      expect(c.anchorWithEvidence, isFalse);
+      expect(c.anchorNote, contains('无据'));
+    });
   });
 
   group('RFC 20260912 历史成交导入：预检 → 确认两段式', () {
@@ -4454,6 +4550,103 @@ void _marketStageGroup() {
       await pumpDaily(tester,
           ApiService(baseUrl: 'http://test', client: dailyMock(dailyJson())));
       expect(find.textContaining('有几笔今天的盈亏还没算全'), findsNothing);
+    });
+  });
+
+  // ── P2-交易72（2026-10-05）：今天没买卖也有落点（「今天没动」/「想动，没动」）──
+  //
+  // 用户原话：「那我今天没有买卖 怎么告诉你呢 你还在等我的数据」——系统在等一个他**没有地方填**的状态。
+  // 本条补的是**当天事后**的回填入口（事前路径＝前晚写「明天不动」，RFC 20261003 已有）。
+  // 判据两条：① 点 chip → 请求 → **如实回执**；② 重复点**不重复落**（本地已知就不发请求，且如实说
+  // 「已经记着了」）；后端 `recorded=false` 时同样不许假报一次落库。
+  group('P2-交易72 今天没动 / 想动，没动', () {
+    /// 写请求记账：落了什么、落了几次。
+    MockClient statusMock({
+      required List<Map<String, dynamic>> writes,
+      String dayStatus = 'NO_TRADE',
+      bool recorded = true,
+      Map<String, dynamic>? initialPlan,
+    }) {
+      final today = _ymd(DateTime.now());
+      return MockClient((req) async {
+        if (req.url.path == '/api/v1/trading/plans/$today/status') {
+          writes.add(jsonDecode(req.body) as Map<String, dynamic>);
+          return _json({
+            'date': today,
+            'note': '',
+            'dayStatus': dayStatus,
+            'recorded': recorded,
+            'items': [],
+          });
+        }
+        if (initialPlan != null &&
+            req.method == 'GET' &&
+            req.url.path == '/api/v1/trading/plans/$today') {
+          return _json(initialPlan);
+        }
+        return _tradingHandler(req);
+      });
+    }
+
+    testWidgets('点「今天没动」→ 写今天自己的记录 + 如实回执；重复点不再落一次', (tester) async {
+      final writes = <Map<String, dynamic>>[];
+      final api = ApiService(baseUrl: 'http://test', client: statusMock(writes: writes));
+
+      await _pumpTrading(tester, api);
+      expect(find.text('今天没买卖的话，点一下就行——没动也是一天的完整记录。'), findsOneWidget);
+
+      await tester.ensureVisible(find.text('今天没动'));
+      await tester.tap(find.text('今天没动'));
+      await tester.pumpAndSettle();
+
+      expect(writes.length, 1, reason: '点一次只落一次');
+      expect(writes.first['status'], 'NO_TRADE', reason: '落的是「今天没动」，不是别的状态');
+      expect(find.text('记下了：今天没动。'), findsOneWidget);
+      expect(find.text('今天记的是：没动'), findsOneWidget);
+
+      await tester.tap(find.text('今天没动'));
+      await tester.pumpAndSettle();
+
+      expect(writes.length, 1, reason: '重复点同一个 chip 不得再落一次（本地已知连请求都不发）');
+      expect(find.text('今天已经记着了：没动。'), findsOneWidget);
+    });
+
+    testWidgets('点「想动，没动」→ 落的是另一种状态；后端说没写盘时如实说「已经记着了」', (tester) async {
+      final writes = <Map<String, dynamic>>[];
+      // 后端幂等命中（另一端刚记过同一个状态）→ recorded=false，前端**不许**假报「记下了」。
+      final api = ApiService(
+          baseUrl: 'http://test',
+          client: statusMock(
+              writes: writes, dayStatus: 'WANTED_NOT_ACTED', recorded: false));
+
+      await _pumpTrading(tester, api);
+      await tester.ensureVisible(find.text('想动，没动'));
+      await tester.tap(find.text('想动，没动'));
+      await tester.pumpAndSettle();
+
+      expect(writes.length, 1);
+      expect(writes.first['status'], 'WANTED_NOT_ACTED', reason: '「想动，没动」与「今天没动」是两种状态，不得折叠');
+      expect(find.text('今天已经记着了：想动，但没动。'), findsOneWidget,
+          reason: '后端 recorded=false → 必须如实说「早就记着了」，不许假报落库');
+      expect(find.text('今天记的是：想动，但没动'), findsOneWidget);
+    });
+
+    testWidgets('进页带上今天已记的状态（不编造、不再问一遍）', (tester) async {
+      final api = ApiService(
+          baseUrl: 'http://test',
+          client: statusMock(
+              writes: <Map<String, dynamic>>[],
+              initialPlan: {
+                'date': _ymd(DateTime.now()),
+                'note': '',
+                'dayStatus': 'NO_TRADE',
+                'items': [],
+              }));
+
+      await _pumpTrading(tester, api);
+
+      expect(find.text('今天记的是：没动'), findsOneWidget);
+      expect(find.text('今天没买卖的话，点一下就行——没动也是一天的完整记录。'), findsNothing);
     });
   });
 }

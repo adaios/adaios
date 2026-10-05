@@ -9,6 +9,7 @@ import com.adaiadai.core.domain.trading.PushSettings;
 import com.adaiadai.core.domain.trading.SoldTrade;
 import com.adaiadai.core.domain.trading.SoldTradeRepository;
 import com.adaiadai.core.domain.trading.TradeDirection;
+import com.adaiadai.core.domain.trading.TradeLogCandidate;
 import com.adaiadai.core.domain.trading.TradeRecord;
 import com.adaiadai.core.domain.trading.TradingMarketStage;
 import com.adaiadai.core.domain.trading.TradingPlan;
@@ -121,6 +122,12 @@ class TradingSessionPushServiceTest {
         WatchlistRepository watchlist = mock(WatchlistRepository.class);
         TradingSyncStateRepository syncState = mock(TradingSyncStateRepository.class);
         SoldTradeRepository soldRepo = mock(SoldTradeRepository.class);
+        /**
+         * P2-工程12①（2026-10-05）：从「内联 mock」提为字段——非交易日用例必须能把它 stub 成
+         * **有候选**，否则 {@code tradeLogConfirm} 即使闸门被删也推不出东西（todayCandidates 返回空 →
+         * forEachTradingUser 里的 return），用例照样绿（＝变异测不出来）。
+         */
+        TradeLogCollectService tradeLog = mock(TradeLogCollectService.class);
         TradingRuleSettingsRepository ruleRepo = mock(TradingRuleSettingsRepository.class);
         TradingMarketStageRepository stageRepo = mock(TradingMarketStageRepository.class);
         AccountRepository accounts = mock(AccountRepository.class);
@@ -164,7 +171,7 @@ class TradingSessionPushServiceTest {
             TradingDecisionNarrator narrator = new TradingDecisionNarrator(evidence, soldRepo, ruleRepo);
             TradingSessionPushService svc = spy(new TradingSessionPushService(posRepo, market, accounts, plugin, engine,
                     List.of(channel), acc, buyPoint, watchlist, pushSettings,
-                    mock(TradeLogCollectService.class), trading, stageRepo, adviceRepo,
+                    tradeLog, trading, stageRepo, adviceRepo,
                     narrator, syncState, soldRepo, evidence, planService, knowledgeDir));
             // P2-工程11（2026-10-01）：把「今天是否交易日」固定为 true，与真实日历解耦。
             // 原先测试吃真实 LocalDate.now() → 每逢法定节假日（如 10-01 国庆）全量必红 24 条
@@ -173,6 +180,13 @@ class TradingSessionPushServiceTest {
             // （实测 2251 tests / 24 failed，连跑 3 轮完全一致）。非交易日的早退语义另有专门用例
             // nonTradingDay_allEntrypointsSkipPushes 反向兜住——不是"不测了"，是"两个分支都测"。
             doReturn(true).when(svc).isTradingDayToday();
+            // P2-工程12②（2026-10-05）：afterDataSync 的自证版闸门同样固定为交易日——
+            // 原实现内联 isTradingDayStrict(LocalDate.now())，测试只能 assumeTrue 自跳过
+            // （节假日「全绿」但这条路径一次没验）。两个分支分别由
+            // afterDataSync_afterClose_pushesReviewImmediately（true）与
+            // afterDataSync_nonTradingDay_onlyRecordsState_noPush（false）真断言覆盖；
+            // 默认真身由 isTradingDayStrictToday_defaultImplementation_followsCalendar 直调兜住。
+            doReturn(true).when(svc).isTradingDayStrictToday();
             return svc;
         }
 
@@ -264,7 +278,7 @@ class TradingSessionPushServiceTest {
                 new TradingPlanService.PlanReview(LocalDate.now(), true,
                         List.of(new TradingPlanService.ItemReview("600519", "贵州茅台", "SELL",
                                 "跌破 1400", "600519 跌破 1400 清仓", true, true, "当日 高 1420 / 低 1390")),
-                        List.of("000831 中国稀土 BUY 200股"), 1, 1));
+                        List.of("000831 中国稀土 BUY 200股"), 1, 1, TradingPlan.DAY_STATUS_NONE));
         TradingSessionPushService svc = rig.build();
 
         svc.closeAdvice();
@@ -284,7 +298,7 @@ class TradingSessionPushServiceTest {
                 new TradingPlanService.PlanReview(LocalDate.now(), true,
                         List.of(new TradingPlanService.ItemReview("000776", "广发证券", "BUY",
                                 "回到 19.5", "000776 回到 19.5 以下买 500 股", false, false, null)),
-                        List.of(), 0, 0));
+                        List.of(), 0, 0, TradingPlan.DAY_STATUS_NONE));
         TradingSessionPushService svc = rig.build();
 
         svc.closeAdvice();
@@ -727,18 +741,21 @@ class TradingSessionPushServiceTest {
         assertFalse(content.contains("账实：一致"), "判不了时绝不能报一致，实际: " + content);
     }
 
+    /**
+     * 收盘后（≥15:00）导入 → 立刻出复盘。
+     * <p>
+     * P2-工程12②（2026-10-05）：原用例用 {@code Assumptions.assumeTrue(isTradingDayStrict(now))}
+     * **自跳过**——节假日跑测试时它"绿"得毫无信息量（这条路径一次没验），正是本条审查意见的病根。
+     * 现改为 spy 覆写 {@code isTradingDayStrictToday()}（Rig 默认已固定为交易日），**真断言**，
+     * 且与真实日历完全解耦；非交易日分支由下面那条用例真断言（原注释 2026-09-26 的脆弱点就此消除）。
+     */
     @Test
     void afterDataSync_afterClose_pushesReviewImmediately() {
-        // 2026-09-26 独立审查发现（既有脆弱点）：这条路径在生产里会先判 isTradingDayStrict(now)，
-        // 于是**周末/节假日跑后端全量必红**（当天是周六实锤），而部署门禁要跑全量测试。
-        // 修法取最小：**非交易日显式跳过**——生产同一天也不会推复盘，跳过与语义一致（不改生产逻辑）。
-        org.junit.jupiter.api.Assumptions.assumeTrue(
-                TradingSessionPushService.isTradingDayStrict(LocalDate.now()),
-                "非交易日（周末/节假日）：生产同样不会推复盘，跳过该分支");
         Rig rig = new Rig();
         LocalDate today = LocalDate.now();
         rig.sync = new TradingSyncState(today, LocalDateTime.now(), null);
         TradingSessionPushService svc = rig.buildSpy(LocalTime.of(15, 10));
+        doReturn(true).when(svc).isTradingDayStrictToday(); // 显式交易日：不再 assumeTrue 自跳过
 
         svc.afterDataSync("adai");
 
@@ -747,23 +764,59 @@ class TradingSessionPushServiceTest {
     }
 
     /**
-     * P2-工程11（2026-10-01）：非交易日（周末 / 法定节假日）——**5 个定时入口一律不推**。
+     * P2-工程12②（2026-10-05）：非交易日（周末 / 节假日）导入 → **只记状态、复盘一律不推**（真断言）。
+     * <p>反向兜住 afterDataSync 的闸门：把它变异成恒真（＝节假日照推）本用例必红。
+     */
+    @Test
+    void afterDataSync_nonTradingDay_onlyRecordsState_noPush() {
+        Rig rig = new Rig();
+        LocalDate today = LocalDate.now();
+        rig.sync = new TradingSyncState(today, LocalDateTime.now(), null);
+        TradingSessionPushService svc = rig.buildSpy(LocalTime.of(15, 10)); // 即便已过 15:00
+        doReturn(false).when(svc).isTradingDayStrictToday(); // 周末 / 法定节假日
+
+        svc.afterDataSync("adai");
+
+        verify(rig.syncState, times(1)).recordSync(eq("adai"), eq(today), any());
+        verify(rig.channel, never()).push(any(), any());
+    }
+
+    /**
+     * P2-工程11（2026-10-01）：非交易日（周末 / 法定节假日）——**7 个定时入口一律不推**。
      * <p>
      * 此前没有专门用例覆盖这个分支，它只被"测试恰好跑在非交易日"间接命中（于是把 24 条测试
      * 变成红色噪音）。现在闸门可覆写：本用例显式 fixed=false 兜住早退语义，
      * 其余用例 fixed=true 覆盖交易日行为——**两个分支都被测到**，且与真实日历无关。
+     * <p>
+     * P2-工程12①（2026-10-05）：原先只调了 5 个入口，**漏 {@code planReminder} 与 {@code tradeLogConfirm}**
+     * ——审查官变异实测「删掉 {@code tradeLogConfirm} 的闸门 → 40 条全绿、零捕获」。今补齐两者：
+     * <ul>
+     *   <li>{@code planReminder}：stub「当晚没写计划」→ 闸门在则静默，闸门被删即推（有鉴别力）；</li>
+     *   <li>{@code tradeLogConfirm}：**显式 stub 出非空候选**——否则 {@code todayCandidates} 返回空时
+     *       即使闸门被删也推不出来（"不推"是空候选造成的假绿）；stub 非空后闸门被删即推。</li>
+     * </ul>
      */
     @Test
     void nonTradingDay_allEntrypointsSkipPushes() {
         Rig rig = new Rig();
+        // ⚠️ 鉴别力前提（P2-工程12①）：tradeLogConfirm 当日**确有待确认候选**，
+        //    否则"没推"是空候选导致的假绿，删闸门也测不出来。
+        when(rig.tradeLog.todayCandidates(any())).thenReturn(List.of(new TradeLogCandidate(
+                "600487", "亨通光电", "BUY", new BigDecimal("18.42"), 100,
+                LocalDate.now(), LocalTime.of(10, 30), "screenshot", true, null, null, "c1")));
+        when(rig.tradeLog.summarize(any())).thenReturn("📋 今日操作汇总\n· 亨通光电 买入 100 股 @18.42");
+        // ⚠️ 鉴别力前提：planReminder 当晚**还没写**计划（写了本来就不推，同样测不出闸门）
+        when(rig.planService.find(any(), any(LocalDate.class))).thenReturn(Optional.empty());
         TradingSessionPushService svc = rig.build();
         doReturn(false).when(svc).isTradingDayToday(); // 模拟周末 / 国庆等休市日
 
         svc.morningPlan();
+        svc.planReminder();
         svc.middayTracking();
         svc.closeAdvice();
         svc.closeSummaryPush();
         svc.closeAccountUpdate();
+        svc.tradeLogConfirm();
 
         verify(rig.channel, never()).push(any(), any());
     }
@@ -800,11 +853,47 @@ class TradingSessionPushServiceTest {
         }
     }
 
+    /**
+     * P2-工程12②（2026-10-05）：{@code isTradingDayStrictToday()} 的**默认实现必须真的被执行到**。
+     * <p>
+     * Rig 是唯一构造点、永远 spy + {@code doReturn(true)}，而新增的非交易日用例又固定 false →
+     * 若不补本条，真实方法体零覆盖：把它变异成 {@code return true;}（＝周末/节假日照推复盘）
+     * 测试仍会全绿。本用例用 {@code doCallRealMethod} 还原真身，以**固定日期**锚定三个分支，
+     * **与真实「今天」无关**，因此在任何日期跑都不失去鉴别力。
+     */
+    @Test
+    void isTradingDayStrictToday_defaultImplementation_followsCalendar() {
+        Rig rig = new Rig();
+        TradingSessionPushService svc = rig.build();
+        doCallRealMethod().when(svc).isTradingDayStrictToday(); // 还原真实实现（Rig 默认 stub 成 true）
+
+        LocalDate saturday = LocalDate.of(2026, 9, 19);   // 周六：strict 与 isTradingDay 的口径分界
+        LocalDate holiday = LocalDate.of(2026, 10, 1);    // 2026 国庆
+        LocalDate tradingDay = LocalDate.of(2026, 9, 30); // 周三，非节假日
+        // ① 周末 → 必须判为非交易日（恒 true 的变异在此被抓住）
+        try (var mocked = mockStatic(LocalDate.class, CALLS_REAL_METHODS)) {
+            mocked.when(LocalDate::now).thenReturn(saturday);
+            assertFalse(svc.isTradingDayStrictToday(),
+                    "周末必须判为非交易日（这正是 strict 与 isTradingDay 的差别所在）");
+        }
+        // ② 法定节假日 → 必须判为非交易日
+        try (var mocked = mockStatic(LocalDate.class, CALLS_REAL_METHODS)) {
+            mocked.when(LocalDate::now).thenReturn(holiday);
+            assertFalse(svc.isTradingDayStrictToday(), "法定节假日必须判为非交易日");
+        }
+        // ③ 普通工作日 → 必须放行（恒 false 的变异在此被抓住）
+        try (var mocked = mockStatic(LocalDate.class, CALLS_REAL_METHODS)) {
+            mocked.when(LocalDate::now).thenReturn(tradingDay);
+            assertTrue(svc.isTradingDayStrictToday(), "普通工作日必须放行（恒 false 的变异在此被抓住）");
+        }
+    }
+
     @Test
     void afterDataSync_beforeClose_onlyRecordsState() {
         Rig rig = new Rig();
         LocalDate today = LocalDate.now();
         TradingSessionPushService svc = rig.buildSpy(LocalTime.of(14, 0));
+        doReturn(true).when(svc).isTradingDayStrictToday(); // 固定交易日：本条测「收盘前」分支，不吃日历
 
         svc.afterDataSync("adai");
 

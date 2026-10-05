@@ -34,6 +34,28 @@ String? parseSnapshotDateFromFilename(String filename) {
   return '${m.group(1)}-${m.group(2)}-${m.group(3)}';
 }
 
+/// 解析「数据基准日」输入（2026-10-05，P2-交易84）。
+///
+/// 用户在导入对话框里可以说清「**这份快照的数据基准日**是哪天」（导出日 ≠ 基准日是常态：
+/// 盘前/休市日导出的文件，内容是上一交易日的）。后端 `basedOn` 用它优先于「导入时刻」推断——
+/// 09:26 导出、09:28 导入不再被退到上一交易日。
+///
+/// 接受 `2026-09-18` / `2026/09/18` / `20260918`；非法（含不存在日期如 2026-02-30）→ null。
+/// 返回 null 时**不传该字段**（后端走既有归一化并在回执里标「无据」）——
+/// 前端绝不替用户猜一个日期出来。
+String? parseBasisDateInput(String raw) {
+  final t = raw.trim();
+  if (t.isEmpty) return null;
+  final m = RegExp(r'^(20\d{2})[-_/]?(0\d|1[0-2])[-_/]?(0[1-9]|[12]\d|3[01])$').firstMatch(t);
+  if (m == null) return null;
+  final y = int.parse(m.group(1)!);
+  final mo = int.parse(m.group(2)!);
+  final d = int.parse(m.group(3)!);
+  final dt = DateTime(y, mo, d);
+  if (dt.year != y || dt.month != mo || dt.day != d) return null;
+  return '${m.group(1)}-${m.group(2)}-${m.group(3)}';
+}
+
 /// 解析成功的一行导入交易。
 class ImportTradeRow {
   final String symbol;

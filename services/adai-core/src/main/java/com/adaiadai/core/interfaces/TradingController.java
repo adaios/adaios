@@ -307,6 +307,9 @@ public class TradingController {
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
             @RequestParam(defaultValue = "false") boolean replace,
             @RequestParam(required = false) String snapshotDate,
+            // 2026-10-05（P2-交易84）：显式数据基准日（可选）。给了它就优先于「导入时刻」推断——
+            // 09:26 导出、09:28 导入不再被退到上一交易日；不给则沿用既有归一化并标「无据」。
+            @RequestParam(required = false) String basedOn,
             @RequestParam(required = false) String todayPnl,
             @RequestParam(defaultValue = "false") boolean dryRun,
             @RequestBody(required = false) List<TradingAppService.PositionImportItem> items) {
@@ -337,6 +340,9 @@ public class TradingController {
         // 2026-09-12：锚定日 = 快照自身日期（通达信「持仓股」文件名里的日期）——补导几天前的文件时
         // 不能把锚定日写成今天，否则锚定日之后、快照之前的成交会被误判为「已含在快照内」而丢掉增量
         java.time.LocalDate snapshot = parseOptionalDate(snapshotDate, "snapshotDate");
+        // 2026-10-05（P2-交易84）：显式基准日（可选，用户/前端说清「这份快照是哪天的」）——
+        // 未来日期不可信由 service 的 decideAnchor 统一裁决（回执会如实说明被忽略）。
+        java.time.LocalDate basis = parseOptionalDate(basedOn, "basedOn");
         // 2026-09-13：非数字即 400 人话——宁可显式报错也不静默丢弃。
         // 「字段被无声忽略」正是本次事故的成因之一：用户的文件一直有「当日盈亏」列，系统从来没读它。
         java.math.BigDecimal brokerTodayPnl = null;
@@ -348,12 +354,35 @@ public class TradingController {
             }
         }
         TradingAppService.PositionImportResult result = tradingAppService.importPositions(
-                userId, items != null ? items : List.of(), replace, snapshot, brokerTodayPnl);
+                userId, items != null ? items : List.of(), replace, snapshot, brokerTodayPnl, basis);
         // RFC 20260922 B 批 B3：账同步完成 → 交给推送服务决定是否出复盘（收盘后立即出 / 收盘前留给 15:30）
         if (result.imported() > 0) sessionPushService.afterDataSync(userId);
-        return ResponseEntity.ok(Map.of(
-                "imported", result.imported(),
-                "missingStopLoss", result.missingStopLoss()));
+        java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("imported", result.imported());
+        body.put("missingStopLoss", result.missingStopLoss());
+        // 2026-10-05（P2-交易84）：锚定日**依据**如实回执（有据/无据）——不许静默归一化。
+        // additive 新字段：旧客户端忽略即可，不改变既有字段类型与语义。
+        if (result.anchor() != null) body.put("anchor", anchorReceipt(result.anchor()));
+        return ResponseEntity.ok(body);
+    }
+
+    /**
+     * 锚定决策 → 回执（2026-10-05，P2-交易84）。字段 additive：旧客户端忽略即可。
+     * <p>{@code basis} = EXPLICIT/FILE_DATE/CLOSED_DAY（有据）或 CLOCK（无据）；
+     * {@code note} = 人话说明（含「你指定的基准日在未来，已忽略」这类如实交代）。
+     */
+    private static java.util.Map<String, Object> anchorReceipt(TradingAppService.AnchorDecision d) {
+        java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+        m.put("anchorDate", d.anchorDate() != null ? d.anchorDate().toString() : null);
+        m.put("fileDate", d.fileDate() != null ? d.fileDate().toString() : null);
+        m.put("basis", d.basis() != null ? d.basis().name() : null);
+        m.put("withEvidence", d.withEvidence());
+        if (d.explicitRejected()) {
+            m.put("explicitDate", d.explicitDate() != null ? d.explicitDate().toString() : null);
+            m.put("explicitRejected", true);
+        }
+        m.put("note", d.describe());
+        return m;
     }
 
     /**
@@ -1496,11 +1525,13 @@ public class TradingController {
         // 2026-09-12：账户快照日期/现金锚定日 = 快照自身日期（前端从文件名取，如 20260909）
         java.time.LocalDate snapshot = parseOptionalDate(body != null ? body.get("snapshotDate") : null,
                 "snapshotDate");
+        // 2026-10-05（P2-交易84）：显式数据基准日（可选）——给了它就优先于「导入时刻」推断。
+        java.time.LocalDate basis = parseOptionalDate(body != null ? body.get("basedOn") : null, "basedOn");
         // RFC 20261003 C4（2026-10-03）：dryRun=true → **只对账、不落盘**——先把「券商现金 vs 系统推算」
         // 与差额摆出来，人看过再决定要不要覆盖（治「静默覆盖 → 只能反复导全量」）。
         if (body != null && "true".equalsIgnoreCase(String.valueOf(body.get("dryRun")))) {
             TradingAppService.CashReconcile rec = tradingAppService.reconcileCash(
-                    userId, content != null ? content : "", snapshot);
+                    userId, content != null ? content : "", snapshot, basis);
             java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
             out.put("dryRun", true);
             out.put("brokerCash", rec.brokerCash());
@@ -1522,7 +1553,7 @@ public class TradingController {
             return ResponseEntity.ok(out);
         }
         TradingAppService.CashImportResult r = tradingAppService.importCashQuery(
-                userId, content != null ? content : "", snapshot);
+                userId, content != null ? content : "", snapshot, basis);
         // RFC 20260922 B 批 B3：资金股份快照是一次账同步（同步完成 → 可出复盘）
         sessionPushService.afterDataSync(userId);
         java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
@@ -1538,6 +1569,8 @@ public class TradingController {
             out.put("unparsed", r.unparsed());
             out.put("unparsedCount", r.unparsed().size());
         }
+        // 2026-10-05（P2-交易84）：现金锚定日**依据**如实回执（有据/无据）——与持仓侧同一口径。
+        if (r.anchor() != null) out.put("anchor", anchorReceipt(r.anchor()));
         return ResponseEntity.ok(out);
     }
 

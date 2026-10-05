@@ -113,6 +113,9 @@ public final class TradingImportParser {
     /** 解析清仓股导出 → 已了结交易。
      *  <p>核心列校验（2026-08-27 与自选导入对称）：必须命中「代码」+「介入日期」+「清仓日期」——
      *  三者是清仓股导出专有列，自选/资金/成交表头均缺 → 选错文件返回空列表。</p>
+     *  <p>注意这同时是**值级**校验（P2-交易85，2026-10-04）：核心列任一取不到 / 为空 / 不是 yyyyMMdd
+     *  的行都不会收进来（详见 {@link #parseSoldWithReport(String)}）——所以本薄包装的返回列表里
+     *  不可能出现 {@code buyDate}/{@code sellDate} 为 null 的「半条档案」。</p>
      *  <p>向后兼容薄包装：只取解析成功的交易，丢行明细见 {@link #parseSoldWithReport(String)}
      *  （P2-交易83：调用方要能看到被丢的行就不要再走这里）。</p>
      */
@@ -139,6 +142,27 @@ public final class TradingImportParser {
      * <p>
      * 但「<b>表头就没认出来</b>」（选错文件 / 空文件，核心列 代码+介入日期+清仓日期 未命中）不是丢行，
      * 而是整份文件不适用——由 {@code headerMatched=false} 如实上报，调用方 fail-closed（2026-10-04 追加 A）。
+     * <p>
+     * <b>P2-交易85（2026-10-04 对抗审查官实测）：核心列必须真的读到值，缺一即丢行上报。</b>
+     * 原实现只校验代码列，列被截断的行走「其余核心列取不到 → parseDateSafe 回 null」的路径，
+     * 静默落一条 {@code sellDate=null} 的「半条档案」（实测 {@code 600519\t贵州茅台\t20260101}
+     * → {@code trades=1, sellDate=null, unparsed=0}，用户看不到任何提示）。
+     * 现在**代码 / 介入日期 / 清仓日期**三列逐一过收录门槛（{@link #coreDateReject}）：
+     * <ol>
+     *   <li>列取不到（行被截断，cells 不够长）→ 丢行；</li>
+     *   <li>值为空 → 丢行；</li>
+     *   <li>值不是 yyyyMMdd → 丢行。</li>
+     * </ol>
+     * 判据依据（为何三列都不放宽、空值也不放过）：清仓股导出 = 已了结交易，A 股 T+1，
+     * 每一行必然同时具备介入与清仓日期；仓库内唯一的相关样本（P2-交易43 回归测试的截断行）
+     * 其注释亦把「日期列全空」定义为<b>截断/列错位</b>而非合法状态——没有证据支持「空日期合法」。
+     * 又 {@code parseDateSafe} 对空串与垃圾值<b>同样返回 null</b>（见其实现），二者在语义上都是
+     * 「这一列没读到」，故不区分、一律丢行上报。丢行是比 P2-交易43「字段级保护」更强的保护：
+     * 行根本不会进 {@code trades}，既有的日期/天数/涨幅更不可能被覆盖（该服务层保护对**非核心列**
+     * 的解析失败仍然生效，如持仓天数/持仓期涨幅% 列坏行）。
+     * <p>
+     * <b>不改判定本身的边界</b>：结构性行（空行 / 注释 / 分隔线）仍不算丢行；清仓链仍是按 symbol
+     * upsert，丢行不 fail-closed，只如实上报（丢行 = 该只清仓档案本次没进库/没更新）。
      *
      * @return trades = 解析成功的清仓记录；unparsedRows = 被丢弃的行（人话一行：第 N 行「原文」：原因）；
      *         headerMatched = 表头是否识别（false → 调用方须拒绝导入）
@@ -166,6 +190,18 @@ public final class TradingImportParser {
             if (!cells[col[0]].trim().matches("\\d{6}")) {
                 unparsedRows.add(droppedLine(lineNo, line,
                         "代码「" + cells[col[0]].trim() + "」不是 6 位数字"));
+                continue;
+            }
+            // P2-交易85（2026-10-04 对抗审查）：核心日期列同样要有收录门槛——缺一即丢行上报，
+            // 不能把「没读到日期」的半条档案静默收进 trades（原实现只有上面那条代码列校验）。
+            String buyReject = coreDateReject("介入日期", col[2], cells);
+            if (buyReject != null) {
+                unparsedRows.add(droppedLine(lineNo, line, buyReject));
+                continue;
+            }
+            String sellReject = coreDateReject("清仓日期", col[3], cells);
+            if (sellReject != null) {
+                unparsedRows.add(droppedLine(lineNo, line, sellReject));
                 continue;
             }
             trades.add(new SoldTrade(
@@ -485,6 +521,32 @@ public final class TradingImportParser {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /**
+     * 清仓股核心日期列的收录门槛（P2-交易85）——{@code null} = 通过；否则返回人话原因（丢行用）。
+     * <p>
+     * 三级判据，缺一不可：① 列取不到（行被截断，{@code cells} 不够长）→ 丢行；
+     * ② trim 后为空 → 丢行；③ 不是 yyyyMMdd → 丢行。
+     * <p>
+     * 为何用 {@code LocalDate.parse} 而不是复用 {@link #parseDateSafe}：后者把「空串」与「垃圾值」
+     * <b>都折叠成 null</b>，无法生成「是空还是格式不对」的人话原因（用户拿到原因才知道怎么补文件）。
+     * 判定口径与 {@code parseDateSafe} 完全一致（同一个 {@link #TDX_DATE} formatter）。
+     */
+    private static String coreDateReject(String column, int col, String[] cells) {
+        if (col < 0 || col >= cells.length) {
+            return "列数不足（" + column + "列第 " + (col + 1) + " 列取不到）";
+        }
+        String raw = cells[col].trim();
+        if (raw.isEmpty()) {
+            return column + "为空（该行没读到日期值，疑似列截断/列错位）";
+        }
+        try {
+            LocalDate.parse(raw, TDX_DATE);
+        } catch (Exception e) {
+            return column + "「" + raw + "」不是 yyyyMMdd 格式";
+        }
+        return null;
     }
 
     private static final class BigDecimalHolder {

@@ -62,6 +62,19 @@ class _LearnPageState extends State<LearnPage> {
   //    此前只在喂入弹窗的 60 秒轮询窗口里展示 failed，窗口一关就无痕 → 现在后端留 30 分钟，进页面捞一次。
   LearnDigestJob? _digestFailed;
 
+  // ── 整理进度账（2026-10-05 learn 域三清批）：桌面端此前只有 /digest/status 提示条，
+  //    看不到落盘账——过期（P2-learn34）与没排上（P2-分享4）在桌面端等于不存在。补齐。
+  List<LearnDigestTaskDto> _digestTasks = const [];
+
+  // ── 展开状态（P2-learn33）：`type|title` → 状态；索引卡「待展开」在左侧目录上就可见。
+  Map<String, LearnExpansionDto> _expansions = const {};
+
+  /// 当前选中卡的展开状态（右侧详情用）；拉不到 → null（不显示入口，也不谎报）。
+  LearnExpansionDto? _expansion;
+  bool _expandBusy = false;
+
+  static String _cardKey(String type, String title) => '$type|$title';
+
   int _loadGen = 0; // 树加载代际（迟到响应作废）
   int _handledOpenId = -1; // 已处理过的跳转请求（避免重复定位/重复 setState）
   ({String type, String title})? _pendingOpen; // 首次构建就带跳转请求时，等树加载完再定位
@@ -125,6 +138,8 @@ class _LearnPageState extends State<LearnPage> {
         if (card != null) _loadContent(card);
       }
       _checkPendingConfirm();   // 每次刷新/重新进入都看一眼有没有等你拍板的转写
+      _loadDigestTasks();       // 整理账（含过期/没排上两个如实状态）
+      _loadExpansions();        // 「待展开」状态（P2-learn33）
     } catch (_) {
       if (!mounted || gen != _loadGen) return;
       setState(() {
@@ -157,6 +172,60 @@ class _LearnPageState extends State<LearnPage> {
       });
     } catch (_) {
       // 查不到就当没有（不打扰）：真有待办，用户重新喂一次也能看到
+    }
+  }
+
+  /// 整理进度账（GET /learn/digest/jobs，2026-10-05）：进页/刷新各拉一次。
+  /// 失败**静默降级**——账看不见不该让学习页一起坏掉。
+  Future<void> _loadDigestTasks() async {
+    try {
+      final tasks = await widget.api.getLearnDigestJobs();
+      if (!mounted) return;
+      setState(() => _digestTasks = tasks);
+    } catch (_) {
+      // 静默：本次不显示进度区
+    }
+  }
+
+  /// 展开状态清单（GET /learn/cards/expansions，P2-learn33）：失败静默。
+  Future<void> _loadExpansions() async {
+    try {
+      final list = await widget.api.getLearnExpansions();
+      if (!mounted) return;
+      setState(() {
+        _expansions = {for (final e in list) _cardKey(e.type, e.title): e};
+        _syncExpansion();
+      });
+    } catch (_) {
+      // 静默：本次不显示「待展开」标记
+    }
+  }
+
+  /// 把当前选中卡的展开状态同步进 `_expansion`（换卡/刷新后都要重算）。
+  void _syncExpansion() {
+    final card = _currentCard();
+    _expansion = card == null ? null : _expansions[_cardKey(card.type, card.title)];
+  }
+
+  /// 一键展开当前卡（P2-learn33）：同步等一次 LLM → 刷新目录 → 打开**衍生卡**看全文。
+  /// 产物是衍生卡，原卡一字不动。
+  Future<void> _expandCurrent() async {
+    final card = _currentCard();
+    if (card == null || _expandBusy) return;
+    setState(() => _expandBusy = true);
+    try {
+      final r = await widget.api.expandLearnCard(type: card.type, title: card.title);
+      if (!mounted) return;
+      setState(() => _expandBusy = false);
+      _showSnack(r.message.isEmpty ? '展开好了：《${r.title}》' : r.message);
+      await _load();            // 整树刷新：衍生卡进目录
+      await _loadExpansions();
+      if (!mounted) return;
+      _locateAndOpen(r.type, r.title);   // 展开的意义就是能读全文 → 直接打开衍生卡
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _expandBusy = false);
+      _showSnack(extractApiErrorMessage(e));
     }
   }
 
@@ -206,6 +275,7 @@ class _LearnPageState extends State<LearnPage> {
       setState(() {
         _content = content;
         _contentLoading = false;
+        _syncExpansion();   // 换卡后右侧的展开状态要跟着换（P2-learn33）
       });
     } catch (_) {
       if (!mounted || gen != _contentGen) return;
@@ -393,6 +463,7 @@ class _LearnPageState extends State<LearnPage> {
       ),
       // 进度汇总一行：只从已加载的 tree 本地统计（空树不摆一行全 0）
       if (_tree != null && !_tree!.isEmpty) _buildProgressSummary(_tree!),
+      if (_digestTasks.isNotEmpty) _buildDigestProgress(),
       _buildSearchBar(),
       if (_pendingConfirm != null) _buildConfirmBanner(_pendingConfirm!),
       if (_digestFailed != null) _buildFailedBanner(_digestFailed!),
@@ -469,6 +540,77 @@ class _LearnPageState extends State<LearnPage> {
   /// 进度汇总一行（2026-09-16 学习卡片进度追踪批）：待复习 N · 学习中 M · 已掌握 K · 本周 +J。
   /// 口径见 [LearnProgressSummary.fromTree]（与每晚 20:00 复习提醒同一口径）；
   /// 全部来自已加载的 tree，本地统计——**不发任何新请求**。
+  /// 整理进度（2026-10-05 learn 域三清批，桌面端补上）：「我分享过什么、成了没有」。
+  ///
+  /// 只摆需要你知道的：**进行中的全部 + 最近 3 条有结局的**。P2-learn34（expired）与
+  /// P2-分享4（not_queued）都在这份账里，如实说人话——桌面端此前完全看不到这两类。
+  Widget _buildDigestProgress() {
+    final running = _digestTasks.where((t) => t.inProgress).toList();
+    final settled = _digestTasks.where((t) => !t.inProgress).take(3).toList();
+    final shown = [...running, ...settled];
+    if (shown.isEmpty) return const SizedBox.shrink();
+    return Container(
+      key: const ValueKey('learn-digest-progress'),
+      margin: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface2,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.darkBorder),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.auto_awesome_motion_outlined, size: 14, color: AppColors.darkGrey4),
+          const SizedBox(width: 6),
+          Text(running.isEmpty ? '我这边刚忙完的事' : '我这边正忙着的事',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGrey3)),
+        ]),
+        const SizedBox(height: 6),
+        ...shown.map(_buildDigestTaskRow),
+      ]),
+    );
+  }
+
+  Widget _buildDigestTaskRow(LearnDigestTaskDto t) {
+    final color = switch (t.status) {
+      'done' => AppColors.darkGreen,
+      'running' => AppColors.darkBlue,
+      'needs_confirmation' || 'failed' => AppColors.darkOrange,
+      // 过期只说明「这次没确认」，不是错误——用灰；「没排上」要用户知道，用橙。
+      'expired' => AppColors.darkGrey4,
+      'not_queued' => AppColors.darkOrange,
+      _ => AppColors.darkGrey4,
+    };
+    final icon = switch (t.status) {
+      'done' => Icons.check_circle_outline,
+      'failed' => Icons.error_outline,
+      'needs_confirmation' => Icons.record_voice_over_outlined,
+      'cancelled' => Icons.pause_circle_outline,
+      'expired' => Icons.history_toggle_off,
+      'not_queued' => Icons.block_outlined,
+      _ => Icons.hourglass_empty,
+    };
+    return Padding(
+      key: ValueKey('learn-digest-task-${t.id}'),
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(padding: const EdgeInsets.only(top: 1), child: Icon(icon, size: 14, color: color)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(t.clock.isEmpty ? t.statusText : '${t.statusText} · ${t.clock}',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color)),
+            const SizedBox(height: 2),
+            Text(t.detailText,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12, height: 1.5, color: AppColors.darkGrey2)),
+          ]),
+        ),
+      ]),
+    );
+  }
+
   Widget _buildProgressSummary(LearnTreeResponse tree) {
     return Container(
       key: const ValueKey('learn-progress-summary'),
@@ -703,6 +845,20 @@ class _LearnPageState extends State<LearnPage> {
                   )),
             ),
             const SizedBox(width: 6),
+            // P2-learn33：索引卡（有素材、还没展开）在目录上就亮「待展开」
+            if (_expansions[_cardKey(card.type, card.title)]?.pending == true) ...[
+              Container(
+                key: ValueKey('learn-pending-expand-$group-$index'),
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: AppColors.darkOrange.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text('待展开',
+                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: AppColors.darkOrange)),
+              ),
+              const SizedBox(width: 4),
+            ],
             // 只读卡（Mac 上整理的原始卡）：列表里先给个记号，点开还有一行说明
             if (card.readOnly) ...[
               const Icon(Icons.lock_outline, size: 11, color: AppColors.darkGrey5),
@@ -799,6 +955,18 @@ class _LearnPageState extends State<LearnPage> {
           const SizedBox(height: 12),
           _readOnlyNote(),
         ],
+        // P2-learn33：没素材的卡不给展开入口 —— 但要说清为什么（沉默等于用户以为坏了）
+        if (_expansion != null && !_expansion!.expanded && !_expansion!.hasSource) ...[
+          const SizedBox(height: 12),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Icon(Icons.unfold_more, size: 13, color: AppColors.darkGrey5),
+            const SizedBox(width: 6),
+            const Expanded(
+              child: Text('这张卡没留下原始素材，展开只能靠编——把原文（或链接）再给我一次，我就能展开成全文 + 三行要点',
+                  style: TextStyle(fontSize: 11.5, color: AppColors.darkGrey5, height: 1.5)),
+            ),
+          ]),
+        ],
         const SizedBox(height: 18),
         // 卡片流优先（2026-09-15）：有页序列就一页一单元地读，原文收进折叠区。
         // 老卡/别处整理的卡没有页 → 走下面的原有渲染（零影响）。
@@ -889,19 +1057,43 @@ class _LearnPageState extends State<LearnPage> {
     );
   }
 
+  /// 展开入口/状态（P2-learn33）：待展开 → 一键 chip；已展开 → 一行说明；没素材 → 什么都不给
+  /// （点了也只能靠编，不如说清——说明文字在详情正文里由 `_expansionNote` 负责）。
+  List<Widget> _expansionButtons() {
+    final expansion = _expansion;
+    if (expansion == null) return const [];
+    if (expansion.expanded) {
+      return [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text('已展开成《${expansion.expandedTitle}》',
+              style: const TextStyle(fontSize: 11, color: AppColors.darkGreen)),
+        ),
+      ];
+    }
+    if (!expansion.hasSource) return const [];
+    return [
+      _actionChip('展开成全文 + 三行要点', Icons.unfold_more, () => _expandCurrent(),
+          enabled: !_expandBusy && !_busy),
+    ];
+  }
+
   /// 详情操作（状态推进 / 写复述 / 反哺候选）——按卡片状态与类型呈现。
   /// 只读卡（writable=false）一律不给写入口：后端也会拒绝，不如这里就说清楚。
   List<Widget> _actionButtons(LearnCardDto card) {
+    // 展开是**只读卡也给**的入口：产物是新卡（衍生），原卡一字不动。
+    final expandButtons = _expansionButtons();
     // P2-审查4（2026-09-17 B5 批）：只读卡此前**什么都不给**——可卡本是阿呆写的、只是
     // `origin` 被别的工具抹掉才退化成只读，用户完全没有出路。这里补「认回」入口
     // （判据在后端：认不回来就把后端的人话原样显示，不给别人的卡盖章）。
     if (card.readOnly) {
       return [
+        ...expandButtons,
         _actionChip('这是我整理的，认回来', Icons.lock_open_outlined,
             () => _restoreOrigin(card), enabled: !_busy),
       ];
     }
-    final buttons = <Widget>[];
+    final buttons = <Widget>[...expandButtons];
     if (card.status == 'new') {
       buttons.add(_actionChip('去复习', Icons.auto_stories, () => _changeStatus(card, 'review')));
     } else if (card.status == 'review') {
@@ -2027,17 +2219,20 @@ class _DigestDialogState extends State<_DigestDialog> {
     });
     try {
       // 三条路径互斥：选了图就走图片入口，链接/素材这次不提交（也不静默丢弃——界面上已锁住）
-      final String status;
+      String status;
+      String notQueuedMessage = '';
       if (_images.isNotEmpty) {
         status = await widget.api.submitLearnImages(List.of(_images), type: _type);
       } else {
-        status = await widget.api.submitLearnDigest(
+        final result = await widget.api.submitLearnDigestDetailed(
           url: url.isEmpty ? null : url,
           content: content.isEmpty ? null : content,
           type: _type,
           platform: _trimOrNull(_platformCtl),
           author: _trimOrNull(_authorCtl),
         );
+        status = result.status;
+        notQueuedMessage = result.message;
       }
       if (!mounted) return;
       // 门控 B（RFC 20260917）：无 learn 插件时后端只「接收」不「整理」——
@@ -2048,6 +2243,19 @@ class _DigestDialogState extends State<_DigestDialog> {
           _polling = false;
           _progress = '';
           _outcome = '已经帮你记下了。开启「学习」后，我可以把它整理成卡片。';
+        });
+        return;
+      }
+      // P2-分享4（2026-10-05）：这条**没排上**（任务位被占）→ 停轮询，如实转达后端那句话，
+      // 绝不装作「已受理、正在消化」。
+      if (status == 'not_queued') {
+        setState(() {
+          _submitting = false;
+          _polling = false;
+          _progress = '';
+          _error = notQueuedMessage.isEmpty
+              ? '我正在读上一条，这条没排上——等它读完，再分享一次'
+              : notQueuedMessage;
         });
         return;
       }

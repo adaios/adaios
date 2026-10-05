@@ -55,6 +55,8 @@ public class BriefAppService {
     private final TodoRepository todoRepository;
     private final RhythmRepository rhythmRepository;
     private final PluginService pluginService;
+    /** REVIEW P2-交易73：对话里给出的动作优先捞回（有据：有来源锚点且未完成）。 */
+    private final ActionReviewService actionReviewService;
 
     // 多用户预留：Brief 缓存按 userId 隔离（2026-08-02）
     private final java.util.Map<String, String> cachedBriefByUser = new java.util.HashMap<>();
@@ -69,7 +71,8 @@ public class BriefAppService {
                            TagRecommendationService tagRecommendationService,
                            TodoRepository todoRepository,
                            RhythmRepository rhythmRepository,
-                           PluginService pluginService) {
+                           PluginService pluginService,
+                           ActionReviewService actionReviewService) {
         this.identityRepository = identityRepository;
         this.recordRepository = recordRepository;
         this.memoryService = memoryService;
@@ -80,6 +83,7 @@ public class BriefAppService {
         this.todoRepository = todoRepository;
         this.rhythmRepository = rhythmRepository;
         this.pluginService = pluginService;
+        this.actionReviewService = actionReviewService;
     }
 
     /**
@@ -336,22 +340,43 @@ public class BriefAppService {
         //      「我可能需要加班，也可能这周四就不需要了」），催它＝每天复读；
         //   ② 条数硬上限显式化（原来裸写 limit(3)）。
         // 被挡下的条目**数据不动**（待办页照常可见）；B 批建 rhythm 通道后按 RRULE 命中日作背景注入。
+        // REVIEW P2-交易73：**对话里给出的动作优先捞回**——动作产生在对话里，用户不会自己想起来；
+        // 它们排在其他待办之前，且**合计仍受 MAX_BRIEF_TODOS 约束**（有界）；一段都没有就一个字不加
+        // （沉默是默认项，RFC 20260923）。
         try {
             List<Todo> openTodos = todoRepository.findAll(TodoStatus.OPEN, userId);
-            List<Todo> remindable = openTodos.stream()
+            List<Todo> pendingActions = actionReviewService.pendingReviews(userId, MAX_BRIEF_TODOS).stream()
                     .filter(t -> !RhythmDetector.isRhythmLike(t.title()))
-                    .limit(MAX_BRIEF_TODOS)
                     .toList();
-            if (!remindable.isEmpty()) {
+            List<Todo> otherTodos = openTodos.stream()
+                    .filter(t -> pendingActions.stream().noneMatch(p -> p.id().equals(t.id())))
+                    .filter(t -> !RhythmDetector.isRhythmLike(t.title()))
+                    .limit(Math.max(0, MAX_BRIEF_TODOS - pendingActions.size()))
+                    .toList();
+
+            // 先捞回：这些是「阿呆自己说过、用户还没做」的事——提及是**回看**，不是新指令
+            if (!pendingActions.isEmpty()) {
+                sb.append("Things you asked this user to do earlier and they haven't done yet "
+                        + "(mention at most 1, as a gentle callback in your own words — "
+                        + "do NOT phrase it as a new instruction or a nag):\n");
+                for (Todo t : pendingActions) {
+                    sb.append("- ").append(t.title()).append("\n");
+                }
+                sb.append("\n");
+            }
+
+            if (!otherTodos.isEmpty()) {
                 sb.append("Open todos (not done, should be surfaced to user):\n");
-                for (Todo t : remindable) {
+                for (Todo t : otherTodos) {
                     sb.append("- ").append(t.title());
                     if (t.due() != null) sb.append(" (due ").append(t.due()).append(")");
                     sb.append("\n");
                 }
                 sb.append("\n");
             }
-            int heldBack = openTodos.size() - remindable.size();
+
+            int injected = pendingActions.size() + otherTodos.size();
+            int heldBack = openTodos.size() - injected;
             if (heldBack > 0) {
                 log.debug("Brief 待办注入闸门：{}/{} 条未注入（周期习惯优先挡下 + 超上限） | userId={}",
                         heldBack, openTodos.size(), userId);
@@ -389,7 +414,9 @@ public class BriefAppService {
         sb.append("6. Use actual emoji characters (NOT \\uXXXX escape codes)\n");
         // RFC 20260923 A 批·闸 2：提醒口径收紧——只提醒列在上面的待办；
         // 并明令禁止把习惯/惯例/周期性事件当"要做的事"提出来（那是催，不是提醒）。
-        sb.append("7. Only if the \"Open todos\" section above is non-empty, mention 1-2 of them.\n");
+        // REVIEW P2-交易73：两段待办合计最多提 1-2 条；「你之前让他做的」优先，且只作回看不作催办。
+        sb.append("7. Only if a todo section above is non-empty, mention 1-2 items from them "
+                + "(prefer the \"asked earlier\" list, phrased as a callback — never as a new task).\n");
         sb.append("8. Never invent reminders. Do NOT bring up habits, routines or recurring events (e.g. \"you usually work late on Thursdays\") as things to do or to prepare for.\n");
 
         return sb.toString();

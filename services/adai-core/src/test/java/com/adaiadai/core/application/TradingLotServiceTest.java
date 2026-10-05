@@ -6,6 +6,7 @@ import com.adaiadai.core.domain.trading.TradeDirection;
 import com.adaiadai.core.domain.trading.TradeRecord;
 import com.adaiadai.core.domain.trading.TradingHistoryRepository;
 import com.adaiadai.core.domain.trading.TradingLot;
+import com.adaiadai.core.domain.trading.TradingRoundPort;
 import com.adaiadai.core.domain.trading.TradingRuleSettings;
 import com.adaiadai.core.domain.trading.market.Candle;
 import com.adaiadai.core.domain.trading.market.MarketData;
@@ -430,6 +431,53 @@ class TradingLotServiceTest {
         assertTrue(lots.stream().anyMatch(TradingLot::initial));
         TradingLot init = lots.stream().filter(TradingLot::initial).findFirst().orElseThrow();
         assertEquals("8.8", init.stopLossPrice().toPlainString());
+    }
+
+    // ── 逐笔回合（TradingRoundPort 实现，P2-认知2：画像统计数据源 2026-10-05）──
+
+    @Test
+    void closedRounds_exposesCloseDateHoldDaysAndPnlPct_ofClosedLotOnly() {
+        // 600000 一轮：8/3 买 100 @10 → 8/13 卖 100 @12（回合关闭）；600001 只买没卖（未了结）
+        TradingLotService svc = service(List.of(
+                buy("600000", 100, "10.0", D1, null, null),
+                sell("600000", 100, "12.0", LocalDate.of(2026, 8, 13)),
+                buy("600001", 100, "10.0", D1, null, null)), List.of(), Map.of());
+
+        List<TradingRoundPort.ClosedRound> rounds = svc.closedRounds("u");
+
+        assertEquals(1, rounds.size(), "只有卖清的批次算回合；未了结批次不计");
+        TradingRoundPort.ClosedRound r = rounds.get(0);
+        assertEquals("600000", r.symbol());
+        assertEquals(D1, r.buyDate());
+        assertEquals(LocalDate.of(2026, 8, 13), r.closeDate(), "回合关闭日 = 卖清那笔的成交日");
+        assertEquals(10, r.holdDays(), "持仓自然日 8/3 → 8/13 = 10 天");
+        assertTrue(r.pnlPct() > 18 && r.pnlPct() < 20,
+                "回合收益率 = 已实现盈亏/买入成本（扣买卖费用）≈ +19.x%：" + r.pnlPct());
+        assertTrue(r.costValue().compareTo(new BigDecimal("1000")) > 0, "成本含买入费用");
+    }
+
+    @Test
+    void closedRounds_sameSymbolTwoRounds_areTwoRounds_andMatchesClosedLotView() {
+        // 同一只票做两轮（第二轮在卖清后才买）——回合口径 2 条，不是清仓表「首买→末卖」1 条
+        TradingLotService svc = service(List.of(
+                buy("600000", 100, "10.0", D1, null, null),
+                sell("600000", 100, "12.0", LocalDate.of(2026, 8, 7)),
+                buy("600000", 100, "11.0", LocalDate.of(2026, 8, 10), null, null),
+                sell("600000", 100, "13.0", LocalDate.of(2026, 8, 14))), List.of(), Map.of());
+
+        List<TradingRoundPort.ClosedRound> rounds = svc.closedRounds("u");
+
+        assertEquals(2, rounds.size(), "两轮各是一次了结");
+        assertEquals(2, svc.lots("u", "closed").size(), "与批次视图的 closed 集合一致（同一份重放）");
+        assertEquals(rounds.get(0).closeDate(), LocalDate.of(2026, 8, 14), "按关闭日倒序：最新在前");
+        assertEquals(rounds.get(1).closeDate(), LocalDate.of(2026, 8, 7));
+        assertTrue(rounds.stream().allMatch(r -> r.pnlPct() > 0), "两轮都盈利");
+    }
+
+    @Test
+    void closedRounds_emptyFlow_returnsEmptyWithoutThrowing() {
+        TradingLotService svc = service(List.of(), List.of(), Map.of());
+        assertTrue(svc.closedRounds("u").isEmpty());
     }
 }
 

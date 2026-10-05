@@ -719,12 +719,24 @@ class _MainPageState extends State<MainPage>
   }
 
   Future<void> _submitAndPollLearnDigest(String cardId, String link, int gen) async {
+    final LearnDigestSubmitDto result;
     try {
-      await _api.submitLearnDigest(url: link);
+      result = await _api.submitLearnDigestDetailed(url: link);
     } catch (e) {
       _updateLearnDigest(cardId, gen, (s) {
         s.loading = false;
         s.aiText = '这条我这次没接住（${_learnApiError(e)}），等会儿再丢给我一次就行。';
+      });
+      return;
+    }
+    // P2-分享4（2026-10-05）：这条**没排上**（任务位被占）→ 绝不能接着轮询——那会读到
+    // 正在跑的另一条的状态，把「别人的 read好了」当成自己的结果报给用户。
+    if (result.isNotQueued) {
+      _updateLearnDigest(cardId, gen, (s) {
+        s.loading = false;
+        s.aiText = result.message.isEmpty
+            ? '我正在读上一条，这条没排上——等它读完，再给我一次'
+            : '${result.message}。';
       });
       return;
     }

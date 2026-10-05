@@ -8,6 +8,7 @@ import com.adaiadai.core.kernel.context.policy.ContextAssemblyPolicy;
 import com.adaiadai.core.kernel.identity.IdentityProfile;
 import com.adaiadai.core.kernel.identity.IdentityRepository;
 import com.adaiadai.core.kernel.knowledge.KnowledgeSource;
+import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
 import com.adaiadai.core.kernel.plugin.PluginRegistry;
 import com.adaiadai.core.kernel.plugin.PluginService;
@@ -313,5 +314,56 @@ class ContextEngineTest {
 
         assertTrue(prompt.contains("还没告诉我"), "空称呼要显式写成「还没告诉我」");
         assertFalse(prompt.contains("- 称呼：\n"), "不应出现空称呼行");
+    }
+
+    // ── REVIEW P2-交易73：下次对话捞回「待行动事项」（未完成才提 / 无则沉默 / 完成后不再提）──
+
+    /** 造一条 action 记忆（canonical 构造：doneAt == null 表示未完成）。 */
+    private static Memory actionMemory(boolean actionable, java.time.LocalDateTime doneAt) {
+        return new Memory("mem_action", "rec_x", null, "insight", "收盘后要看的白线",
+                null, null, List.of("交易"), "neutral", actionable,
+                "把云南锗业的白线调出来看看", LocalDateTime.now(),
+                null, false, null, doneAt, null);
+    }
+
+    private ContextEngine engineWithMemories(List<Memory> memories) {
+        grantPlugins("default");
+        when(identity.load(any())).thenReturn(Optional.empty());
+        when(records.findAll(any())).thenReturn(List.of());
+        when(tagIndex.findRelatedIds(any(), any(), anyInt())).thenReturn(List.of());
+        when(search.search(any(), anyString())).thenReturn(List.of());
+        when(memory.recentActive(any(), anyInt())).thenReturn(memories);
+        return new ContextEngine(identity, records, tagIndex, memory, cards,
+                List.of(), List.of(), search, pluginService(), ContextAssemblyPolicy.legacy());
+    }
+
+    @Test
+    void pendingActions_injectedIntoNextConversation_whenUnfinished() {
+        ContextEngine engine = engineWithMemories(List.of(actionMemory(true, null)));
+
+        String prompt = engine.compose("default", "note", record("今天收盘了"), null).prompt();
+
+        assertTrue(prompt.contains("待行动事项"), "未完成的动作要在下次对话被注入（捞回）");
+        assertTrue(prompt.contains("把云南锗业的白线调出来看看"), "注入的是动作原话");
+    }
+
+    @Test
+    void pendingActions_silent_whenNothingPending() {
+        // 只有普通洞察、没有 actionable → 「待行动事项」整段不该出现（沉默是默认项）
+        ContextEngine engine = engineWithMemories(List.of(actionMemory(false, null)));
+
+        String prompt = engine.compose("default", "note", record("今天收盘了"), null).prompt();
+
+        assertFalse(prompt.contains("待行动事项"), "没有未完成动作 → 一个字都不提");
+    }
+
+    @Test
+    void pendingActions_notRecalled_afterDone() {
+        ContextEngine engine = engineWithMemories(List.of(actionMemory(true, LocalDateTime.now())));
+
+        String prompt = engine.compose("default", "note", record("今天收盘了"), null).prompt();
+
+        assertFalse(prompt.contains("待行动事项"), "完成后不再捞回（doneAt 非空）");
+        assertFalse(prompt.contains("把云南锗业的白线调出来看看"));
     }
 }

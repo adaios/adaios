@@ -280,4 +280,57 @@ class LearnDigestEndpointTest {
         // 构造冒烟：确保依赖注入链完整（新增 transcriptionService 后仍可装配）
         List.of(mvc("learn")).forEach(java.util.Objects::requireNonNull);
     }
+
+    // ── P2-分享4（2026-10-05）：「没排上」如实回传 ──
+
+    @Test
+    void digest_notQueued_returnsStatusAndHumanMessage() throws Exception {
+        when(digestService.submit(anyString(), any(LearnDigestAppService.DigestRequest.class)))
+                .thenReturn(new LearnDigestAppService.DigestSubmitResult("not_queued",
+                        "我正在读上一条，这条没排上——等它读完，再分享一次"));
+
+        mvc("learn").perform(post("/api/v1/learn/digest")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"url\":\"https://www.bilibili.com/video/BV2yy411c7mD\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("not_queued"))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("没排上")));
+    }
+
+    // ── P2-learn33（2026-10-05）：展开端点 ──
+
+    @Test
+    void expand_returnsDerivedCardAndRelation() throws Exception {
+        when(digestService.expandCard("adai", "ai", "索引卡")).thenReturn(
+                new LearnDigestAppService.ExpansionResult("ai", "索引卡 · 展开", "索引卡", "expanded",
+                        "展开好了：《索引卡 · 展开》——原卡还在，三行要点和全文在新卡里"));
+
+        mvc("learn").perform(post("/api/v1/learn/cards/expand")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"type\":\"ai\",\"title\":\"索引卡\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("expanded"))
+                .andExpect(jsonPath("$.title").value("索引卡 · 展开"))
+                .andExpect(jsonPath("$.derivedFrom").value("索引卡"));
+    }
+
+    @Test
+    void expansions_listsPendingState() throws Exception {
+        when(digestService.expansions("adai")).thenReturn(List.of(
+                new LearnDigestAppService.ExpansionState("ai", "索引卡", "harness", true, false, null)));
+
+        mvc("learn").perform(get("/api/v1/learn/cards/expansions").header("X-User-Id", "adai"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].title").value("索引卡"))
+                .andExpect(jsonPath("$.items[0].hasSource").value(true))
+                .andExpect(jsonPath("$.items[0].expanded").value(false));
+    }
+
+    @Test
+    void expansions_withoutLearnPlugin_returns403() throws Exception {
+        mvc().perform(get("/api/v1/learn/cards/expansions").header("X-User-Id", "bob"))
+                .andExpect(status().isForbidden());
+    }
 }

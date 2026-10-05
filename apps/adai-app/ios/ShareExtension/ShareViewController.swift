@@ -217,12 +217,15 @@ final class ShareViewController: UIViewController {
     ///
     /// 后端 `LearnDigestAppService.submit` 在**已有任务在跑**时也会回 200，但那条新链接
     /// **根本不会入队**（`jobs.compute` 抢占失败方直接复用当前 job）：响应体 `status` 为
+    /// `not_queued`（2026-10-05 P2-分享4 起，语义直说「没排上」）、旧后端为
     /// `running`（在跑）或 `needs_confirmation`（等确认花钱）；**只有真正入队的新任务**才回
     /// `pending`。所以必须读这个字段——否则先分享 A、再分享 B 时，扩展显示「已交给阿呆」，
     /// 而 B 永远不会被处理，用户却以为成功了（对抗审查 P1-5）。
     private func handleAccepted(_ data: Data?) {
         let state = Self.statusField(in: data)
-        if state == "running" || state == "needs_confirmation" {
+        // not_queued 是 2026-10-05 起的**明说**；running/needs_confirmation 是旧后端的口径。
+        // 三者都归「这条没排上」——一个都不能当成「交出去了」。
+        if state == "not_queued" || state == "running" || state == "needs_confirmation" {
             setFailure("我正在读上一条，这条没排上——等它读完，再分享一次。")
             return
         }

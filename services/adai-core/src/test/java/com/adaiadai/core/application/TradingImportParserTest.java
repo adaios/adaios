@@ -191,6 +191,71 @@ class TradingImportParserTest {
         assertTrue(p.unparsedRows().isEmpty(), "trim 后合规 → 不得报丢行：" + p.unparsedRows());
     }
 
+    // ── 2026-10-04 P2-交易85：核心列（代码/介入日期/清仓日期）缺一即丢行上报，不得静默落半条档案 ──
+
+    @Test
+    void parseSoldWithReport_truncatedRow_reportedInsteadOfLandingHalfArchive() {
+        // 审查官实测复现：`600519\t贵州茅台\t20260101`（列被截断、无清仓日期列）
+        // 原实现 → trades=1, sellDate=null, unparsed=0：静默落一条没有清仓日期的档案，用户零提示。
+        String content = String.join("\n",
+                String.join("\t", "代码", "名称", "介入日期", "清仓日期", "持仓天数", "买卖次数", "持仓期涨幅%"),
+                "600519\t贵州茅台\t20260101");
+
+        TradingImportParser.SoldParse p = TradingImportParser.parseSoldWithReport(content);
+
+        assertTrue(p.headerMatched(), "表头本身是清仓股导出（不得退化成「选错文件」）");
+        assertTrue(p.trades().isEmpty(),
+                "清仓日期列取不到的行不得收为 SoldTrade（否则就是静默落半条档案）：" + p.trades());
+        assertTrue(TradingImportParser.parseSold(content).isEmpty(),
+                "薄包装 parseSold 语义不变（仍是 trades 的子集）——但也不可能再给出 sellDate=null 的行");
+        assertEquals(1, p.unparsedRows().size(), "丢行必须如实上报（原来 unparsed=0）");
+        String dropped = p.unparsedRows().get(0);
+        assertTrue(dropped.startsWith("第 2 行"), "行号 = 原文件行号（1 起算，含表头行）：" + dropped);
+        assertTrue(dropped.contains("600519") && dropped.contains("贵州茅台"),
+                "原文要带上，用户能对上文件：" + dropped);
+        assertTrue(dropped.contains("清仓日期"), "原因要指名是哪一列缺：" + dropped);
+        assertTrue(dropped.contains("取不到"), "列被截断要说清是「列取不到」：" + dropped);
+    }
+
+    @Test
+    void parseSoldWithReport_coreDateColumnsEmptyOrUnparsable_reportedRowByRow() {
+        // 判据三级（列取不到 / 为空 / 不是 yyyyMMdd）逐行验证；正常行（第 2 行）不受影响。
+        // 依据：清仓股导出 = 已了结交易，A 股 T+1 ⇒ 介入与清仓日期必然都有值；
+        // parseDateSafe 对空串与垃圾值同样返回 null（都读不到），故二者一律丢行。
+        String content = String.join("\n",
+                String.join("\t", "代码", "名称", "介入日期", "清仓日期", "持仓天数", "买卖次数", "持仓期涨幅%"),
+                String.join("\t", "600206", "有研新材", "20260731", "20260803", "3", "1+1", "-12.82"),
+                "600519\t贵州茅台\t20260101",
+                "600584\t长电科技\t\t20260803\t12\t5+1\t-29.22",
+                "600585\t海螺水泥\t20260722\t\t12\t5+1\t-29.22",
+                "600586\t金晶科技\t2026-07-22\t20260803\t12\t5+1\t-29.22",
+                "600587\t祁连山\t20260722\t2026/08/03\t12\t5+1\t-29.22");
+
+        TradingImportParser.SoldParse p = TradingImportParser.parseSoldWithReport(content);
+
+        assertEquals(1, p.trades().size(), "正常行照常解析");
+        assertEquals("600206", p.trades().get(0).symbol());
+        assertEquals(5, p.unparsedRows().size(), "5 行核心日期读不到 → 全部如实上报（原来全静默）");
+        // 每行行号 = 原文件行号（1 起算，含表头）
+        for (int i = 0; i < 5; i++) {
+            assertTrue(p.unparsedRows().get(i).startsWith("第 " + (i + 3) + " 行"),
+                    "行号要能对上文件：" + p.unparsedRows().get(i));
+        }
+        assertTrue(p.unparsedRows().get(0).contains("清仓日期") && p.unparsedRows().get(0).contains("取不到"),
+                p.unparsedRows().get(0));
+        assertTrue(p.unparsedRows().get(1).contains("介入日期") && p.unparsedRows().get(1).contains("为空"),
+                p.unparsedRows().get(1));
+        assertTrue(p.unparsedRows().get(2).contains("清仓日期") && p.unparsedRows().get(2).contains("为空"),
+                p.unparsedRows().get(2));
+        assertTrue(p.unparsedRows().get(3).contains("介入日期") && p.unparsedRows().get(3).contains("yyyyMMdd"),
+                p.unparsedRows().get(3));
+        assertTrue(p.unparsedRows().get(4).contains("清仓日期") && p.unparsedRows().get(4).contains("yyyyMMdd"),
+                p.unparsedRows().get(4));
+        // 被丢的行绝不能以 null 日期形态出现在结果里
+        assertTrue(p.trades().stream().allMatch(t -> t.buyDate() != null && t.sellDate() != null),
+                "收进来的行必须两个日期都在");
+    }
+
     @Test
     void parseSold_wrapperStaysBackwardCompatible() {
         // parseSold 是薄包装：结果必须与带报告版完全一致（既有调用点零影响）

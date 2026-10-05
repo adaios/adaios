@@ -5,6 +5,7 @@ import com.adaiadai.core.infrastructure.ai.vision.ImageRequest;
 import com.adaiadai.core.infrastructure.ai.vision.ImageUnderstanding;
 import com.adaiadai.core.infrastructure.ai.vision.VisualAiClient;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
+import com.adaiadai.core.infrastructure.storage.CardLockRegistry;
 import com.adaiadai.core.kernel.storage.FileStorage;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.kernel.memory.Memory;
@@ -58,6 +59,8 @@ public class MediaRecordAppService {
     private final PluginService pluginService;
     /** RFC 20260817：交易日志自动归集（截图识别为当日成交 → 候选，待确认）。 */
     private final TradeLogCollectService tradeLogCollectService;
+    /** 共享 per-card 锁池（与 ConversationController.end 是同一个 Spring 单例；P2-工程13）。 */
+    private final CardLockRegistry cardLockRegistry;
 
     /** 投递级幂等索引路径（REVIEW P1-多图2：客户端超时重试不得重复入库）。 */
     private static final String DELIVERY_INDEX_PATH = "index/media-deliveries.json";
@@ -69,13 +72,16 @@ public class MediaRecordAppService {
     private final com.fasterxml.jackson.databind.ObjectMapper deliveryMapper =
             new com.fasterxml.jackson.databind.ObjectMapper();
 
+    /** Spring 主构造：注入共享 per-card 锁池——图片卡 Q/A append 与 conversation end 的写回互斥。 */
+    @org.springframework.beans.factory.annotation.Autowired
     public MediaRecordAppService(VisualAiClient visualAiClient,
                                  RecordFileRepository recordFileRepository,
                                  MemoryService memoryService,
                                  FileStorage fileStorage,
                                  CardFileRepository cardRepository,
                                  PluginService pluginService,
-                                 TradeLogCollectService tradeLogCollectService) {
+                                 TradeLogCollectService tradeLogCollectService,
+                                 CardLockRegistry cardLockRegistry) {
         this.visualAiClient = visualAiClient;
         this.recordFileRepository = recordFileRepository;
         this.memoryService = memoryService;
@@ -83,6 +89,22 @@ public class MediaRecordAppService {
         this.cardRepository = cardRepository;
         this.pluginService = pluginService;
         this.tradeLogCollectService = tradeLogCollectService;
+        this.cardLockRegistry = cardLockRegistry;
+    }
+
+    /**
+     * 兼容构造（7 参，测试/旧调用）：自建**私有**锁池——仅适用于与 end 侧无并发的单线程用例。
+     * 生产走 Spring 主构造（共享单例），不经过这里。
+     */
+    public MediaRecordAppService(VisualAiClient visualAiClient,
+                                 RecordFileRepository recordFileRepository,
+                                 MemoryService memoryService,
+                                 FileStorage fileStorage,
+                                 CardFileRepository cardRepository,
+                                 PluginService pluginService,
+                                 TradeLogCollectService tradeLogCollectService) {
+        this(visualAiClient, recordFileRepository, memoryService, fileStorage, cardRepository,
+                pluginService, tradeLogCollectService, new CardLockRegistry());
     }
 
     /**
@@ -535,24 +557,29 @@ public class MediaRecordAppService {
     private void appendQaToImageCard(String userId, String imageRecordId, String question, String answer, LocalDateTime now) {
         String time = now.toLocalTime().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
         String cleanAnswer = answer == null ? "" : answer.strip();
-        CardRecord existing = cardRepository.findById(userId, imageRecordId).orElse(null);
+        // REVIEW P2-工程13：读写整段进共享 per-card 锁（与 ConversationController.end 的卡片写回、
+        // QuestionAppService 的两处 append 同一把）。锁顺序：append 侧只取 cardLock，绝不取 endLock。
+        // VLM 调用已在上游完成（askImage / askImages），锁内只有卡片读-改-写。
         CardRecord updated;
-        if (existing != null) {
-            // 已有追问历史 → 追加本轮的 Q + A（withTurn 会刷新 updatedAt）
-            updated = existing.withTurn(true, question.strip(), time)
-                    .withTurn(false, cleanAnswer, time);
-        } else {
-            updated = new CardRecord(
-                    imageRecordId, "conversation", "active",
-                    List.of(),
-                    List.of(
-                            new CardRecord.Turn(true, question.strip(), time),
-                            new CardRecord.Turn(false, cleanAnswer, time)
-                    ),
-                    null, now, now
-            );
+        synchronized (cardLockRegistry.cardLock(userId, imageRecordId)) {
+            CardRecord existing = cardRepository.findById(userId, imageRecordId).orElse(null);
+            if (existing != null) {
+                // 已有追问历史 → 追加本轮的 Q + A（withTurn 会刷新 updatedAt）
+                updated = existing.withTurn(true, question.strip(), time)
+                        .withTurn(false, cleanAnswer, time);
+            } else {
+                updated = new CardRecord(
+                        imageRecordId, "conversation", "active",
+                        List.of(),
+                        List.of(
+                                new CardRecord.Turn(true, question.strip(), time),
+                                new CardRecord.Turn(false, cleanAnswer, time)
+                        ),
+                        null, now, now
+                );
+            }
+            cardRepository.save(userId, updated);
         }
-        cardRepository.save(userId, updated);
         log.info("图片追问已持久化到卡片 | imageId={} | turns={}", imageRecordId,
                 updated.turns() != null ? updated.turns().size() : 0);
     }

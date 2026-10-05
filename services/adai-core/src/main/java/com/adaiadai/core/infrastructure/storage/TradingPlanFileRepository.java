@@ -63,6 +63,8 @@ public class TradingPlanFileRepository implements TradingPlanRepository {
                     parseDate(n.path("date").asText(), date),
                     items,
                     n.path("note").asText(""),
+                    // P2-交易72：旧文件（2026-10-05 之前落盘）没有本字段 → 读作「没填」，不猜、不回落。
+                    n.path("dayStatus").asText(""),
                     parseTime(n.path("createdAt").asText())));
         } catch (Exception e) {
             // ⚠️ P3-16（2026-10-03 增量深审）：读坏**不能当作「没写」**——那会让早盘不念计划、20:30 反复催，
@@ -95,6 +97,8 @@ public class TradingPlanFileRepository implements TradingPlanRepository {
             var n = MAPPER.createObjectNode();
             n.put("date", plan.date().toString());
             n.put("note", plan.note() != null ? plan.note() : "");
+            // P2-交易72：显式写出（含空串）——保留/清空由服务层决定，存储层不替它做判断。
+            n.put("dayStatus", plan.dayStatus() != null ? plan.dayStatus() : TradingPlan.DAY_STATUS_NONE);
             n.put("createdAt", (plan.createdAt() != null ? plan.createdAt() : LocalDateTime.now()).toString());
             var arr = n.putArray("items");
             for (TradingPlan.PlanItem it : plan.items()) {

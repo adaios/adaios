@@ -80,6 +80,20 @@ public record Memory(
                 value, suggestion, createdAt, topic, superseded, evolvedTo, doneAt, lastConfirmed);
     }
 
+    /**
+     * 返回同时替换「行动标记 + 行动建议」的副本（REVIEW P2-交易73）。
+     * <p>
+     * 用途：**对话里阿呆给出的动作**要进「待行动事项」——那段动作清单由调用方从对话里抽出来
+     * （{@code ActionReviewService}），比 AI 在总结 JSON 里顺手填的 {@code actionSuggestion}
+     * 更完整（一段对话可能不止一条）。落成记忆后，{@code ContextEngine} 下次对话会把它们
+     * 作为「## 待行动事项」注入；用户完成对应待办时，{@code TodoAppService} 会反向
+     * {@code markDone} 这条记忆，于是它不再被捞回。
+     */
+    public Memory withActionable(boolean value, String newSuggestion) {
+        return new Memory(id, recordId, cardId, kind, summary, patterns, preferences, tags, sentiment,
+                value, newSuggestion, createdAt, topic, superseded, evolvedTo, doneAt, lastConfirmed);
+    }
+
     public static final String KIND_FACT = "fact";
     public static final String KIND_INSIGHT = "insight";
     public static final String KIND_PREFERENCE = "preference";
