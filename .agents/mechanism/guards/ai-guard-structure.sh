@@ -86,12 +86,32 @@ if not AG.is_dir():
 
 # 扫「有 _index.md 的目录」（不限层级）—— 这样 workspace/tasks/ 这类**二级受管目录**也能查到；
 # 没有 _index.md 的目录（assets/adr/、skills/data-learn-writer/）由父目录清单的 rglob 覆盖，不单独受管。
+
+# 被 git 忽略的目录 = 本机状态 / **工具出口位**（如 .agents/skills → 软链到 toolkit/skills）
+#   ——不进 git 的东西自然不需要「_index.md + _directory.md」两件套。
+#   2026-10-05 加：出口位此前被当受管目录 ⇒ **一加出口就报 S1**（恢复 .agents/skills 出口时实测）。
+#   改用 git 自己的忽略判据后，今后任何新出口（只要 .gitignore 了）**自动免检**，不必再来改本守卫
+#   ——否则又是「加一处要改多处」（见 ai-context-layer-spec.md §五）。
+def _ignored_under_agents(rels):
+    if not rels:
+        return set()
+    import subprocess
+    p = subprocess.run(["git", "check-ignore", "--stdin"], cwd=str(ROOT),
+                       input="\n".join(rels), capture_output=True, text=True)
+    return {ln.strip() for ln in p.stdout.splitlines() if ln.strip()}
+
+_CANDS = [str(d.relative_to(AG)) for d in AG.rglob("*") if d.is_dir()]
+_IGNORED = {r[len(".agents/"):] for r in _ignored_under_agents([".agents/" + r for r in _CANDS])}
+
 def _structural(d):
     """结构目录 = 该有「_index.md + _directory.md」两件套的目录。
-    排除：隐藏/缓存目录 · 配置目录（*.d）· 技能包（含 SKILL.md）· workspace/ 下的在制品（第 2 层起）。
+    排除：隐藏/缓存目录 · 配置目录（*.d）· 技能包（含 SKILL.md）· workspace/ 下的在制品（第 2 层起）
+         · **被 git 忽略的目录**（出口位 / 本机状态，2026-10-05 加）。
     ⚠️ 2026-10-04 修盲区：原判据是「已有 _index.md 的目录」——**不建 _index.md 的目录永远免检**
     （实测漏掉 5 个：workspace / adr / projects / 技能包 / 配置目录；前三个确实是真遗漏）。"""
     rel = d.relative_to(AG)
+    if str(rel) in _IGNORED:                  # 出口位 / 本机状态（gitignore）→ 不是仓库资产
+        return False
     if any(pp.startswith('.') or pp == '__pycache__' for pp in rel.parts):
         return False
     if d.name.endswith('.d'):                 # 配置目录（如 task-noon.d）

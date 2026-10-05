@@ -17,7 +17,7 @@ tags: [meta, index]
 
 **职责**：见 [`_directory.md`](./_directory.md)（此处不重复——S5 判据：同一知识只在一处详述）
 
-## 文件清单（39 项）
+## 文件清单（41 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -44,6 +44,7 @@ tags: [meta, index]
 | `scripts/ai-setup-hooks.sh` | 启用 git hooks（core.hooksPath → .githooks/）+ 恢复仓库级 git 设置 | active |
 | `scripts/ai-setup-launchd.sh` | 安装/自检 定时任务（LaunchAgent）— 2026-09-14 建 | active |
 | `scripts/ai-sync-agents.sh` | 把「审查官」真相源生成为各工具的 subagent 定义（换机 / 改动后执行） | active |
+| `scripts/ai-sync-all.sh` | AI 资产多工具出口：**一条命令**全量重建 + 自检 | active |
 | `scripts/ai-worktree-prep.sh` | worktree 外挂补齐（AdaiOS 专属）——新建 worktree 后第一件事 | active |
 | `scripts/code-backup-prod.sh` | 生产数据定期备份脚本（服务器迁移/到期用，2026-08-14 创建，2026-08-20 更新， | active |
 | `scripts/code-deploy-gate.sh` | 部署门禁 + 部署后验证（触发侧：部署前强制 review，部署后自动 smoke） | active |
@@ -52,6 +53,7 @@ tags: [meta, index]
 | `scripts/data-sync-stock-names.py` | -*- coding: utf-8 -*- | active |
 | `scripts/data-sync-tdx.sh` | ========================================================… | active |
 | `scripts/data-verify-tdx.py` | -*- coding: utf-8 -*- | active |
+| `scripts/lib/ai-export-targets.sh` | AI 资产「工具出口」清单 —— **唯一真相源**（2026-10-05 批） | active |
 | `scripts/lib/cadence-lib.sh` | 游标库（task-cadence state）— 「上次到哪了」的唯一存储 | active |
 | `scripts/lib/release-units.sh` | 发版单元映射（唯一真相源）：「哪些路径被改了」→「要发布哪几端」 | active |
 | `scripts/serve_static.py` | — | active |

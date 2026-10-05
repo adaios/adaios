@@ -40,8 +40,11 @@ REGISTER=(
   docs-design-writer   # 审核驱动主链的产作者（与设计文档审核者真对打，2026-10-03）
 )
 
-# ── 目标工具 subagent 目录（相对仓库根；格式由脚本按目录名分派）──
-TARGETS=(".qoder/agents" ".codex/agents")
+# ── 目标工具 subagent 目录：**清单的唯一真相源在 lib/ai-export-targets.sh**（2026-10-05 起）──
+#    格式仍由本脚本按目录名分派（.qoder → md+YAML · .codex → TOML）。
+# shellcheck source=/dev/null
+. "$ROOT/.agents/mechanism/scripts/lib/ai-export-targets.sh"
+TARGETS=("${AGENT_TARGETS[@]}")
 
 CHECK=0
 [ "${1:-}" = "--check" ] && CHECK=1

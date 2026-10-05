@@ -2,25 +2,29 @@
 # ─────────────────────────────────────────────────────────────
 # 工具接入自检（防守侧）— 检测「AI 上下文工程体系」在各工具侧是否真的被加载
 #
-# 用法:  bash .agents/mechanism/guards/ai-guard-tools.sh             # 全量自检（T1-T7）
+# 用法:  bash .agents/mechanism/guards/ai-guard-tools.sh             # 全量自检（T1-T8）
 #        bash .agents/mechanism/guards/ai-guard-tools.sh --shell-lint # 只跑 T6（pre-commit 调用，快）
 # 说明:  体系的「跨工具互通」不是文档承诺，是可验证状态（2026-08-23 对抗审计 P1-4 修复）。
-#        自检 7 项，缺什么报什么 + 附修复命令；不写死工具清单到文档（映射表会过时，
+#        自检 8 项，缺什么报什么 + 附修复命令；不写死工具清单到文档（映射表会过时，
 #        机制替人记得——运行即知当前工具接入状态）。
 #
 # 检测项:
 #   T1 git hooksPath   → 门禁是否随仓库生效（S-A1 修复验证）
 #   T2 AGENTS.local.md → 快照是否新鲜（机器生成 + gitignore，勿手改）
 #   T3 仓库内技能      → roles/ + skills/ 的 SKILL.md 是否齐备（name 字段校验）
-#   T4 工具侧技能注册  → .dsh / .claude / .agents 的 skills/ 是否软链回本体系（按真身判定）
+#   T4 工具侧技能注册  → 各出口 skills/ 是否软链回本体系（按真身判定；目录清单读 lib/ai-export-targets.sh）
 #   T5 工具侧上下文注入→ 若存在 .claude/settings.json，是否显式引用 AGENTS.md（无则仅提示）
 #   T6 shell 脚本健壮性→ `$VAR` 紧跟非 ASCII（非 UTF-8 locale 下被并进变量名 → unbound）
 #   T7 定时任务（launchd）→ 备份 / 每周审查是否真加载 + 真跑过（2026-09-14 加：
 #                          此前 26 天没备份、每周审查从未运行，全体系没有一处会报）
+#   T8 出口清单一致性  → 子代理出口是否与真相源一致 + 清单 ⇄ 规范 §四 表口径（2026-10-05 加）
 # ─────────────────────────────────────────────────────────────
 set -u
 cd "$(git rev-parse --show-toplevel 2>/dev/null || echo "$(cd "$(git rev-parse --show-toplevel)" && pwd)")"
 ROOT="$(pwd)"
+# 出口清单的**唯一真相源**（2026-10-05）：T4 直接读它 ⇒ 「新加出口没人检查」结构上不可能再发生
+# shellcheck source=/dev/null
+. "$ROOT/.agents/mechanism/scripts/lib/ai-export-targets.sh"
 PASS=0; WARN=0; FAIL=0
 
 ok()   { echo "  ✅ $1"; PASS=$((PASS+1)); }
@@ -94,24 +98,43 @@ else
   bad "$MISSING 个技能包缺 name"
 fi
 
-# T4: 工具侧技能注册（按「链接是否指向本仓库 ai-engineering/」判定，不认名字、不写死工具）
+# T4: 工具侧技能注册（按「链接是否指向本仓库 .agents/」判定，不认名字、不写死工具）
+#     扫描目录 = lib/ai-export-targets.sh 的 SKILL_TARGETS（项目级 + $HOME 用户级各一份）
+#     + 预留位 $ROOT/skills（OpenClaw 那类；有工具真用时把它移进清单）
 echo ""
 echo "T4 工具侧技能注册"
 REG=0
-for d in "$ROOT/.dsh/skills" "$HOME/.dsh/skills" "$ROOT/.claude/skills" "$HOME/.claude/skills" "$ROOT/.agents/skills" "$HOME/.agents/skills" "$ROOT/.qoder/skills" "$HOME/.qoder/skills" "$ROOT/skills"; do  # 末项＝预留（OpenClaw 等用根 skills/ 的工具）
-  [ -d "$d" ] || continue
-  for f in "$d"/*; do
+MISS_T=()
+for t in "${SKILL_TARGETS[@]}"; do
+  N_T=0
+  for d in "$ROOT/$t" "$HOME/$t"; do
+    [ -d "$d" ] || continue
+    for f in "$d"/*; do
+      [ -e "$f" ] || [ -L "$f" ] || continue
+      # 解析软链真身（macOS 无 readlink -f 兜底用 python3/realpath）
+      TGT="$(readlink -f "$f" 2>/dev/null || python3 -c 'import os,sys;print(os.path.realpath(sys.argv[1]))' "$f" 2>/dev/null || echo "$f")"
+      case "$TGT" in
+        "$ROOT"/.agents/*) ok "技能已注册: ${f/#$HOME/~} → ${TGT#$ROOT/}"; REG=$((REG+1)); N_T=$((N_T+1));;
+      esac
+    done
+  done
+  [ "$N_T" -eq 0 ] && MISS_T+=("$t")   # 清单说它是出口，却一个注册都没有
+done
+# 预留位：仓库根 skills/（OpenClaw 那类）——不在清单里，有就报、没有不报
+if [ -d "$ROOT/skills" ]; then
+  for f in "$ROOT/skills"/*; do
     [ -e "$f" ] || [ -L "$f" ] || continue
-    # 解析软链真身（macOS 无 readlink -f 兜底用 python3/realpath）
-    TGT="$(readlink -f "$f" 2>/dev/null || python3 -c 'import os,sys;print(os.path.realpath(sys.argv[1]))' "$f" 2>/dev/null || echo "$f")"
+    TGT="$(readlink -f "$f" 2>/dev/null || echo "$f")"
     case "$TGT" in
-      "$ROOT"/.agents/*) ok "技能已注册: ${f/#$HOME/~} → ${TGT#$ROOT/}"; REG=$((REG+1));;
+      "$ROOT"/.agents/*) ok "技能已注册（预留位）: skills/${f##*/}"; REG=$((REG+1));;
     esac
   done
-done
+fi
 if [ "$REG" -eq 0 ]; then
-  warn "未发现指向 ai-engineering/ 的技能注册（.dsh / .claude / .agents 均无）"
-  echo "    修复: bash .agents/mechanism/scripts/ai-link-skills.sh（换机/新 clone 后必跑一次）"
+  warn "未发现指向本仓库 .agents/ 的技能注册（清单里的 ${#SKILL_TARGETS[@]} 个出口全无）"
+  echo "    修复: bash .agents/mechanism/scripts/ai-sync-all.sh（换机/新 clone 后必跑一次）"
+elif [ "${#MISS_T[@]}" -gt 0 ]; then
+  bad "清单里有 ${#MISS_T[@]} 个出口没有任何注册: ${MISS_T[*]} → bash .agents/mechanism/scripts/ai-link-skills.sh"
 fi
 
 # T5: 工具侧上下文入口（**仅当该工具确实在用**才校验；不用则跳过，避免永久警告让「全绿」失去信号）
@@ -157,6 +180,33 @@ if [ "$T7_RC" -eq 0 ]; then
 else
   echo "$T7_OUT" | sed 's/^/  /'
   bad "定时任务未就绪（备份 / 每周审查可能静默失效）→ bash .agents/mechanism/scripts/ai-setup-launchd.sh"
+fi
+
+# T8: 出口清单一致性（2026-10-05 加）
+#   治的病：同一个事实（出口在哪、谁去检查）原先散在 4 个脚本里各写一份 ⇒ 加/减一个出口
+#   要改 4 处，漏一处**静默**（`.agents/skills` 出口位就是这么消失的，而规范 §四 至今声称它有）。
+#   现状：技能出口由 T4 **直接读** lib/ai-export-targets.sh（结构上不会再漏）；
+#   本项补上两处 T4 覆盖不到的：① **子代理出口**（原先零守卫，只在 worktree-prep 里被顺带查过）
+#   ② **清单 ⇄ 规范 §四 表**的口径（表是人写的，故只提示不判死）。
+echo ""
+echo "T8 出口清单一致性"
+if [ -f "$ROOT/.agents/mechanism/scripts/ai-sync-agents.sh" ]; then
+  if A8="$(bash "$ROOT/.agents/mechanism/scripts/ai-sync-agents.sh" --check 2>&1)"; then
+    ok "子代理出口（${#AGENT_TARGETS[@]} 组）与真相源一致"
+  else
+    echo "$A8" | sed 's/^/  /'
+    bad "子代理出口过期 → bash .agents/mechanism/scripts/ai-sync-agents.sh"
+  fi
+fi
+SPEC8="$ROOT/.agents/rules/assets/ai-context-layer-spec.md"
+if [ -f "$SPEC8" ]; then
+  N8=0
+  for t in "${SKILL_TARGETS[@]}"; do grep -q -- "$t" "$SPEC8" && N8=$((N8+1)); done
+  if [ "$N8" -eq "${#SKILL_TARGETS[@]}" ]; then
+    ok "规范 §四 覆盖全部技能出口（${N8}/${#SKILL_TARGETS[@]}）"
+  else
+    warn "规范 §四 只提到 ${N8}/${#SKILL_TARGETS[@]} 个技能出口（清单改了、表没跟？见 §五）"
+  fi
 fi
 
 echo ""

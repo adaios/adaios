@@ -214,11 +214,24 @@ contracts = check_contracts()
 stale   = check_freshness()
 
 # 子目录概览
+# 被 git 忽略的顶层子目录（本机状态 / **工具出口位**，如 .agents/skills）＝不进 git ⇒ 不参与概览与两件套判定
+# （2026-10-05 加：恢复 .agents/skills 出口时，它被当成受管目录、概览里报「缺两件套」。同判据见 ai-guard-structure）
+def _ignored_top():
+    dirs = [x for x in AG.iterdir() if x.is_dir()]
+    if not dirs:
+        return set()
+    import subprocess
+    p = subprocess.run(["git", "check-ignore", "--stdin"],
+                       input="\n".join(str(x) for x in dirs), capture_output=True, text=True)
+    return {pathlib.Path(ln.strip()).name for ln in p.stdout.splitlines() if ln.strip()}
+
+_IGNORED_TOP = _ignored_top()
+
 def dir_overview():
     rows = []
     for d in sorted([x for x in AG.iterdir() if x.is_dir()]):
         rel = d.name
-        if rel == 'state':
+        if rel == 'state' or rel in _IGNORED_TOP:
             continue
         allf = [p for p in d.rglob('*') if p.is_file()]
         mds  = [p for p in allf if p.suffix == '.md']

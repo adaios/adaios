@@ -29,6 +29,10 @@ target/
 # 注意：gitignore 不支持行尾注释（`模式  # 注释` 会把注释当成模式的一部分）
 .qoder/
 .codex/
+# `.agents/skills/` 是**出口位**（公约数阵营：Codex / Cursor / Gemini CLI / Copilot / OpenCode …），
+# 由 ai-link-skills.sh 软链到真相源 .agents/toolkit/skills/（2026-10-05 恢复该出口时补的忽略规则）。
+# ⚠️ 必须精确到 `.agents/skills/`——写成 `skills/` 会连真相源一起忽略（pitfalls 二十三 同型坑）。
+.agents/skills/
 # 预留：根 skills/ 出口（OpenClaw 等工具的项目级目录）—— **必须锚定仓库根**：
 # 写成 `skills/` 会连真相源 `.agents/toolkit/skills/` 一起忽略（见 pitfalls 二十三）
 /skills/

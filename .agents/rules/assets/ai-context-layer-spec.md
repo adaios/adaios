@@ -3,9 +3,9 @@ title: 项目级 AI 上下文中间层规范（AI Context Layer Spec）
 description: AdaiOS 项目级 AI 上下文的中间层规范——定义 AI 资产**放在哪**（真相源）、**怎么被各工具发现**（出口）、**怎么新增工具与维护一致性**。行业标准管「长什么样」（Agent Skills 管技能格式、Agent Plugins 管包结构、AGENTS.md 管背景契约），没有管「项目层一份、多工具都看见」这一段——本规范补的正是这一段。
 version: 1
 created: 2026-10-03
-updated: 2026-10-03
+updated: 2026-10-05
 status: active
-lines: 187
+lines: 211
 depends-on:
   - skills-spec.md
   - ../../frontmatter-spec.md
@@ -70,21 +70,37 @@ tags: [ai, meta, governance, context-layer]
 | Claude Code | `.claude/skills` | `.claude/agents/<name>.md` | ✅（官方明确支持） | 官方文档 |
 | 预留 | `skills/`（仅 OpenClaw 等用根目录的工具） | — | — | — |
 
+**⛔ 出口清单的机器可读版是唯一真相源**：`.agents/mechanism/scripts/lib/ai-export-targets.sh`
+（`SKILL_TARGETS` / `AGENT_TARGETS`，2026-10-05 起）。**本表是人读的镜像**——改清单必须同步改本表；
+`ai-guard-tools.sh` 的 **T8** 会提示两者口径不一致。
+
 **两条硬约束**（实测得出）：
 
 1. **没有任何单一目录能被所有工具读到**——Claude Code 官方明确不读 `.agents/`；DSH 不读根 `skills/`；Qoder 只认 `.qoder/skills/`。**押注"中立目录"这条路不存在。**
 2. **主流收敛到官方目录布局 `<name>/SKILL.md`**（Claude Code / Qoder 只认它，DSH 两种都认）⇒ 技能真相源必须用目录布局。
 3. **`.agents/` 是出口位，不能当真相源**——它是**被多家工具扫描**的目录（Codex / Cursor / Gemini CLI / Copilot / OpenCode 等）。把 `ai-engineering/` 改名搬进去会同时踩四个雷：① **语义不符**（`.agents/` 在行业语义里是「技能/子代理容器」，而我们那 12 个子目录是整个工程体系）；② **真相源会被工具当出口直接扫**——`skills/`、`process/`、`checklists/` 全被当技能读，**真相源/出口分层当场崩掉**；③ **gitignore 冲突**（`.agents/` 被忽略、真相源必须进 git）；④ **`ai-guard-tools` T4 判据失效**（它检查的是「`.agents/skills` 里的软链是否指向本仓库 `ai-engineering/`」）。
 
-**当前净出口 3 个**：`.dsh/skills` · `.agents/skills`（喂 DSH + Codex + Cursor/Gemini CLI/Copilot/OpenCode 等公约数阵营）· `.qoder/skills`。
+**当前出口 4 个**（= `SKILL_TARGETS`，2026-10-05 复核）：`.dsh/skills` · `.claude/skills` · `.qoder/skills` · `.agents/skills`（末项喂 Codex / Cursor / Gemini CLI / Copilot / OpenCode 等公约数阵营）。
 
-## 五、新增工具接入流程（四步，缺一不可）
+> ⚠️ **2026-10-05 修掉一处「静默失效」**：`.agents/skills` 出口位在 2026-10-04 六顶层重构后**实际消失了**
+> ——真相源从 `.agents/skills/` 搬到 `.agents/toolkit/skills/`，而 `ai-link-skills.sh` 的旧注释仍写着
+> 「`.agents/skills` 是真相源本身，无需软链」（重构后这句已错），出口位就此丢失；T4 又还在扫这个
+> 空路径 ⇒ **一直静默 PASS**。根因是「同一个事实散在 4 处各写一份」（link-skills / sync-agents /
+> guard-tools / 本表），现已收敛到 `lib/ai-export-targets.sh` 一处（见 §五）。
 
-1. **查官方文档确认项目级路径**——**不猜**。文档滞后于实现是常态（Qoder 插件文档未提 skills，实测支持），所以第 4 步必做。
-2. **加进 `.agents/mechanism/scripts/ai-link-skills.sh` 的 `TARGETS`**（技能出口）。
-3. **加进 `.agents/mechanism/guards/ai-guard-tools.sh` T4 的扫描清单**——否则新出口**无人检查**（T4 按软链真身判定，不认名字）。
-   - **子代理出口同理**：加进 `.agents/mechanism/scripts/ai-sync-agents.sh` 的 `TARGETS`（并按该工具的 subagent 格式加一种生成分支）。
-4. **放探针实测**：技能 + 子代理各一个最小探针 → 目标工具里验证 → **结果写回 §四（含日期）** → 清理探针。
+## 五、新增工具接入流程（三步，缺一不可 · 2026-10-05 收敛）
+
+> **改动点收敛为 1 处**：出口清单的唯一真相源是 `.agents/mechanism/scripts/lib/ai-export-targets.sh`
+> （`SKILL_TARGETS` / `AGENT_TARGETS`）。此前「加一个工具要改 4 处」（`ai-link-skills.sh` 的 TARGETS、
+> `ai-sync-agents.sh` 的 TARGETS、`ai-guard-tools.sh` 的 T4 扫描清单、本规范 §四 表），**漏一处静默**
+> ——`.agents/skills` 出口位就是这么消失的。现在四处**全部读同一份清单**（T4 直接按清单扫描）
+> ⇒ 「新加的出口没人检查」在结构上不可能再发生。
+
+1. **查官方文档确认项目级路径**——**不猜**。文档滞后于实现是常态（Qoder 插件文档未提 skills，实测支持），所以第 3 步必做。
+2. **只改 `lib/ai-export-targets.sh`**：技能出口加进 `SKILL_TARGETS`；子代理出口加进 `AGENT_TARGETS`
+   （并按该工具的 subagent 格式在 `ai-sync-agents.sh` 加一种生成分支）→ 跑 `bash .agents/mechanism/scripts/ai-sync-all.sh`。
+   - 别忘 `.gitignore`：出口是**本机状态，必须忽略**，且规则要精确（写成 `skills/` 会连真相源一起忽略——pitfalls 二十三）。
+3. **放探针实测**：技能 + 子代理各一个最小探针 → 目标工具里验证 → **结果写回 §四（含日期）并同步 §四 表** → 清理探针。
 
 > 探针一律**本地忽略**（`.git/info/exclude` 或 `.gitignore`），验证完即删。
 
@@ -93,6 +109,14 @@ tags: [ai, meta, governance, context-layer]
 - **技能格式**：按 `skills-spec.md`（五段结构 + frontmatter 十字段）。
 - **布局**：`<name>/SKILL.md`，**目录名 == frontmatter `name`**（官方硬约束，也是命令名来源）。
 - **技能出口**：只注册"用户直触发"的技能——其余技能常驻 catalog 要花钱，还可能被误触发（成本纪律，见 `checklists/ai-cost-checklist.md`）。
+  **判据**：用户能不能**一句话直呼它**？能 → 进 `REGISTER`；只有流程走到某一步才需要 → 不进（由流程文档导航）。当前 4 个技能包逐一对号：
+
+  | 技能 | 注册 | 判据 |
+  |:--|:--:|:--|
+  | `data-learn-writer` | ✅ | 用户说「整理 <链接> / 把这篇文章存下来」＝直触发 |
+  | `code-api-writer` | ❌ | 只在"新增端点"这一步需要 → 流程内触发（`review.md` / `ship.md` 导航） |
+  | `code-domain-writer` | ❌ | 同上（新增领域模块时） |
+  | `task-ship` | ❌ | 「收工」触发的是 `task-cadence.sh ship`（脚本）；技能包是给 AI 读的流程说明 |
 - **subagent 出口**：审查官**全量注册**（12/12，2026-10-03 起）——实测 12 个 `description` 合计 **≈1.3k token**，远低于 Claude Code 官方 **15k token** 告警线。这条线是硬约束：接近时**优先缩短 description**，不要砍审查官。
 - **产出物不进真相源**（生成的卡片/报告/缓存归 `data/` 或 `state/`）。
 
@@ -102,9 +126,9 @@ tags: [ai, meta, governance, context-layer]
 |:--|:--|
 | 改技能内容 | **只改真相源**；出口是软链，自动生效 |
 | 改审查官内容 | 跑 `bash .agents/mechanism/scripts/ai-sync-agents.sh` **重新生成** subagent 定义；自检 `--check`（生成物不进 git）|
-| 换机 / 新 clone | `bash .agents/mechanism/scripts/ai-link-skills.sh`（+ `ai-setup-hooks.sh`）；自检 `--check` |
-| 自检一致性 | `bash .agents/mechanism/scripts/ai-link-skills.sh --check` · `bash .agents/mechanism/guards/ai-guard-tools.sh`（T4）|
-| 新增/删除出口 | 改 `TARGETS` → 跑脚本 → 更新 §四 表 |
+| **换机 / 新 clone** | **一条命令**：`bash .agents/mechanism/scripts/ai-sync-all.sh`（git hooks + 技能 + 子代理，自带自检；2026-10-05 起）|
+| 自检一致性 | `bash .agents/mechanism/scripts/ai-sync-all.sh --check` · `bash .agents/mechanism/guards/ai-guard-tools.sh`（T4 技能真身 + **T8** 出口清单口径）|
+| 新增/删除出口 | 改 `lib/ai-export-targets.sh` → 跑 `ai-sync-all.sh` → 同步 §四 表（T8 会提示不一致）|
 | 有意的偏离 | **必须留痕**（写进本规范 + `pitfalls.md`）|
 
 ### 多 worktree / 多分支下的行为（2026-10-03 补）

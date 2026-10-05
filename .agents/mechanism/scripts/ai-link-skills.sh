@@ -34,14 +34,14 @@ ROOT="$(pwd)"
 # ── 注册清单：新增直触发技能时把名字加进来（= .agents/toolkit/skills/ 下的目录名）──
 REGISTER=(data-learn-writer)
 
-# ── 目标工具 skills 目录（相对仓库根；新增工具在此加一行）──
-#    DSH              → .dsh/skills、.agents/skills（两者实测均生效）
-#    Codex / Cursor / Gemini CLI / Copilot / OpenCode … → .agents/skills
-#                       （Vercel 79 家 agent 表：这是**最大公约数**目录）
-#    Claude Code      → .claude/skills（官方明确支持技能目录软链；官方不读 .agents/）
-#    Qoder            → .qoder/skills（2026-10-03 官方 CLI + IDE 文档确认；
-#                       **不是**项目根 skills/ —— 根 skills/ 只服务 OpenClaw 那类工具）
-TARGETS=(".dsh/skills" ".claude/skills" ".qoder/skills")   # .agents/skills 是真相源本身，无需软链
+# ── 目标工具 skills 目录：**清单的唯一真相源在 lib/ai-export-targets.sh**（2026-10-05 起）──
+#    此前这里与 ai-sync-agents.sh / ai-guard-tools.sh T4 / 规范 §四 各写一份 ⇒
+#    「加一个工具要改 4 处，漏一处静默」——`.agents/skills` 出口位就是这么漏掉的
+#    （2026-10-04 六顶层重构后真相源已移到 .agents/toolkit/skills/，此处旧注释还写着
+#     「.agents/skills 是真相源本身，无需软链」，于是该出口位消失而规范仍在声称它有）。
+# shellcheck source=/dev/null
+. "$ROOT/.agents/mechanism/scripts/lib/ai-export-targets.sh"
+TARGETS=("${SKILL_TARGETS[@]}")
 
 CHECK=0
 [ "${1:-}" = "--check" ] && CHECK=1
