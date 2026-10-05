@@ -27,8 +27,8 @@
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "${SCRIPT_DIR}/.."
-. "${SCRIPT_DIR}/lib/release-units.sh"
+cd "$(git rev-parse --show-toplevel)"   # 仓库根（层级无关；2026-10-05 与 code-deploy-gate 统一）
+. "${SCRIPT_DIR}/../scripts/lib/release-units.sh"
 
 HOST="${ADAI_PROD_HOST:-ubuntu@82.156.111.146}"
 PROD_IP="${HOST##*@}"

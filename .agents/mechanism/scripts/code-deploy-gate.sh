@@ -13,7 +13,7 @@ set -u
 # 2026-09-24：先固定脚本自身目录再 cd（原先 cd 后用 dirname "$0"，从别处用相对路径调用会解析错），
 # 并载入「路径 → 发布单元」的唯一真相源（与 ai-guard-release.sh / ai-guard-prod.sh 共用）。
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "${SCRIPT_DIR}/.."
+cd "$(git rev-parse --show-toplevel)"   # 仓库根（层级无关；2026-10-05 修：原先 cd 到 .agents/mechanism 致守卫路径失效）
 ROOT="$(pwd)"
 . "${SCRIPT_DIR}/lib/release-units.sh"
 SERVER="${1:-}"
