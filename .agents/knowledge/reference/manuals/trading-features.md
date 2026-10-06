@@ -21,7 +21,7 @@ related:
   - ../../../direction/rfc/20260823-trading-history-tab-backfill.md
   - ../../../direction/rfc/20260814-domain-plugin-model.md
 tags: [trading, plugin, reference]
-updated: 2026-10-04
+updated: 2026-10-06
 lines: 406
 ---
 
@@ -284,7 +284,7 @@ lines: 406
 
 ## 七、交易知识底座（os/trading-engine）
 
-- **消费入口（第三阶段 D1 定稿）**：**用户私有优先**——`data/{userId}/trading/knowledge.md`（知识注入唯一消费；无则仅 owner/adai 回落 os/）；os/ 五文件是 adai 规则包的**源材料**（`09-.agents/mechanism/scripts/sync-adai-rulepack.sh` 合并同步到 `data/adai/trading/knowledge.md`）
+- **消费入口（第三阶段 D1 定稿）**：**用户私有优先**——`data/{userId}/trading/knowledge.md`（知识注入唯一消费；无则仅 owner/adai 回落 os/）；os/ 五文件是 adai 规则包的**源材料**（`os/trading-engine/09-scripts/sync-adai-rulepack.sh` 合并同步到 `data/adai/trading/knowledge.md`）
 - `knowledge/context/` 五文件（identity/current/strategy/rules/mistakes）——adai 课程沉淀（87 课）交付层；rules.md 收录 **R1-R120**（择时 R1-R20/选股 R21-R32/买入 R33-R50/应对 R51-R65/止损 R66-R80/仓位 R81-R95/纪律 R96-R120）
 - `engine/rules-api.md` + Java `TradingRuleEngine`——语言无关规格 + 实现，判定口径一致（止损 R66 现价口径、R81 仓位分母=总资产含现金）
 - `engine/buy-point-rules.md`——B1/B2/B3/SB1 买点判定规格（C2 草稿，待用户确认口径）

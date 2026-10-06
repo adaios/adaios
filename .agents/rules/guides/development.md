@@ -40,7 +40,7 @@ cd services/adai-core && ./deploy.sh 82.156.111.146 build/libs/adai-core-0.0.1-S
 
 ```bash
 cd apps/adai-app && flutter run -d chrome          # Web
-cd apps/adai-app && sh .agents/mechanism/scripts/serve_web.sh        # Web（本地补丁 + Python 服务器）
+cd apps/adai-app && sh scripts/serve_web.sh        # Web（本地补丁 + Python 服务器）
 cd apps/adai-app && flutter run -d android         # Android
 ```
 

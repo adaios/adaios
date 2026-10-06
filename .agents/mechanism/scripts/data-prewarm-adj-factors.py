@@ -9,7 +9,7 @@ data-prewarm-adj-factors.py — 全 A 复权因子预热（2026-08-30 建议 #7�
    默认分批 + 限速（每批 50 只 + 0.5s 间隔 → 约 2-3 分钟）。
    懒加载（标注哪只拉哪只）已覆盖主要场景；预热仅用于「想提前备好」时。
 
-用法: python3 ai-engineering/09-.agents/mechanism/scripts/data-prewarm-adj-factors.py [最大只数，默认 2000]
+用法: python3 .agents/mechanism/scripts/data-prewarm-adj-factors.py [最大只数，默认 2000]
 """
 import json
 import os

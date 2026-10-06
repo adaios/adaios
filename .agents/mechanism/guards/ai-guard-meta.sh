@@ -144,6 +144,12 @@ if FIX:
             if lines[i] == '---': end = i; break
         if end is None: continue
         actual = whole.count('\n') + (0 if whole.endswith('\n') else 1)
+        # ⚠️ 幂等基线必须是**改动前**的快照（2026-10-06 体检 r4 · P2-r4-0 修的回归）：
+        # 下面 `lines[i]` 是**就地改**的——若拿改后的 `lines` 当基线，`_new != lines` 在
+        # 「只差 lines 字段 + updated 已是今天」时**恒为假** ⇒ 静默不写盘却打印「无漂移，无需回写」；
+        # 而全仓只有这里能写 `lines:` ⇒ **M2 会永远 FAIL 且自带解药失效**
+        # （即 pitfalls.md:281「--fix 静默不修且报成功」的复发）。
+        orig = list(lines)
         lines_fixed = False
         for i in range(1, end):
             if lines[i].startswith('lines:') and lines[i] != 'lines: %d' % actual:
@@ -155,7 +161,7 @@ if FIX:
             for i in range(1, end):
                 if _new[i].startswith('updated:'):
                     _new[i] = 'updated: %s' % today
-            if _new != lines:                      # 幂等：只在真变化时写盘
+            if _new != orig:                       # 幂等：与**改动前**的快照比
                 f.write_text('\n'.join(_new), encoding='utf-8')
                 changed.append(f.relative_to(ROOT))
     if changed:
@@ -205,27 +211,27 @@ for f in files:
     rel = str(f.relative_to(ROOT))
     if rel.startswith(M4_SKIP): continue
     text = f.read_text(encoding='utf-8')
-    # 代码块中的 bash 命令路径：```bash 块内 bash <path> 行
-    for block in re.findall(r'```(?:bash|sh|zsh)\n(.*?)\n```', text, re.S):
-        for line in block.splitlines():
-            # 2026-10-06（体检 r3 · P2-1）：**`sh` / `zsh` / `python3` 整类此前逃检**——只认 `bash`
-            # ⇒ 18 行发版 runbook 指向不存在的脚本而守卫全绿（含 `ai-guard-release.sh` 自己打印的
-            # 「下一步命令」）。命令前缀以本处与行内处**两处为准**，加新解释器要同时改。
-            m = re.match(r'^\s*(?:bash|sh|zsh|python3?)\s+([\w./-]+)', line)
-            if not m: continue
-            cmd = m.group(1)
-            target = (ROOT / cmd).resolve()
-            if not target.exists():
-                fails.append(f'M4 {rel}: bash 命令路径不存在 {cmd}')
-    # 行内 `bash <path>`（2026-10-06 体系体检 r2 · #4 加）：此前**只查 ```bash 代码块** ⇒ 行内命令全逃检，
-    # 实测 5 条死命令（`bash ai-engineering/…` ×4 · `bash guards/…`）躲过了所有守卫。
-    # ⚠️ 只认**像路径的**（含 `/` 或以 `.sh`/`.py` 结尾）——否则 `bash -n` / `bash TOKEN=…` / `bash cd …`
-    # 这类参数与命令会被误判成路径（首版实测 57 条里绝大多数是这个）。
-    # 解析基准：先按仓库根，再按**本文件所在目录**（相对写法如 `../mechanism/guards/x.sh`）。
-    for m in re.finditer(r'`(?:bash|sh|zsh|python3?)\s+((?:[\w.@-]+/)+[\w.@-]+|[\w.-]+\.(?:sh|py))', text):
-        cmd = m.group(1)
-        if not (ROOT / cmd).exists() and not (f.parent / cmd).exists():
-            fails.append(f'M4 {rel}: 行内 bash 命令路径不存在 {cmd}')
+    # ── M4-a：命令式引用 `cmd <path>`（扫**全文**，不再区分代码块 / 行内）──
+    #   演进：r2 前只查 ```bash 代码块**行首** → r2 加行内 → r3 认 sh/zsh/python3 → **r4 放宽形态**。
+    #   r4 修的两点（P2-r4-1）：
+    #     ① **词边界**：此前缺 `(?<![\w.-])` ⇒ `task-cadence.sh status/daily` 里的 `.sh ` 被当成 `sh`
+    #        命令、把 `status/daily` 当路径（实测一条误报）；
+    #     ② **形态**：此前只认「行首的 cmd」⇒ 两种常见写法**整类逃检**——`cd <dir> && sh <path>`
+    #        （runbook 写法）与 `用法: python3 <path>`（脚本 usage 行）。现允许 ≤30 字前缀，并捕获
+    #        可选的 `cd <dir> &&`（命中时路径按 `<dir>/` 解析）。
+    #   仍只认**像路径的**（含 `/` 或以 `.sh`/`.py` 结尾），免得 `bash -n` / `bash TOKEN=…` 误判。
+    #   解析基准依次：仓库根 → 本文件所在目录 → `cd <dir>` 之后的相对路径。
+    _CMD_REF = re.compile(
+        r'(?:cd\s+([\w./-]+)\s*&&\s*[^\n`]{0,20}?)?'
+        r'(?:[^\n`]{0,30}?)'
+        r'(?<![\w.-])(?:bash|sh|zsh|python3?)\s+'   # ← 词边界必须**紧贴解释器名**：
+        r'((?:[\w.@-]+/)+[\w.@-]+|[\w.-]+\.(?:sh|py))')  # 放段首拦不住 `push`/`x.sh` 里的 `sh`
+    for m in _CMD_REF.finditer(text):
+        _cd, cmd = m.group(1), m.group(2)
+        if ((ROOT / cmd).exists() or (f.parent / cmd).exists()
+                or (_cd and (ROOT / _cd / cmd).exists())):
+            continue
+        fails.append(f'M4 {rel}: 命令路径不存在 {cmd}')
     # 行内仓库路径（docs/xxx、ai-engineering/xxx、AGENTS.md；CLAUDE.md 2026-08-19 已删，正则保留防残留）
     for m in re.finditer(r'`((?:docs/|\.agents/|AGENTS\.md|AGENTS\.local\.md|CLAUDE\.md)[\w./-]*(?:\.md|\.sh|/))`', text):
         # 2026-10-03：docs → docs/，避免把文件名 `docs-contract-reviewer.md` 误判为仓库路径
