@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-06
 status: active
-lines: 218
+lines: 229
 depends-on:
   - skills-spec.md
   - ../../frontmatter-spec.md
@@ -104,12 +104,23 @@ tags: [ai, meta, governance, context-layer]
 
 > 探针一律**本地忽略**（`.git/info/exclude` 或 `.gitignore`），验证完即删。
 
-4. **协作规则入口：让工具指向 `AGENTS.md`，不在工具目录里复制规则。**
+4. **协作规则入口：默认文件名不同的工具，由本仓库生成「指针」，不要求人去工具里配。**
    项目的协作规则（**语言纪律**〔**答复与思考过程一律中文**〕· 讨论与实施分离 · 触发词 · 审核驱动主链…）
-   **只有一份**：项目根 `AGENTS.md` —— 工具侧在**各自设置里**指向它（本仓库**不建** `CLAUDE.md` 之类的
-   副本，2026-08-19 已删过一次）。**加规则只改 `AGENTS.md`**；并按第 3 步**放探针确认新工具真读到它**
-   —— 否则那条规则对该工具**等于不存在**（2026-10-06 实例：语言纪律原先只写在 DSH 的全局指令
-   `~/.dsh/AGENTS.md` 里，**Claude / Qoder / Codex 等读不到**，故收归 `AGENTS.md`）。
+   **只有一份**：项目根 `AGENTS.md`。但各工具的**默认上下文文件名并不统一**（2026-10-06 查证）：
+
+   | 工具 | 默认读 | 本仓库怎么接 |
+   |:--|:--|:--|
+   | **Qoder**（CLI / IDE / JetBrains 插件）| **`AGENTS.md`** + `AGENTS.local.md`（[官方文档](https://docs.qoder.com/zh/cli/how-memory-works)明说「Qoder CLI 默认的上下文文件名」）| ✅ **原生**，零配置 |
+   | **Codex** | **`AGENTS.md`** | ✅ **原生** |
+   | **DSH** | **`AGENTS.md`**（会话启动自动注入）| ✅ **原生** |
+   | **Claude Code** | **`CLAUDE.md`**（**不读** `AGENTS.md`）| ✅ **本仓库建 `CLAUDE.md` 指针**：明确指示「请完整读取 `AGENTS.md`」+ `@AGENTS.md` 导入 |
+
+   **做法：指针，不是副本。** 副本必然漂移（**反模式 1**）；指针只写「本项目规则只有一份 → 请完整读取
+   `AGENTS.md`」，再附该工具支持的导入语法（Claude Code 认 `@path`）。**加规则只改 `AGENTS.md`。**
+   新工具接入时按第 3 步**放探针确认它真读到** —— 否则那条规则对该工具**等于不存在**
+   （2026-10-06 实例：语言纪律原先只写在 DSH 的全局指令 `~/.dsh/AGENTS.md` 里，**其它工具读不到**）。
+   > 指针文件（如 `CLAUDE.md`）**不加 frontmatter、不进 `meta` 守卫的 `files` 集合** —— 它是**入口**，
+   > 越短越好，内容全在 `AGENTS.md`。
 
 ## 六、准入与布局
 
