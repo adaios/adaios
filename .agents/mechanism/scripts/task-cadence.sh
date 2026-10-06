@@ -22,7 +22,7 @@
 #   bash .agents/mechanism/scripts/task-cadence.sh mark <key> [日] # 手工补记游标（inspection|ship|weekly|release）
 #
 # 边界：**不自动部署、不自动 push**——发布只做判定，执行须用户点头（AGENTS.md 规则 11）。
-# 触发协议（用户说的话 → 跑什么）见 .agents/rules/process/task-cadence.md 与 AGENTS.md 规则 8–11。
+# 触发协议（用户说的话 → 跑什么）见 .agents/rules/process/cadence.md 与 AGENTS.md 规则 8–11。
 # ─────────────────────────────────────────────────────────────
 set -uo pipefail
 

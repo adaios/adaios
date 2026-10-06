@@ -49,7 +49,7 @@ tags: [meta, index]
 | `guides/git-workflow.md` | 分支怎么开、怎么合、怎么推、怎么发——为「单人但并行（同日多会话 + worktree）」这一形态定规矩。与 w… | active |
 | `guides/qoder-parallel-workflow.md` | 把「一条分支 = 一次只能干一件事」改成「多条任务线并行、人只在卡住处出场」的实操手册——Qoder CN CL… | active |
 | `guides/routine.md` | AdaiOS 的周期性人肉工作总清单——哪些系统已自动（只需看）、哪些必须你亲自做（生产日报/盘后导入/备份/审… | active |
-| `guides/skills-usage.md` | 人看的技能使用说明——AdaiOS 技能体系是什么、11 个技能各何时用、怎么触发、怎么维护 | active |
+| `guides/skills-usage.md` | 人看的技能使用说明——AdaiOS 能力体系是什么、4 个技能包 + 16 个角色各何时用、怎么触发、怎么维护 | active |
 | `guides/worktree-workflow.md` | 在本项目用 git worktree 开并行线时的全部额外动作——worktree 是「空壳」（data/.en… | active |
 | `method/README.md` | 方法论放回仓库——AI 工程切入点图谱：流程机制替人记得（流程约定 > 内容编写）；新项目 = 搭一条流水线 | active |
 | `method/pipeline-sequence.mmd` | — | active |

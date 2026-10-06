@@ -506,7 +506,7 @@ check_expiry "iOS 描述文件 / 付费账号" "2027-09-13" "到期当天 App �
 check_expiry "域名 adaiadai.com" "2027-01-30" "DNSPod 续费"
 echo
 
-# ── 游标记账（2026-09-26「默契」机制，见 process/task-cadence.md）──────────────────
+# ── 游标记账（2026-09-26「默契」机制，见 process/cadence.md）──────────────────
 # 无论谁跑（人直接跑，或 task-cadence.sh daily 调度）都记下「已巡检到哪天」，
 # 于是下次「每日巡检」能自动接着走，而不是永远重复同一个窗口。
 #   · 只前进不后退（cadence_advance_day），补看历史不会把游标拖回去
