@@ -30,6 +30,7 @@ import com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository;
 import com.adaiadai.core.application.TradeLogCollectService;
 import com.adaiadai.core.application.TradingScreenshotAppService;
 import com.adaiadai.core.application.KlineService;
+import com.adaiadai.core.application.TradingKlineAppService;
 import com.adaiadai.core.application.TradingSessionPushService;
 import jakarta.validation.Constraint;
 import jakarta.validation.ConstraintValidator;
@@ -93,6 +94,8 @@ public class TradingController {
     private final TradingSessionPushService sessionPushService;
     /** RFC 20260923 D 批：行情（K 线）链路可用性——让「整段拿不到行情」在用户侧可见。 */
     private final KlineService klineService;
+    /** R-04（2026-10-07）：通用 K 线 —— 一张图四处共用（持仓 / 自选 / 清仓 / 案例）。 */
+    private final TradingKlineAppService tradingKlineAppService;
 
     public TradingController(TradingAppService tradingAppService,
                              TradingReviewAppService reviewAppService,
@@ -113,6 +116,7 @@ public class TradingController {
                              TradePsychologyService psychologyService,
                              TradingSessionPushService sessionPushService,
                              KlineService klineService,
+                             TradingKlineAppService tradingKlineAppService,
                              FileStorage fileStorage) {
         this.tradingAppService = tradingAppService;
         this.reviewAppService = reviewAppService;
@@ -133,7 +137,30 @@ public class TradingController {
         this.psychologyService = psychologyService;
         this.sessionPushService = sessionPushService;
         this.klineService = klineService;
+        this.tradingKlineAppService = tradingKlineAppService;
         this.fileStorage = fileStorage;
+    }
+
+    /**
+     * R-04 通用 K 线（2026-10-07）。
+     *
+     * <p>一张图，四处共用：持仓 / 自选 / 清仓 / 案例 —— 返回蜡烛 + **我的买卖点（B/T/S）**
+     * + **你定的止损线** + **峰值浮盈线** + 上下文（现在还拿着吗 / 什么时候清的）。
+     * 副图（成交量 / MACD / KDJ）与生产案例图同口径，**前端从 OHLCV 重算**。
+     *
+     * <p>诚实口径：行情取不到 → 200 + 空 candles + 一句人话 note（不沿用旧价凑图）。
+     *
+     * @param symbol 6 位代码
+     * @param window 交易日根数（30~400，默认 90）
+     */
+    @GetMapping("/kline")
+    public ResponseEntity<?> kline(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestParam("symbol") String symbol,
+            @RequestParam(value = "window", required = false) Integer window) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(tradingKlineAppService.kline(userId, symbol, window));
     }
 
     /**

@@ -3,9 +3,9 @@ title: AdaiOS AI 协作入口
 description: 任何 AI 工具打开本项目的统一入口——项目定位、协作规则、审查体系导航（工具无关）
 version: 1
 created: 2026-08-15
-updated: 2026-10-06
+updated: 2026-10-07
 status: active
-lines: 91
+lines: 92
 depends-on:
   - .agents/README.md
 related:
@@ -53,7 +53,8 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 | **审核驱动主链** | `.agents/rules/process/review-driven.md` | **需求 → 设计 → 编码**：文档先行 + **双角色真对打**（编写者 / 审核者各为独立 subagent）多轮交叉；定了需求文稿后人只在 **4 个点**介入（需求定稿 · 设计取舍 · 验收 · 发布）；**≤3 轮不收敛强制升级给人**；在制品在 `.agents/workspace/` |
 | 全维度走查 | `.agents/rules/process/audit.md` | 8 客观官 + 1 对抗官独立并行全量走查 + 交叉印证 |
 | 增量深审 | `.agents/rules/process/review.md` | 按改动派对应审查官 |
-| 收尾闭环 | `.agents/rules/process/ship.md` | /ship：测试→契约→登记→ai-guard-meta 门禁→提交 |
+| 收尾闭环 | `.agents/rules/process/ship.md` | /ship：测试→契约→登记→ai-guard-meta/scope 门禁→提交 |
+| **交付完备性守卫** | `.agents/mechanism/guards/ai-guard-scope.sh` | 收工前必跑（ship 自动）：scope 对照表自检——设计 §6 条目全覆盖 · 本批交付态闭合 ·「已交付」证据可 grep · 未交付去向可查；无表任务 PASS(0) 不误伤存量。模板 `_templates/scope.md`（**无表不开工**）· P1-交易101 机制（2026-10-06）|
 | **审查角色（16 个）** | `.agents/toolkit/roles/` | **分三类**（全景与关系见 `process/review-driven.md` **§0**）：**产作者 1**（`docs-design-writer`）· **审核者 14**（需求评审 `docs-requirement-reviewer` ＋ 域客观官 8：`docs-product` / `code-backend` / `code-frontend` / `ux-interaction` / `ux-visual` / `docs-contract` / `data-knowledge` / `ai-context` ＋ 对抗官 `ai-adversarial-reviewer`〔deep 默认附加〕＋ 外部视角 3 ＋ **体系体检 1**）· **流程官 1**（`process-reviewer`，管过程不管产物）。**角色为扁平 `<name>.md`**（subagent 真相源，五段结构写在文件内；刻意不目录化），只有技能用官方目录布局 `<name>/SKILL.md`|
 | **外部视角审查** | `.agents/toolkit/roles/`（`ux-stranger-reviewer` / `ux-social-reviewer` / `ux-support-reviewer`）| **面向身边人 / 新用户前必跑**：**陌生人官**（首次使用，**禁读源码**）+ **社会性官**（递出去那一刻）+ **支持台官**（他一定会问的问题）——补内部 8 官「读代码 → 结构上永远知道按钮在哪」的盲区 |
 | 建设技能 | `.agents/toolkit/skills/<name>/SKILL.md` | code-api-writer / code-domain-writer / task-ship / data-learn-writer 四技能：建设与收尾流程封装为 SKILL.md，加载即执行（官方目录布局；工具侧靠 `.agents/mechanism/scripts/ai-link-skills.sh` 软链出口） |

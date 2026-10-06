@@ -3,9 +3,9 @@ title: feat/trading-plugin · 分支账本
 description: ② 交易线的分支账本——本批目标 + 并行作业纪律 + 待交接；一个分支一个目录（feat/trading-plugin → trading-plugin/）；合并时搬运完即删整目录
 version: 1
 created: 2026-10-05
-updated: 2026-10-06
+updated: 2026-10-07
 status: active
-lines: 75
+lines: 82
 depends-on: []
 related: [../../records/REVIEW.md, ../../rules/guides/git-workflow.md, ../../rules/guides/worktree-workflow.md]
 tags: [workspace, task, trading, ledger]
@@ -61,6 +61,13 @@ tags: [workspace, task, trading, ledger]
   ① **誊写 `REVIEW.md`**：14 条**预分配**编号（P1-交易89~94 · P2-交易95~100 · P2-admin1 · P2-工程16，誊写时核对主仓库占用）→ P1 段注记 + 下方大表 14 行 + 「最近审核」表一行 + `unfixed-gate` 一行（注明「已修出表」）；
   ② **报告归档** → `docs/records/audits/` 下（文件名 `2026-10-06-trading-plugin-code-review.md`）；
   ③ **收工契约账**（align FAIL，ship 前必补）：api-spec 补 11 新端点 + 升版 · status.md 测试数 2462→**2597**、端点数 173→186。
+
+## 本任务遗留记录（随分支归档）
+
+- 🟥 **活跃市值「改为 admin 导入」——已定方向、未落地（2026-10-07 核出并登记）**
+  方向（2026-10-05 红线）：行情导入 + 活跃市值导入**都归 admin**、不涉及用户（`blueprint.md` L100）；设计 §5/§6 均声明 admin 侧「公共数据导入」。
+  现状：仍是**用户手判**（web/app 红绿切换条 → `PUT /trading/market-stage`）；后端无 admin 活跃市值导入端点、admin 前端无对应界面（行情包导入已有：维护页签 → `POST /admin/market/tdx-import`）。
+  闭环：`scope-frontend-20261006.md` 条目表已如实拆分（行情包 = 已交付 / 活跃市值 = 未交付），其去向即本条。
 
 ## 运行环境（本 worktree 特有）
 

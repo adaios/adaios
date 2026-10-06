@@ -3,9 +3,9 @@ title: AdaiOS API 文档（接口契约）
 description: 📋 **API 接口契约（唯一真相源）**——全部端点定义与请求/响应结构；`ai-guard-align` A1 与源码 `@Mapping` 逐一对拍
 version: 1
 created: 2026-08-15
-updated: 2026-10-06
+updated: 2026-10-07
 status: active
-lines: 3374
+lines: 3397
 depends-on: []
 related: []
 tags: [fact, reference]
@@ -946,6 +946,29 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 **Response（200）**：`{"written": 2}`（本次真正写入的条数；请求体为空，用户取自 `X-User-Id`）
 
 ### `GET /api/v1/trading/market-data/health` — 行情（K 线）链路可用性（v3.84，RFC 20260923 D 批，2026-09-23；v3.93 增 `tdxLastDate`，RFC 20260928 批 2；2026-10-04 REVIEW P2-交易58 收口增 `fallbackHealthy`/`fallbackLastProbeAt`）
+
+### `GET /api/v1/trading/kline` — 通用 K 线（R-04，2026-10-07）
+
+**一张图，四处共用**：持仓 / 自选 / 清仓 / 案例 —— 同一份数据，只有标记不同。**为什么需要**：生产上线的 K 线只有案例专图（`case_kline_chart.dart`），持仓/自选/清仓都只有表格，而需求 `R-04` 要的「K 线 + 指标 + **我的买卖点** + 止损线 / 峰值浮盈线」一直缺着（`scope-frontend` 记 R-04 批 3）。
+
+**参数**：`symbol`（6 位代码，必填）· `window`（交易日根数，30~400，默认 90）。
+
+**响应**：
+```json
+{"symbol":"603993","window":90,
+ "candles":[{"date":"2026-08-17","open":15.0,"high":15.4,"low":14.9,"close":15.3,"volume":1200}],
+ "marks":[{"date":"2026-08-17","type":"B","price":15.3,"quantity":1000,"tradeId":"...","note":"买入"}],
+ "stopLine":{"price":14.8,"from":"2026-08-17","note":"你定的止损"},
+ "peakLine":{"price":17.7,"peakPrice":18.63,"peakDate":"2026-08-11","basis":"-5% 浮盈回吐（当前口径）","note":"峰值浮盈线"},
+ "context":{"held":false,"tradeCount":4,"closedAt":"2026-08-19","holdDays":25,"holdPnlPct":9.6,"verdict":"守纪律"}}
+```
+- `marks`：**我的买卖点** —— `B` 建仓 / `T` 加仓 / `S` 卖出（按成交先后推导：手上没有货的那一笔是 B，加的是 T）；窗口内没有成交就不给，**不硬编**。
+- `stopLine`：取**最近一次买入时定的止损**（`TradeRecord.stopLossPrice`）；**从没定过 → `null`**（不凭空给一条线）。
+- `peakLine`：持有期内最高收盘 × (1 − 回吐阈值)，**只在见顶之后才存在** → 没有持有期就 `null`。当前回吐取固定 **5%**，`basis` 字段如实说明用的是哪一档（`rules.yaml` 的 `givebackPeakPct` 接入后改读用户设置）。
+- `context`：现在还拿着吗（`held`）· 清了的带出清仓日与这笔盈亏（来自 `SoldTradeRepository`）。
+- **副图（成交量 / MACD(12,26,9) / KDJ(9,3,3)）不在这里返回** —— 与生产案例图同口径，**前端从 OHLCV 重算**（口径对齐后端 `KdjIndicator`/`MacdIndicator`）。
+- **诚实口径**：行情取不到 → **200 + `candles: []` + 一句人话 `note`**（不沿用旧价凑图）；代码不是 6 位 → `note` 说明。需 trading 插件（403）。
+
 
 把「K 线链路整段拿不到数据」从日志搬到用户面前。**为什么需要**：2026-09-22 深夜生产实测三条来源同时失效（腾讯 K 线域名被 WAF 拦 501 · 东财长期被限 · tdx 数据包滞后），资金曲线/周期盈亏/买点扫描/案例库整段退化，而后端只在日志里知道——用户侧看到的是曲线平了、信号没了，**没有任何提示**（与 P1-交易60 同族：「不知道」没有被渲染成「不知道」）。
 

@@ -738,6 +738,10 @@ class _TradingPageState extends State<TradingPage> {
           // 2026-08-23 用户确认：页头「批量导入」入口移除——清仓/资金/自选/历史成交各 Tab
           // 已有专属导入按钮（导入清仓/导入资金/导入自选/导入历史成交），持仓导入在持仓 Tab 内，
           // 避免用户把清仓/资金文本误塞进批量导入对话框（被交易 CSV 解析器校验「买点」拦截）
+          // 2026-10-06 用户裁决（R-12 落地口径）：「移除页头批量导入，归于 tab 专属」——页头不设导入入口。
+          // 统一识别（一次多选、逐份识别、先看计划）并入各 Tab 专属导入对话框的
+          // 「选择文件（可多选，通达信导出）」多选路径：选 ≥2 份 → `_openBundleImport` 批量对话框；
+          // 选 1 份 → 原文本框路径（可预览/编辑/基准日）。08-23 的「误塞被拦截」由逐份识别 + fail-closed 接管。
           // RFC 20260817：推送设置入口（早盘/午间/尾盘/买点/预警/行情条开关）
           IconButton(
             onPressed: _showPushSettings,
@@ -1096,6 +1100,8 @@ class _TradingPageState extends State<TradingPage> {
   Widget _buildPositionTable() {
     // 2026-08-23：持仓 Tab 内导入入口（通达信持仓导出，全量覆盖）——页头「批量导入」已移除，
     // 持仓导入不再与清仓/资金/交易 CSV 混在一个对话框（此前清仓/资金文本被交易 CSV 校验「买点」拦截）
+    // 2026-10-06（R-12 落定 · 入口归各 Tab）：本入口「选择文件（可多选，通达信导出）」选 ≥2 份时
+    // 转统一批量对话框（逐份识别 + 先看计划）；选 1 份仍走原文本框路径。
     final header = Row(children: [
       Text('持仓 ${_positions.length} 只', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
       const SizedBox(width: 8),
@@ -1214,6 +1220,16 @@ class _TradingPageState extends State<TradingPage> {
               DataCell(Text(p.role ?? '—', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3))),
               // RFC 20260825：批次明细入口（一买一批跟踪）+ 编辑
               DataCell(Row(mainAxisSize: MainAxisSize.min, children: [
+                // R-04（2026-10-07）：一行一个「图」入口 —— 四个地方调出来的是同一张图
+                TextButton(
+                  onPressed: () => _openKline(p.symbol, p.name),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text('图', style: TextStyle(fontSize: 12, color: AppColors.darkOrange)),
+                ),
                 TextButton(
                   onPressed: () => _showLots(p),
                   style: TextButton.styleFrom(
@@ -1862,7 +1878,7 @@ class _TradingPageState extends State<TradingPage> {
 
   Widget _buildTabWorkspace() {
     return DefaultTabController(
-      length: 8,
+      length: 9,
       child: _TabHistoryRefreshListener(
         onHistorySelected: () => _historyKey.currentState?.refreshSilently(),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1885,6 +1901,7 @@ class _TradingPageState extends State<TradingPage> {
                 Tab(text: '清仓'),
                 Tab(text: '资金'),
                 Tab(text: '历史成交'),
+                Tab(text: '分析'),
                 Tab(text: '规则'),
                 Tab(text: '案例'),
                 Tab(text: '计划'),
@@ -1905,6 +1922,8 @@ class _TradingPageState extends State<TradingPage> {
                 onImportSnapshot: _openPositionsImport,
                 onImported: () => unawaited(_loadIntegrity()),
               ),
+              // 2026-10-06（R-05）：三粒度「分析」——全局 / 单标的 / 单笔
+              SingleChildScrollView(child: _AnalysisSection(api: widget.api)),
               SingleChildScrollView(child: _buildRuleSection()),
               SingleChildScrollView(child: _buildCaseSection()),
               SingleChildScrollView(child: _buildPlanSection()),
@@ -2104,6 +2123,75 @@ class _TradingPageState extends State<TradingPage> {
     );
   }
 
+  /// R-04（2026-10-07）：通用 K 线 —— **一张图四处共用**（持仓 / 自选 / 清仓 / 案例）。
+  /// 后端一次给齐「蜡烛 + 我的买卖点 + 你定的止损线 + 峰值浮盈线 + 上下文」；
+  /// 副图（成交量 / MACD / KDJ）由 CaseKlineChart 从 OHLCV 重算 —— 与生产案例图同口径。
+  /// 行情取不到时**只说取不到**，不画空图、不沿用旧价（承接需求「缺数据不编」）。
+  Future<void> _openKline(String symbol, String name) async {
+    TradingKlineDto? data;
+    String? error;
+    try {
+      data = await widget.api.fetchTradingKline(symbol);
+    } catch (e) {
+      error = extractApiErrorMessage(e);
+    }
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.darkSurface,
+        title: Text('$name $symbol · K 线',
+            style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+        content: SizedBox(
+          width: 760,
+          child: data == null
+              ? Text(error ?? '取不到这只票的行情',
+                  style: const TextStyle(fontSize: 12, color: AppColors.darkGrey4))
+              : (!data.hasData
+                  ? Text(data.note ?? '暂时取不到这只票的行情',
+                      style: const TextStyle(fontSize: 12, color: AppColors.darkGrey4))
+                  : Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          height: 430,
+                          child: CaseKlineChart(
+                            kline: data.candles,
+                            marks: data.marks,
+                            stopLine: data.stopLine,
+                            peakLine: data.peakLine,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(_klineSummary(data),
+                            style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+                      ],
+                    )),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关掉')),
+        ],
+      ),
+    );
+  }
+
+  /// 图下一句话交代：几个买卖点 / 你的那条线 / 现在还拿着吗、什么时候清的。
+  String _klineSummary(TradingKlineDto d) {
+    final parts = <String>['我的买卖点 ${d.marks.length} 个'];
+    if (d.stopLine != null) parts.add('你定的止损 ${d.stopLine!.toStringAsFixed(2)}');
+    if (d.peakLine != null) parts.add('峰值浮盈线 ${d.peakLine!.toStringAsFixed(2)}');
+    if (d.held) {
+      parts.add('现在还拿着');
+    } else if (d.closedAt != null) {
+      parts.add('${d.closedAt} 清的');
+      if (d.holdPnlPct != null) {
+        parts.add('这笔 ${d.holdPnlPct! >= 0 ? '+' : ''}${d.holdPnlPct!.toStringAsFixed(2)}%');
+      }
+    }
+    return parts.join(' · ');
+  }
+
   Widget _buildSoldSection() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
@@ -2164,6 +2252,7 @@ class _TradingPageState extends State<TradingPage> {
               DataColumn(label: Text('持仓期涨幅')), DataColumn(label: Text('规则对照')),
               DataColumn(label: Text('买点分')), DataColumn(label: Text('执行分')), DataColumn(label: Text('总分')),
               DataColumn(label: Text('心理标注')),
+              DataColumn(label: Text('图')),
             ],
             rows: _sold.asMap().entries.map((e) {
               // D3 三维打分：按列表顺序索引匹配（P1-交易8 修复，2026-08-17）
@@ -2212,6 +2301,15 @@ class _TradingPageState extends State<TradingPage> {
                   child: Text(s.psychology.isEmpty ? '＋ 标注心理' : s.psychology,
                       style: TextStyle(fontSize: 12,
                           color: s.psychology.isEmpty ? AppColors.darkGrey5 : AppColors.darkOrange)),
+                )),
+                DataCell(TextButton(
+                  onPressed: () => _openKline(s.symbol, s.name),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text('图', style: TextStyle(fontSize: 12, color: AppColors.darkOrange)),
                 )),
               ]);
             }).toList(),
@@ -3984,10 +4082,21 @@ class _TradingPageState extends State<TradingPage> {
               Row(children: [
                 OutlinedButton.icon(
                   onPressed: () async {
-                    final result = await FilePicker.platform.pickFiles(type: FileType.any, withData: true);
+                    // 2026-10-06（R-12 · 入口归各 Tab）：文件选择升级为可多选——选 ≥2 份转统一批量
+                    // 路径（逐份识别 + 先看计划）；选 1 份仍走本对话框（文本框预览/编辑 + 基准日的精确入口）。
+                    final result = await FilePicker.platform.pickFiles(
+                        type: FileType.any, allowMultiple: true, withData: true);
                     if (result == null || result.files.isEmpty) return;
-                    final f = result.files.first;
-                    if (f.bytes == null) return;
+                    final picked = [for (final f in result.files) if (f.bytes != null) f];
+                    if (picked.length >= 2) {
+                      if (!ctx.mounted) return;
+                      Navigator.pop(ctx);
+                      await _openBundleImport(
+                          [for (final f in picked) BundleUploadFile(f.name, f.bytes!)]);
+                      return;
+                    }
+                    if (picked.isEmpty) return;
+                    final f = picked.first;
                     final saved = await widget.api.saveImportFile(f.name, f.bytes!);
                     if (!ctx.mounted) return;
                     setDlg(() {
@@ -4001,7 +4110,7 @@ class _TradingPageState extends State<TradingPage> {
                     });
                   },
                   icon: const Icon(Icons.upload_file, size: 14),
-                  label: const Text('选择文件（通达信导出）', style: TextStyle(fontSize: 12)),
+                  label: const Text('选择文件（可多选，通达信导出）', style: TextStyle(fontSize: 12)),
                   style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.darkGrey1,
                       side: const BorderSide(color: AppColors.darkGrey4)),
@@ -4088,6 +4197,17 @@ class _TradingPageState extends State<TradingPage> {
           ],
         ),
       ),
+    );
+  }
+
+  /// 2026-10-06（R-12 · 入口归各 Tab）：统一批量导入对话框——由各 Tab 专属导入对话框的
+  /// 「选择文件（可多选，通达信导出）」多选（≥2 份）路径转入（见 `_openImportDialog`）。
+  /// 对话框内「先看计划（dryRun）」→ 确认 → 导入；成功后刷新本页数据。
+  Future<void> _openBundleImport(List<BundleUploadFile> files) {
+    return showDialog<void>(
+      context: context,
+      builder: (_) =>
+          _BundleImportDialog(api: widget.api, onImported: _loadAll, initialFiles: files),
     );
   }
 }
@@ -5721,6 +5841,387 @@ class _HistorySectionState extends State<_HistorySection>
   }
 }
 
+// ─────────────────────────── 分析（R-05：三粒度 · 2026-10-06） ───────────────────────────
+
+/// 三粒度分析（全局 / 单标的 / 单笔）——只陈述、不评价、不建议：
+/// 描述块每个数字带 trace（哪几笔 / 哪几天）；对照块没规则就明说「判不了守没守」；
+/// 缺数据 value=null → 显示「—」（**绝不渲染成 0**）。总结三段：事实 / 对照 / 留给你的问题。
+class _AnalysisSection extends StatefulWidget {
+  final ApiService api;
+
+  const _AnalysisSection({required this.api});
+
+  @override
+  State<_AnalysisSection> createState() => _AnalysisSectionState();
+}
+
+class _AnalysisSectionState extends State<_AnalysisSection> {
+  String _scope = 'global';
+  final _symbolCtl = TextEditingController();
+  final _roundCtl = TextEditingController();
+  TradingAnalysisDto? _data;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load(); // 打开先看全局——零操作出内容
+  }
+
+  @override
+  void dispose() {
+    _symbolCtl.dispose();
+    _roundCtl.dispose();
+    super.dispose();
+  }
+
+  void _selectScope(String s) {
+    if (_scope == s) return;
+    setState(() {
+      _scope = s;
+      _error = null;
+      _data = null; // 换粒度旧结果不再挂着（避免看错对象）
+    });
+    if (s == 'global') _load(); // 全局无需输入，切换即出
+  }
+
+  /// 取分析：空输入不发请求（先把要什么说清，不猜、不拿后端 400 当提示）。
+  Future<void> _load() async {
+    final symbol = _symbolCtl.text.trim();
+    final roundId = _roundCtl.text.trim();
+    if (_scope == 'symbol' && symbol.isEmpty) {
+      setState(() => _error = '先填股票代码（如 600206），我再看这只票做了几笔');
+      return;
+    }
+    if (_scope == 'round' && roundId.isEmpty) {
+      setState(() => _error = '先填那一笔的编号（如 600206_2026-08-05，历史成交里能看到）');
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final d = await widget.api.fetchTradingAnalysis(_scope,
+          symbol: _scope == 'symbol' ? symbol : null,
+          roundId: _scope == 'round' ? roundId : null);
+      if (!mounted) return;
+      setState(() {
+        _data = d;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = extractApiErrorMessage(e);
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      // 粒度选择 + 目标输入 + 按钮（窄窗自动换行）
+      Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 8, runSpacing: 6, children: [
+        _scopeChip('global', '全局'),
+        _scopeChip('symbol', '单标的'),
+        _scopeChip('round', '单笔'),
+        if (_scope == 'symbol')
+          SizedBox(
+            width: 130,
+            child: TextField(
+              key: const Key('analysisSymbol'),
+              controller: _symbolCtl,
+              style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1),
+              decoration: const InputDecoration(
+                isDense: true,
+                hintText: '600206',
+                hintStyle: TextStyle(fontSize: 11, color: AppColors.darkGrey5),
+              ),
+              onSubmitted: (_) => _load(),
+            ),
+          ),
+        if (_scope == 'round')
+          SizedBox(
+            width: 200,
+            child: TextField(
+              key: const Key('analysisRound'),
+              controller: _roundCtl,
+              style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1),
+              decoration: const InputDecoration(
+                isDense: true,
+                hintText: '600206_2026-08-05',
+                hintStyle: TextStyle(fontSize: 11, color: AppColors.darkGrey5),
+              ),
+              onSubmitted: (_) => _load(),
+            ),
+          ),
+        OutlinedButton(
+          onPressed: _loading ? null : _load,
+          style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.darkGrey1,
+              side: const BorderSide(color: AppColors.darkGrey4),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4)),
+          child: const Text('看分析', style: TextStyle(fontSize: 12)),
+        ),
+      ]),
+      const SizedBox(height: 4),
+      const Text('每个数字都能回到它来自哪几笔 / 哪几天；没数据就如实说「—」，不替你编一个 0',
+          style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+      const SizedBox(height: 10),
+      if (_loading)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 24),
+          child: Center(
+            child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen)),
+          ),
+        )
+      else if (_error != null)
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: AppColors.darkOrange.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppColors.darkOrange.withValues(alpha: 0.6)),
+          ),
+          child: Text(_error!, style: const TextStyle(fontSize: 12, color: AppColors.darkOrange, height: 1.4)),
+        )
+      else if (_data != null) ...[
+        Text(_data!.label,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+        const SizedBox(height: 8),
+        if (_data!.description.isNotEmpty) _descriptionCard(_data!),
+        if (_hasContrast(_data!)) ...[
+          const SizedBox(height: 8),
+          _contrastCard(_data!),
+        ],
+        if (_hasSummary(_data!)) ...[
+          const SizedBox(height: 8),
+          _summaryCard(_data!),
+        ],
+      ] else
+        const Text('点「看分析」——先看全局，或挑一只票 / 一笔看细节',
+            style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+    ]);
+  }
+
+  Widget _scopeChip(String value, String label) {
+    final selected = _scope == value;
+    return InkWell(
+      onTap: () => _selectScope(value),
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.darkGreen.withValues(alpha: 0.16) : Colors.transparent,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: selected ? AppColors.darkGreen : AppColors.darkGrey4),
+        ),
+        child: Text(label,
+            style: TextStyle(
+                fontSize: 12,
+                color: selected ? AppColors.darkGreen : AppColors.darkGrey4,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w400)),
+      ),
+    );
+  }
+
+  bool _hasContrast(TradingAnalysisDto d) =>
+      d.contrast.hasRules || (d.contrast.reason != null && d.contrast.reason!.isNotEmpty);
+
+  bool _hasSummary(TradingAnalysisDto d) {
+    final s = d.summary;
+    return (s.fact != null && s.fact!.isNotEmpty) ||
+        (s.contrast != null && s.contrast!.isNotEmpty) ||
+        (s.question != null && s.question!.isNotEmpty);
+  }
+
+  Widget _card({required Widget child}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
+      ),
+      child: child,
+    );
+  }
+
+  /// 描述块：每行 label + value（+unit）；值下方淡色 trace（哪几笔 / 哪几天 / 说明）。
+  Widget _descriptionCard(TradingAnalysisDto d) {
+    return _card(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        for (final f in d.description) _factRow(f),
+      ]),
+    );
+  }
+
+  Widget _factRow(AnalysisFactDto f) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SizedBox(
+              width: 150,
+              child: Text(f.label, style: const TextStyle(fontSize: 12, color: AppColors.darkGrey3))),
+          Expanded(child: _factValue(f)),
+        ]),
+        if (!f.trace.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(left: 150, top: 2),
+            child: Text(_traceText(f.trace),
+                style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5, height: 1.35)),
+          ),
+      ]),
+    );
+  }
+
+  Widget _factValue(AnalysisFactDto f) {
+    final v = f.value;
+    // 缺数据：只显示「—」（设计红线：不如实为 0；说明文字在 trace.note 里如实给出）
+    if (v == null) {
+      return const Text('—', style: TextStyle(fontSize: 12, color: AppColors.darkGrey5));
+    }
+    if (v is num) {
+      return Text('${_numText(v)}${f.unit ?? ''}',
+          style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1));
+    }
+    if (v is String) {
+      return Text('$v${f.unit ?? ''}', style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1));
+    }
+    if (v is List) {
+      if (v.isEmpty) return const Text('—', style: TextStyle(fontSize: 12, color: AppColors.darkGrey5));
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        for (final item in v)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Text(_listItemText(item),
+                style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1, height: 1.35)),
+          ),
+      ]);
+    }
+    return Text(v.toString(), style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1));
+  }
+
+  /// 列表项人话化：RoundBrief（一笔）/ Bucket / PeriodBucket / SizeBucket（分桶）。
+  String _listItemText(dynamic item) {
+    if (item is Map) {
+      final m = Map<String, dynamic>.from(item);
+      // RoundBrief：id 里已是「代码_起始日」，再补区间 / 盈亏 / 天数 / 未了结
+      if (m.containsKey('id')) {
+        final buf = StringBuffer('${m['id']}'.replaceFirst('_', ' '));
+        if (m['end'] != null) buf.write(' 至 ${m['end']}');
+        if (m['pnlPct'] is num) buf.write(' · ${_numText(m['pnlPct'])}%');
+        if (m['pnl'] is num) buf.write(' · ¥${_fmtThousands((m['pnl'] as num).toDouble())}');
+        if (m['holdDays'] is num) buf.write(' · 持 ${m['holdDays']} 天');
+        if (m['unresolved'] == true) buf.write(' · 未了结');
+        return buf.toString();
+      }
+      if (m.containsKey('period')) {
+        final pnl = m['pnl'];
+        return '${m['period']}：${m['count'] ?? 0} 笔'
+            '${pnl is num && pnl != 0 ? ' · ¥${_fmtThousands(pnl.toDouble())}' : ''}';
+      }
+      if (m.containsKey('avgPnlPct')) {
+        return '${m['label'] ?? ''}：${m['count'] ?? 0} 笔 · 均 ${_numText(m['avgPnlPct'])}%';
+      }
+      if (m.containsKey('label') && m.containsKey('count')) {
+        return '${m['label']}：${m['count']} 笔';
+      }
+      return m.values.map((e) => e?.toString() ?? '').where((s) => s.isNotEmpty).join(' · ');
+    }
+    return item.toString();
+  }
+
+  String _traceText(AnalysisTraceDto t) {
+    final parts = <String>[];
+    if (t.roundIds.isNotEmpty) {
+      final head = t.roundIds.take(3).join('、');
+      parts.add('来自 ${t.roundIds.length > 3 ? '$head 等 ${t.roundIds.length} 笔' : head}');
+    }
+    if (t.dates.isNotEmpty) {
+      final head = t.dates.take(3).join('、');
+      parts.add(t.dates.length > 3 ? '$head 等 ${t.dates.length} 天' : head);
+    }
+    if (t.note != null && t.note!.isNotEmpty) parts.add(t.note!);
+    return parts.join(' · ');
+  }
+
+  Widget _contrastCard(TradingAnalysisDto d) {
+    final c = d.contrast;
+    return _card(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // 有话直说：hasRules=false 后端会给「判不了守没守」的 reason（fallback 兜底）
+        Text(c.reason ?? (c.hasRules ? '对照你的规则' : '我还没有你的规则，判不了守没守'),
+            style: const TextStyle(fontSize: 12, color: AppColors.darkGrey3, height: 1.4)),
+        if (c.hasRules) ...[
+          const SizedBox(height: 4),
+          for (final h in c.ruleHits)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${h.rule} · 命中 ${h.count} 笔',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkOrange)),
+                if (h.text.isNotEmpty)
+                  Text(h.text, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey3, height: 1.35)),
+                if (h.roundIds.isNotEmpty)
+                  Text(
+                      '哪几笔：${h.roundIds.take(3).join('、')}'
+                      '${h.roundIds.length > 3 ? ' 等 ${h.roundIds.length} 笔' : ''}',
+                      style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+              ]),
+            ),
+          if (c.ruleHits.isEmpty)
+            const Text('这几笔没有命中你的规则', style: TextStyle(fontSize: 12, color: AppColors.darkGrey2)),
+        ],
+      ]),
+    );
+  }
+
+  Widget _summaryCard(TradingAnalysisDto d) {
+    final s = d.summary;
+    return _card(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (s.fact != null && s.fact!.isNotEmpty)
+          _summaryLine(s.fact!, Icons.description_outlined, AppColors.darkGrey4),
+        if (s.contrast != null && s.contrast!.isNotEmpty)
+          _summaryLine(s.contrast!, Icons.compare_arrows, AppColors.darkOrange),
+        if (s.question != null && s.question!.isNotEmpty)
+          _summaryLine(s.question!, Icons.help_outline, AppColors.darkBlue),
+      ]),
+    );
+  }
+
+  Widget _summaryLine(String text, IconData icon, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(icon, size: 13, color: color),
+        const SizedBox(width: 6),
+        Expanded(
+            child: Text(text, style: const TextStyle(fontSize: 12, color: AppColors.darkGrey2, height: 1.4))),
+      ]),
+    );
+  }
+
+  /// 数字人话化：整数不带小数点，非整数去尾零（12.00→12，12.50→12.5）。
+  static String _numText(dynamic v) {
+    if (v is num) {
+      if (v % 1 == 0) return v.toInt().toString();
+      return v.toStringAsFixed(2).replaceFirst(RegExp(r'\.?0+$'), '');
+    }
+    return v?.toString() ?? '—';
+  }
+}
+
 // ─────────────────────────── 历史成交导入结果补充（RFC 20260825：syncMode + 每日操作总结） ───────────────────────────
 
 /// 导入结果补充展示（Dialog 内与历史成交 Tab inline 共用）：
@@ -6448,6 +6949,327 @@ class _HistoryImportDialogState extends State<_HistoryImportDialog> {
     );
   }
 }
+// ─────────────── 统一批量导入 Dialog（R-12 · 2026-10-06 起由各 Tab 导入对话框转入） ───────────────
+
+/// 统一批量导入（`R-12`「一次把导出的文件交给它就行」）：一次多选通达信导出文件
+/// （历史成交 / 资金股份 / 持仓股 / 清仓股 / 自选股），交给后端逐份识别。
+/// **入口归各 Tab 专属导入对话框**（2026-10-06 用户裁决）——多选 ≥2 份转入本框；
+/// 「先看计划」= 预检（dryRun，只报会做什么、不动任何数据），确认后再「导入」。
+/// 契约：一份失败不影响其他份——逐份行如实展示成功/失败与人话原因。
+class _BundleImportDialog extends StatefulWidget {
+  final ApiService api;
+  final Future<void> Function()? onImported; // 正式导入成功后刷新页面数据
+  final List<BundleUploadFile> initialFiles; // 转入时已选好的文件（各 Tab 导入对话框多选路径）
+
+  const _BundleImportDialog({required this.api, this.onImported, this.initialFiles = const []});
+
+  @override
+  State<_BundleImportDialog> createState() => _BundleImportDialogState();
+}
+
+class _BundleImportDialogState extends State<_BundleImportDialog> {
+  final List<BundleUploadFile> _files = [];
+  bool _busy = false;
+  BundleImportReceipt? _receipt;
+  bool _imported = false; // 已正式导入（按钮停用，防重复提交）
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _files.addAll(widget.initialFiles);
+  }
+
+  Future<void> _pick() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.any,
+      allowMultiple: true,
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    setState(() {
+      _receipt = null;
+      _error = null;
+      _files.clear();
+      for (final f in result.files) {
+        // 空文件不带进（后端也会逐份拒，但在选择这一步先如实说清）
+        if (f.bytes == null || f.bytes!.isEmpty) continue;
+        _files.add(BundleUploadFile(f.name, f.bytes!));
+      }
+      if (_files.isEmpty) _error = '选的文件都是空的——重新导出后再试';
+    });
+  }
+
+  Future<void> _run(bool dryRun) async {
+    if (_files.isEmpty) {
+      setState(() => _error = '先选文件——点上面「选择文件」（可一次多选）');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+      _receipt = null;
+    });
+    try {
+      final r = await widget.api.importTradingBundle(List.of(_files), dryRun: dryRun);
+      if (!mounted) return;
+      setState(() {
+        _receipt = r;
+        _busy = false;
+        if (!dryRun && r.okCount > 0) _imported = true;
+      });
+      if (!dryRun && r.okCount > 0) await widget.onImported?.call();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = extractApiErrorMessage(e);
+        _busy = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: AppColors.darkSurface,
+      insetPadding: const EdgeInsets.all(24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 620, maxHeight: 540),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Icon(Icons.upload_file, size: 18, color: AppColors.darkGreen),
+              const SizedBox(width: 8),
+              const Text('导入交易数据',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: const Icon(Icons.close, size: 18, color: AppColors.darkGrey5),
+              ),
+            ]),
+            const SizedBox(height: 4),
+            const Text('把通达信导出的文件一次选进来（可多选）：历史成交 / 资金股份 / 持仓股 / 清仓股 / 自选股'
+                '——我逐份识别，先看计划再导入；哪份不行会单独说，不影响其他份',
+                style: TextStyle(fontSize: 11, color: AppColors.darkGrey5, height: 1.4)),
+            const SizedBox(height: 10),
+            Row(children: [
+              OutlinedButton.icon(
+                onPressed: _busy ? null : _pick,
+                icon: const Icon(Icons.folder_open, size: 14),
+                label: Text(_files.isEmpty ? '选择文件' : '重新选择', style: const TextStyle(fontSize: 12)),
+                style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.darkGrey1,
+                    side: const BorderSide(color: AppColors.darkGrey4),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
+              ),
+              const SizedBox(width: 8),
+              if (_files.isNotEmpty)
+                Text('已选 ${_files.length} 份', style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+            ]),
+            if (_files.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              _fileList(),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              _errorCard(),
+            ],
+            if (_receipt != null) ...[
+              const SizedBox(height: 10),
+              Flexible(child: _receiptView(_receipt!)),
+            ],
+            const SizedBox(height: 12),
+            Row(children: [
+              if (_imported)
+                const Text('已导入——可关闭（想再导一批就重新打开）',
+                    style: TextStyle(fontSize: 11, color: AppColors.darkGrey4))
+              else
+                TextButton(
+                  onPressed: _busy ? null : () => _run(true),
+                  child: Text(_busy ? '处理中…' : '先看计划（预检：只报会做什么，不动数据）',
+                      style: const TextStyle(fontSize: 12, color: AppColors.darkGrey3)),
+                ),
+              const Spacer(),
+              TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('关闭', style: TextStyle(fontSize: 13, color: AppColors.darkGrey4))),
+              const SizedBox(width: 6),
+              if (!_imported)
+                FilledButton(
+                  onPressed: _busy ? null : () => _run(false),
+                  style: FilledButton.styleFrom(backgroundColor: AppColors.darkGreen, foregroundColor: AppColors.darkBg),
+                  child: Text(_busy ? '处理中…' : '导入',
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                ),
+            ]),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _fileList() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface2.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        for (final f in _files)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Row(children: [
+              const Icon(Icons.insert_drive_file_outlined, size: 13, color: AppColors.darkGrey5),
+              const SizedBox(width: 6),
+              Expanded(
+                  child: Text(f.name,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12, color: AppColors.darkGrey2))),
+            ]),
+          ),
+      ]),
+    );
+  }
+
+  Widget _errorCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: AppColors.darkOrange.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.darkOrange.withValues(alpha: 0.6)),
+      ),
+      child: Text(_error!, style: const TextStyle(fontSize: 11, color: AppColors.darkOrange, height: 1.35)),
+    );
+  }
+
+  /// 回执区：汇总一行 + 逐份行（成功绿勾 / 失败橙叹号 + 人话摘要）。
+  Widget _receiptView(BundleImportReceipt r) {
+    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Icon(
+            r.failedCount == 0
+                ? (r.dryRun ? Icons.visibility_outlined : Icons.check_circle_outline)
+                : Icons.info_outline,
+            size: 14,
+            color: r.failedCount == 0 ? AppColors.darkGreen : AppColors.darkOrange),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            r.dryRun
+                ? '计划：${r.okCount} 份能处理${r.failedCount > 0 ? '，${r.failedCount} 份不行' : ''}（预检没动任何数据）'
+                : '导入完成：成功 ${r.okCount} 份${r.failedCount > 0 ? '，失败 ${r.failedCount} 份' : ''}',
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGrey1),
+          ),
+        ),
+      ]),
+      const SizedBox(height: 6),
+      Flexible(
+        child: SingleChildScrollView(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            for (final f in r.files) _fileResultRow(f),
+          ]),
+        ),
+      ),
+      if (!r.dryRun && r.okCount > 0)
+        const Padding(
+          padding: EdgeInsets.only(top: 6),
+          child: Text('数据已更新——去「分析」标签看三粒度结果，或关掉后看各 Tab',
+              style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+        ),
+    ]);
+  }
+
+  Widget _fileResultRow(BundleFileResultDto f) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(f.ok ? Icons.check_circle_outline : Icons.error_outline,
+            size: 14, color: f.ok ? AppColors.darkGreen : AppColors.darkOrange),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Flexible(
+                child: Text(f.filename,
+                    overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1)),
+              ),
+              const SizedBox(width: 6),
+              Text(f.kindLabel ?? '',
+                  style: TextStyle(fontSize: 11, color: f.ok ? AppColors.darkGrey5 : AppColors.darkOrange)),
+            ]),
+            Text(
+              f.ok ? _fileSummary(f) : (f.error ?? '这份没能处理（未做任何改动）'),
+              style: TextStyle(
+                  fontSize: 11, height: 1.35, color: f.ok ? AppColors.darkGrey3 : AppColors.darkOrange),
+            ),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  /// 单份摘要（按 kind + detail 常见键拼人话；认不出的不硬猜，显示「完成」）。
+  String _fileSummary(BundleFileResultDto f) {
+    final d = f.detail;
+    final parts = <String>[];
+    if (f.kind == 'cash') {
+      if (d['brokerCash'] != null) {
+        parts.add('对账：券商 ¥${_money(d['brokerCash'])} vs 系统 ¥${_money(d['systemCash'])}');
+        final diff = d['diff'];
+        if (diff is num && diff != 0) parts.add('差 ¥${_money(diff)}');
+      } else {
+        if (d['assets'] != null) parts.add('总资产 ¥${_money(d['assets'])}');
+        if (d['updatedCost'] != null) parts.add('更新成本 ${d['updatedCost']} 只');
+      }
+    } else if (f.kind == 'positions') {
+      if (d['fileCount'] != null) {
+        parts.add('对账：文件 ${d['fileCount']} 只 vs 系统 ${d['systemCount']} 只');
+        final diffs = d['diffs'];
+        if (diffs is List && diffs.isNotEmpty) parts.add('对不上的 ${diffs.length} 只');
+      } else {
+        parts.add('入账 ${d['imported'] ?? 0} 只');
+      }
+    } else if (f.kind == 'trades') {
+      final plan = d['plan'];
+      if (plan is Map) {
+        parts.add('新增 ${plan['new'] ?? 0} · 并入 ${plan['merged'] ?? 0} · 跳过 ${plan['skipped'] ?? 0}');
+        final wr = plan['wouldReject'];
+        if (wr is num && wr > 0) parts.add('无法归属 $wr 笔');
+      } else {
+        parts.add('导入 ${d['imported'] ?? 0} 笔');
+        final merged = d['updated'];
+        if (merged is num && merged != 0) parts.add('并入 $merged 笔');
+      }
+    } else if (f.kind == 'sold') {
+      parts.add(d['wouldImport'] != null ? '会导入 ${d['wouldImport']} 笔' : '导入 ${d['imported'] ?? 0} 笔');
+    } else if (f.kind == 'watchlist') {
+      parts.add(d['wouldImport'] != null ? '会导入 ${d['wouldImport']} 只' : '导入 ${d['imported'] ?? 0} 只');
+    }
+    final up = d['unparsedCount'];
+    if (up is num && up > 0) parts.add('另有 $up 行没看懂（未导入）');
+    final sk = d['skipped'];
+    if (sk is List && sk.isNotEmpty) parts.add('跳过 ${sk.length} 行');
+    final unsup = d['unsupported'];
+    if (unsup is List && unsup.isNotEmpty) parts.add('非主板未入账 ${unsup.length} 只');
+    final pres = d['preserved'];
+    if (pres is List && pres.isNotEmpty) parts.add('保留存量 ${pres.length} 只');
+    return parts.isEmpty ? '完成' : parts.join(' · ');
+  }
+
+  /// 金额人话化（detail 里的数字可能是 int/double）。
+  static String _money(dynamic v) {
+    if (v is num) return _fmtThousands(v.toDouble());
+    return v?.toString() ?? '—';
+  }
+}
+
 // ─────────────────────────── 复盘历史 Dialog ───────────────────────────
 
 class _ReviewHistoryDialog extends StatefulWidget {

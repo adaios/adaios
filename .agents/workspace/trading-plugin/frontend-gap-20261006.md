@@ -3,7 +3,7 @@ title: 前端未交付清单（交易插件重做 · web / app）
 description: 编码段只交付后端（67/78 文件），设计 §6「三端呈现」的 web/app 范围 0 实现——补做清单 + 验收口径，派给 feat/trading-plugin 分支
 version: 1
 created: 2026-10-06
-updated: 2026-10-06
+updated: 2026-10-07
 status: active
 lines: 70
 depends-on:
@@ -65,6 +65,6 @@ tags: [workspace, trading, frontend]
 3. 缺数据不编：取不到的显「—」，**绝不渲染成 0**；没有规则时明说「判不了」（验收 5 原文）。
 4. 三端兼容（web / iOS / Android），`flutter analyze` + 对应 widget 测试过；web 构建**必须**走 `sh apps/adai-web/scripts/serve_web.sh <API_BASE_URL> --build-only`（漏传 URL 会静默回落 localhost，2026-10-05 真实 P0），admin 同 `sh apps/adai-admin/scripts/serve_web.sh <API_BASE_URL> --build-only`。
 
-## 五、一处需要你拍板的口径冲突
+## 五、口径裁决已拍板（2026-10-06 · 已按此落地）
 
-2026-08-23 用户拍板「**移除页头批量导入**，改各 Tab 专属导入按钮」（`apps/adai-web/lib/pages/trading_page.dart:738` 注释）；而 `R-12`（2026-10-05 需求）要的是「**一次把导出的文件交给它就行**」——**新需求覆盖旧决定**。补 `R-12` 时按新需求做，但落地前建议跟用户确认一次，免得又反复。
+2026-08-23 用户拍板「**移除页头批量导入**」（`apps/adai-web/lib/pages/trading_page.dart:738` 注释）；补 `R-12` 时曾一度按「新需求覆盖旧决定」在页头加回统一入口——**2026-10-06 用户裁决：「移除页头批量导入，归于 tab 专属」**。落法：页头不设导入入口；「一次交文件」并入各 Tab 专属导入对话框——「选择文件（可多选，通达信导出）」选 ≥2 份转统一批量对话框（逐份识别 + 先看计划），选 1 份仍走原文本框路径（预览/编辑 + 基准日）；历史成交多选路径原本即此形态（不动）。

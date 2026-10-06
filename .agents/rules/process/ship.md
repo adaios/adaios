@@ -3,9 +3,9 @@ title: 功能落地收尾流程（/ship）
 description: 开发收尾闭环——测试 → 契约同步 → 文档登记 → 元治理校验（ai-guard-meta）→ 规范提交（**2026-10-03 起：「收工」默认含提交这一步**）；与 /review 配套
 version: 1
 created: 2026-08-15
-updated: 2026-10-03
+updated: 2026-10-07
 status: active
-lines: 138
+lines: 140
 depends-on:
   - ../../frontmatter-spec.md
   - ../../mechanism/guards/ai-guard-meta.sh
@@ -72,11 +72,13 @@ tags: [ai, process, ship]
 bash .agents/mechanism/guards/ai-guard-meta.sh --fix    # 回写 lines（D34）+ 重新校验
 bash .agents/mechanism/guards/ai-guard-meta.sh          # frontmatter 结构：必须 PASS
 bash .agents/mechanism/guards/ai-guard-align.sh         # 代码↔文档内容对齐：必须 PASS（A1 端点/A2 测试数）
+bash .agents/mechanism/guards/ai-guard-scope.sh         # scope 表闭合：有表的任务必须 PASS（P1-交易101 机制）
 ```
 
 - `--fix` 自动回写 frontmatter `lines`（按 wc -l 校准）与 `updated`（今日日期）
 - ai-guard-meta 仍 FAIL 的项：M1 断链 / M2 lines / M3 孤儿 / M4 正文路径 → **人工处理后**，禁止带 FAIL 提交
 - ai-guard-align FAIL 的项：A1 端点未登记 api-spec / A2 测试数漂移 status.md → 先同步文档再提交
+- ai-guard-scope FAIL 的项：scope 表未闭合（计划=本批缺状态/证据 · 未交付缺去向 · 证据不可 grep）→ **先修再提交**；无 scope 表的任务自动 PASS(0)，不误伤存量（机制见 `review-driven.md` §3）
 - **git pre-commit hook 自动触发**（`.githooks/pre-commit`，`core.hooksPath` 已配置）：任何代码/测试/契约文档变更，提交时自动跑 ai-guard-align，FAIL 阻止提交——**无需人工提醒**
 - 校验范围：AGENTS.md + docs/_index.md + 全部 docs/*/_index.md + .agents/**（frontmatter-spec §四 强制区）
 

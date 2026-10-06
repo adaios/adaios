@@ -14,7 +14,14 @@ import '../theme/app_colors.dart';
 /// `CaseFeatureExtractor`。A 股配色：涨红跌绿。
 class CaseKlineChart extends StatefulWidget {
   const CaseKlineChart(
-      {super.key, required this.kline, this.buyDate, this.height = 400, this.indicators});
+      {super.key,
+      required this.kline,
+      this.buyDate,
+      this.height = 400,
+      this.indicators,
+      this.marks = const [],
+      this.stopLine,
+      this.peakLine});
 
   /// 窗口日 K：每项 {date, open, high, low, close, volume}（旧→新）。
   final List<Map<String, dynamic>> kline;
@@ -24,6 +31,14 @@ class CaseKlineChart extends StatefulWidget {
   /// 后端指标全序列（2026-08-30 前后端一致：前端不重算，hover 值 = 特征同源）。
   /// 空 → 前端 CaseIndicators.compute 兜底（测试/降级）。
   final Map<String, dynamic>? indicators;
+
+  /// R-04（2026-10-07）：**我的买卖点** —— 每项 `{date, type: "B"|"T"|"S", price, note}`。
+  /// B=建仓（红 ▲）· T=加仓（红 ▲）· S=卖出（绿 ▼）；没给就不画，不硬编。
+  final List<Map<String, dynamic>> marks;
+  /// R-04：**你定的止损线**（水平虚线，橙）。
+  final double? stopLine;
+  /// R-04：**峰值浮盈线**（水平虚线，蓝）—— 见顶之后才存在，没有就不画。
+  final double? peakLine;
 
   @override
   State<CaseKlineChart> createState() => _CaseKlineChartState();
@@ -139,7 +154,8 @@ class _CaseKlineChartState extends State<CaseKlineChart> {
               CustomPaint(
                 size: Size.infinite,
                 painter: _CaseKlinePainter(
-                    widget.kline, widget.buyDate, _main, indicators, start, end, _hoverIdx),
+                    widget.kline, widget.buyDate, _main, indicators, start, end, _hoverIdx,
+                    widget.marks, widget.stopLine, widget.peakLine),
               ),
               // 主图左上角指标数值标签
               Positioned(left: 4, top: 2, child: _labelChip(labels.main)),
@@ -351,7 +367,8 @@ class CaseIndicators {
 
 class _CaseKlinePainter extends CustomPainter {
   _CaseKlinePainter(this.kline, this.buyDate, this.mainIndicator, this.indicators,
-      this.windowStart, this.windowEnd, this.hoverIdx);
+      this.windowStart, this.windowEnd, this.hoverIdx,
+      this.marks, this.stopLine, this.peakLine);
 
   final List<Map<String, dynamic>> kline;
   final String? buyDate;
@@ -361,6 +378,10 @@ class _CaseKlinePainter extends CustomPainter {
   final int windowEnd;
   /// 悬停选中的 K 线索引（null = 无悬停）。
   final int? hoverIdx;
+  /// R-04：我的买卖点 / 你定的止损线 / 峰值浮盈线（都可空，空则不画）。
+  final List<Map<String, dynamic>> marks;
+  final double? stopLine;
+  final double? peakLine;
 
   // 四区布局：主图 40% + 量 20% + MACD 20% + KDJ 20%
   static const double _mainRatio = 0.40;
@@ -469,6 +490,72 @@ class _CaseKlinePainter extends CustomPainter {
         textDirection: TextDirection.ltr,
       )..layout();
       text.paint(canvas, Offset(cx - text.width / 2, mainRect.top - 11));
+    }
+
+    // ── 主图 R-04（2026-10-07）：你定的止损线 / 峰值浮盈线 ──
+    void drawLevel(double price, Color color, String label, {bool fromRight = false}) {
+      final yp = y(price);
+      if (yp < mainRect.top || yp > mainRect.bottom) return; // 不在窗口价域里就不画，不硬压到边上
+      final dash = Paint()
+        ..color = color
+        ..strokeWidth = 1;
+      for (var x0 = mainRect.left; x0 < mainRect.right; x0 += 9) {
+        canvas.drawLine(Offset(x0, yp), Offset(math.min(x0 + 5, mainRect.right), yp), dash);
+      }
+      final t = TextPainter(
+        text: TextSpan(text: label, style: TextStyle(fontSize: 9, color: color)),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      t.paint(canvas, Offset(fromRight ? math.max(0, mainRect.right - t.width - 2) : 2, yp - 11));
+    }
+
+    if (stopLine != null) {
+      drawLevel(stopLine!, const Color(0xFFE8963A), '你定的止损 ${stopLine!.toStringAsFixed(2)}');
+    }
+    if (peakLine != null) {
+      drawLevel(peakLine!, const Color(0xFF5299FF), '峰值浮盈线 ${peakLine!.toStringAsFixed(2)}',
+          fromRight: true);
+    }
+
+    // ── 主图 R-04：我的买卖点（B 建仓 / T 加仓 红▲ · S 卖出 绿▼）──
+    for (final m in marks) {
+      final ds = '${m['date']}';
+      var idx = -1;
+      for (var i = 0; i < n; i++) {
+        if ('${kline[i]['date']}' == ds) {
+          idx = i;
+          break;
+        }
+      }
+      if (idx < windowStart || idx > windowEnd) continue;
+      final type = '${m['type']}';
+      final isBuy = type != 'S';
+      final color = isBuy ? AppColors.darkRed : AppColors.darkGreen;
+      final cx = x(idx);
+      final cy = isBuy
+          ? y((kline[idx]['low'] as num).toDouble()) + 11
+          : y((kline[idx]['high'] as num).toDouble()) - 11;
+      final tri = Path();
+      if (isBuy) {
+        tri
+          ..moveTo(cx - 4, cy + 5)
+          ..lineTo(cx + 4, cy + 5)
+          ..lineTo(cx, cy)
+          ..close();
+      } else {
+        tri
+          ..moveTo(cx - 4, cy - 5)
+          ..lineTo(cx + 4, cy - 5)
+          ..lineTo(cx, cy)
+          ..close();
+      }
+      canvas.drawPath(tri, Paint()..color = color);
+      final label = type == 'B' ? '买' : (type == 'T' ? '加' : '卖');
+      final lp = TextPainter(
+        text: TextSpan(text: label, style: TextStyle(fontSize: 8, color: color)),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      lp.paint(canvas, Offset(cx + 5, cy - 5));
     }
 
     // ── 副图①：成交量（窗口段）──
@@ -614,5 +701,8 @@ class _CaseKlinePainter extends CustomPainter {
       oldDelegate.mainIndicator != mainIndicator ||
       oldDelegate.windowStart != windowStart ||
       oldDelegate.windowEnd != windowEnd ||
-      oldDelegate.hoverIdx != hoverIdx;
+      oldDelegate.hoverIdx != hoverIdx ||
+      oldDelegate.marks != marks ||
+      oldDelegate.stopLine != stopLine ||
+      oldDelegate.peakLine != peakLine;
 }

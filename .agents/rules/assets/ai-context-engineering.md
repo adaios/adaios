@@ -3,7 +3,7 @@ title: AdaiOS AI 上下文工程体系
 description: 项目级 AI 上下文工程的总览——分层模型（L0 入口 / L1 任务 / L2 约束 / L3 事实 + 横跨的工具层）、完整的目录与文件定位表、层间关系与单一权威来源原则、六张流程图（mermaid：开工 / 改动 / 合并传播 / 发布 / 知识回流 / 全景）、触发词工作流表、个人与团队两种配置、保障体系不腐的机制与守卫、判断依据（企业实践 + 实证数据）、以及现状与目标的落地缺口、**审核驱动开发主链**（需求→设计→编码，含人的 4 个介入点）。机制部分**已生效**；仍缺的项见 §九。
 version: 1
 created: 2026-10-03
-updated: 2026-10-06
+updated: 2026-10-07
 status: active
 lines: 411
 depends-on:
@@ -107,7 +107,7 @@ flowchart TB
 |:--|:--|:--|
 | 技能（**4 个官方目录布局** `<name>/SKILL.md`）| `.agents/toolkit/skills/` | `ai-guard-skills` S3/S4/S5/S7 |
 | 审查官（**扁平** `<name>.md`＝ subagent 真相源）| `.agents/toolkit/roles/` | `ai-guard-skills` + `ai-sync-agents` |
-| 守卫（**15**，含产品侧 `guard.sh`）| `.agents/mechanism/guards/*.sh` | shell-lint + 自检（`ai-guard-tools`）|
+| 守卫（**16**，含产品侧 `guard.sh`）| `.agents/mechanism/guards/*.sh` | shell-lint + 自检（`ai-guard-tools`）|
 | 执行器（含 `lib/`）| `.agents/mechanism/scripts/*.sh` | shell-lint + 自检 |
 | 流程定义 | `.agents/rules/process/*.md` | **5 份**（audit / review / ship / cadence / review-driven）|
 | 检查清单 | `.agents/toolkit/checklists/*.md` | **17 份** |

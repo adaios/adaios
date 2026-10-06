@@ -3,9 +3,9 @@ title: 交易插件全景梳理（trading plugin）
 description: trading 插件的「一页总览」——定位与整体现状 · 功能全景 · 全部相关 RFC · 未修与待办 · 未优化与已知取舍；把散落在功能手册 / RFC / REVIEW / status / 代码里的交易内容收拢成本分支任务快照
 version: 1
 created: 2026-10-05
-updated: 2026-10-05
+updated: 2026-10-07
 status: active
-lines: 308
+lines: 311
 depends-on:
   - ../../knowledge/reference/manuals/trading-features.md
 related:
@@ -14,6 +14,7 @@ related:
   - ../../records/REVIEW.md
   - ../../direction/rfc/_index.md
   - ./LEDGER.md
+  - ./uiux-discovery-20261007.md
 tags: [workspace, task, trading, plugin, overview]
 ---
 
@@ -34,7 +35,7 @@ tags: [workspace, task, trading, plugin, overview]
 | 规模（status.md 快照） | 交易域后端 Java **94** 个文件；全项目端点 **173**（其中 TradingController 46 + TradingCaseController 4 + TradingEvidenceController 3 + Round/Plan/admin 等）；后端全量测试 **2462**（0 失败 / 2 skipped） |
 | 上线态 | 生产后端 **v3.94**（2026-10-03 第二十次部署）；此后 2026-10-04 C 档 + 2026-10-05 A/B 档**本地已提交、未部署、未推送** |
 | 未修概览 | 交易本体：`P2-交易66` · `P2-交易71` · `P2-交易81` · `P2-交易87` · `P2-交易88` · `P2-认知3`；能力缺口：`S-12`；工程侧波及：`P2-工程12③` / `14` / `15` |
-| 在制方向 | App 端形态重做（RFC 20260924 draft）· 新用户初始化顺序（P2-交易81）· 「今天没动」接推送（P2-交易87） |
+| 在制方向 | App 端形态重做（RFC 20260924 draft）· 新用户初始化顺序（P2-交易81）· 「今天没动」接推送（P2-交易87）· **双端 UI/UX 重构（方向稿 v2 → `uiux-discovery-20261007.md`）** |
 
 ## 一、插件定位与整体现状
 
@@ -124,7 +125,7 @@ tags: [workspace, task, trading, plugin, overview]
 
 ### 2.5 Web 管理端（adai-web，桌面）
 
-8 个 Tab：持仓 / 自选 / 清仓 / 资金 / 历史成交 / 规则 / 案例 / **计划**（2026-10-03 新增）。页头含：记录交易、批量导入、复盘、复盘历史、推送设置。web 是「导入与编辑」的主场（批量导入 / 持仓编辑 / 规则 / 案例 / 打分 / 历史明细）。
+9 个 Tab：持仓 / 自选 / 清仓 / 资金 / 历史成交 / **分析**（2026-10-06 新增）/ 规则 / 案例 / **计划**（2026-10-03 新增）。页头含：记录交易、复盘、复盘历史、推送设置。web 是「导入与编辑」的主场（各 Tab 专属导入 / 持仓编辑 / 规则 / 案例 / 打分 / 历史明细）。
 
 ### 2.6 手机 App 端（adai-app，iPhone）
 
@@ -265,6 +266,8 @@ tags: [workspace, task, trading, plugin, overview]
 
 | 日期 | 批次 / 版本 | 要点 |
 |:--|:--|:--|
+| 2026-10-07 | 探索（未提交） | **UI/UX 重构启动**：方向稿 v2（`uiux-discovery-20261007.md`）——三问三看 + 护栏 + 素材索引；方向 A 终端 / B 叙事 / C 驾驶舱，待圈选 |
+| 2026-10-06 | 前端补做批 1（+3 代码文件） | R-12 统一导入（一次交文件 · 页头批量导入归 Tab 专属）+ R-05 分析 Tab（三粒度） |
 | 2026-10-05 | A 档 M 级（+25） | 认知②画像切逐笔回合口径 · P2-交易84 锚定日依据显式化 · P2-工程12 闸门可测化 |
 | 2026-10-05 | A 档 S 级（+14） | P2-交易85 清仓导入收录门槛 · P2-交易86 兜底源探测收口 · P2-工程14/15 |
 | 2026-10-05 | B 档清账（+67） | P2-交易72「今天没动」回填 · P2-交易73 对话动作→待办 · P2-工程13 共锁 |

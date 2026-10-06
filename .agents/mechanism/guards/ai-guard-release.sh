@@ -18,6 +18,7 @@
 #   ai-guard-release  发布前：现在欠什么（本脚本，**只读**，不碰生产）
 #   code-deploy-gate    发布时：算 artifacts 落 DEPLOYED + 门禁 + smoke
 #   ai-guard-prod     发布后：巡检核对「声明要发的端，产物是否真的更新了」
+#   ai-guard-scope    任务级：scope 表未交付承诺对账（本脚本 ④ 段亮出；严判在执行侧守卫）
 #
 # 判定基线：生产 DEPLOYED 里的 commit（本地查不到该 commit 时退回「部署时刻」，
 # 两者都拿不到才保守按全部文件判定——宁可多报一端，不静默漏发）。
@@ -163,7 +164,24 @@ APP_BUILD="$(grep -m1 '^version:' apps/adai-app/pubspec.yaml 2>/dev/null | sed '
 NEXT_BUILD="?"
 if [ -n "$APP_BUILD" ]; then NEXT_BUILD=$((APP_BUILD + 1)); fi
 
-# ── ④ JSON 模式（喂 AI / 二次处理）──
+# ── ④ scope 表未交付承诺对账（P1-交易101 机制 · 2026-10-06）──
+# 「发版判定按改动路径」曾让前端整体未交付一路绿灯上线：本段把 scope 表里
+# 「未交付」的行亮出来——发布不阻塞（发不发是用户的决定），但**必须知情**。
+SCOPE_PENDING=""
+for sf in .agents/workspace/*/scope-*.md; do
+    [ -f "$sf" ] || continue
+    while IFS= read -r row; do
+        [ -n "$row" ] || continue
+        SCOPE_PENDING="${SCOPE_PENDING}${row}|${sf}"$'\n'
+    done < <(awk -F'|' '
+        NF >= 8 {
+            g = $2; s = $6; t = $8
+            gsub(/^ +| +$/, "", g); gsub(/^ +| +$/, "", s); gsub(/^ +| +$/, "", t)
+            if (s == "未交付") print g "|" s "|" t
+        }' "$sf")
+done
+
+# ── ⑤ JSON 模式（喂 AI / 二次处理）──
 if [ "$JSON_ONLY" = "1" ]; then
     ADAI_REL_UNITS="$UNITS_TSV" \
     ADAI_REL_BASE_KIND="$BASE_KIND" ADAI_REL_BASE_LABEL="$BASE_LABEL" \
@@ -174,6 +192,7 @@ if [ "$JSON_ONLY" = "1" ]; then
     ADAI_REL_HEAD="$HEAD_SHA" ADAI_REL_HEAD_SHORT="$HEAD_SHORT" \
     ADAI_REL_UNPUSHED="$UNPUSHED" ADAI_REL_OTHER="$OTHER_FILES" \
     ADAI_REL_APP_BUILD="$APP_BUILD" ADAI_REL_NEXT_BUILD="$NEXT_BUILD" \
+    ADAI_REL_SCOPE="$SCOPE_PENDING" \
     python3 - <<'JSON_EOF'
 import json, os
 
@@ -218,12 +237,19 @@ out = {
     'appBuildNumber': {'current': _int('ADAI_REL_APP_BUILD'), 'next': _int('ADAI_REL_NEXT_BUILD')},
     'needRelease': [u['unit'] for u in units if u['needRelease']],
 }
+scopes = []
+for line in os.environ.get('ADAI_REL_SCOPE', '').splitlines():
+    p = line.split('|')
+    if len(p) < 4:
+        continue
+    scopes.append({'item': p[0], 'target': p[2], 'file': p[3]})
+out['pendingScope'] = scopes
 print(json.dumps(out, ensure_ascii=False, indent=2))
 JSON_EOF
     exit 0
 fi
 
-# ── ⑤ 人话三段 ──
+# ── ⑥ 人话三段 ──
 echo ""
 printf '\033[1m═══ 发版体检 %s ═══\033[0m\n' "$(date '+%Y-%m-%d %H:%M')"
 
@@ -267,6 +293,14 @@ if [ "$VER_ONLY" = "1" ]; then
 fi
 if [ "$OTHER_FILES" -gt 0 ]; then
     printf '  \033[2m· 其他 %s 个文件（文档 / 工程规范 / 知识资产）——不影响发布\033[0m\n' "$OTHER_FILES"
+fi
+
+printf '\n\033[1m── ②·5 未交付承诺（scope 表 · 防「裁剪未声明」）──\033[0m\n'
+if [ -z "$SCOPE_PENDING" ]; then
+    printf '  \033[2m· 无未交付承诺\033[0m\n'
+else
+    printf '%s\n' "$SCOPE_PENDING" | grep -v '^$' | awk -F'|' '{printf "  \033[33m⚠\033[0m %s（去向：%s）\n", $1, ($3 == "" || $3 == "—" ? "未填！" : $3)}'
+    printf '  \033[2m（发布不阻塞——发不发由人定；但欠账必须知情）\033[0m\n'
 fi
 
 printf '\n\033[1m── ③ 下一步 ──\033[0m\n'

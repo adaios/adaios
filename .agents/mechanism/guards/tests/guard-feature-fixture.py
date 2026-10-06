@@ -11,7 +11,11 @@
 """
 import pathlib, shutil, subprocess, sys
 
-REPO = pathlib.Path(__file__).resolve().parents[2]
+# 稳健定位仓库根：从本文件上溯找到含 .agents/mechanism 的目录（
+# 修 2026-10-06：旧写法 parents[2] 指向 mechanism 层，拼出 .agents/mechanism/.agents/... 不存在，
+# 测试整体 rc=127 空转（「守卫测试本身假绿」——正应了本测试存在的理由）
+HERE = pathlib.Path(__file__).resolve()
+REPO = next(p for p in HERE.parents if (p / '.agents/mechanism').is_dir())
 FIX = pathlib.Path('/tmp/gf-fixture')
 
 
@@ -27,11 +31,11 @@ w('.agents/knowledge/features/_index.md', '''# 索引
 
 | ID | 功能 | 状态 | 需求出处 | 实现出处 | 欠着 |
 |:---|:-----|:----:|:---------|:---------|:-----|
-| `good` | 正常功能 | shipped | [rfc](../rfc/20261001-ok.md#some-anchor) | 手册 §1 | P2-测试11 |
+| `good` | 正常功能 | shipped | [rfc](../../direction/rfc/20261001-ok.md#some-anchor) | 手册 §1 | P2-测试11 |
 | `bad-cols` | 少一列 | shipped | — | 手册 §2 |
 | `bad-empty` |  | shipped | — | 手册 §3 | — |
 | `bad-impl` | 空实现 | shipped | — |  | — |
-| `bad-link` | 死链 | shipped | [x](../rfc/nope.md) | 手册 §4 | — |
+| `bad-link` | 死链 | shipped | [x](../../direction/rfc/nope.md) | 手册 §4 | — |
 | `bad-warn` | 标了警告 | shipped | ⚠️ RFC 20260101 | 手册 §5 | — |
 | `bad-status` | 状态乱写 | done | — | 手册 §6 | — |
 | `bad-mismatch` | 状态与事实不符 | shipped | — | 手册 §6b（认知层整体**待建**）| — |

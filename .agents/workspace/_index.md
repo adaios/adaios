@@ -3,9 +3,9 @@ title: workspace/ 目录索引
 description: .agents/workspace/ 的清单与过期判断——**按「分支任务」组织**：一个分支一个目录（需求 / 设计 / 审核 / 决策都在它名下，需要才有）；模板在 _templates/、跨任务的在 _meta/
 version: 2
 created: 2026-10-04
-updated: 2026-10-06
+updated: 2026-10-07
 status: active
-lines: 80
+lines: 85
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index, workspace]
@@ -27,7 +27,7 @@ tags: [meta, index, workspace]
 
 > **规则**：**一个分支 = 一个目录 = 一个任务**（主键唯一 ⇒ **零冲突**）；目录里**需要什么才有什么**（轻活就一个 `LEDGER.md`）。
 
-## 文件清单（40 项）
+## 文件清单（46 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -43,20 +43,23 @@ tags: [meta, index, workspace]
 | `_meta/inbox.md` | 消息通道丢载荷时的兜底派单通道；任何 AI 开工先看本文件（AGENTS.md 规则 0c） | active |
 | `_meta/process-issues-20261006.md` | 本次会话实跑「需求 → 设计」全流程时实测发现的 12 条流程问题（主链本身 5 · 契约与守卫 3 · 子代理… | active |
 | `_meta/process-log-20261006-v4.md` | 流程官（QA）对本轮（2026-10-06 · trading-plugin 设计 final v4 轮）的事实… | active |
+| `_meta/proposal-scope-completeness-20261006.md` | P1-交易101（设计 §6 前端整体未交付且未声明）的机制性修复方案——病因＝「设计→编码」接缝无人站岗（裁剪… | active |
 | `_meta/roadmap-diff-trading-20261006.md` | product-roadmap.md 的三条改动提案（现状原文 → 改后原文 + 理由），与 RFC 草稿同口径… | draft |
 | `_templates/design.md` | 设计文档模板——本轮回应 · 设计 · 取舍 · 未决 · 自评风险；每轮一份、不覆盖；**一轮只收敛一类**（… | active |
 | `_templates/dispatch.md` | 派审核官 / 编写者时的 prompt 骨架——照抄改；含回执 · 材料前置 · 先落文件 · 3 分钟闸门（协… | active |
 | `_templates/ledger.md` | 分支账本模板——本分支的目标 · 进度 · 风险 · 待交接；放在 .agents/workspace/<分支名… | active |
 | `_templates/requirement.md` | 需求文稿模板——问题动机 · 业务规则 · 范围 · 验收标准 · 未决 · 定稿记录；定稿由人拍板；**分支上… | active |
 | `_templates/review-design.md` | 审核文件模板（设计 / 需求共用）：审核对象 · 结论 · 问题清单（P0–P3）· 收敛判定；每轮一份，与稿成… | active |
+| `_templates/scope.md` | 编码段「本批范围声明 → 交付声明」的模板——开工从设计 §6 逐条抄、填「计划」列（无表不开工）；收尾填「状态… | active |
 | `trading-plugin/LEDGER.md` | ② 交易线的分支账本——本批目标 + 并行作业纪律 + 待交接；一个分支一个目录（feat/trading-pl… | active |
 | `trading-plugin/blueprint.md` | 交易插件的概念与流程，按我们逐步讨论的顺序记录——定位 · 规则 · 没有规则怎么办 · 清仓股+历史成交 · … | active |
 | `trading-plugin/decisions.md` | 设计 v1 的 6 项未决（U1–U6）+ 审核 v1 的战略级 2 条（S1/S2）+ 设计 v2 的 3 项… | active |
 | `trading-plugin/design-final-20261006.md` | 交易线设计 final 稿——以 v2 正文为底合并 v3 增量与两份 v3 审核的整改，收 4 类阻塞项（§9… | draft |
+| `trading-plugin/design-kline-r04-20261007.md` | 把「案例专图」泛化成横切四个地方的通用 K 线——四区（主图+量+MACD+KDJ）、我的买卖点标记、止损线/峰… | active |
 | `trading-plugin/design-v1-20261006.md` | 交易插件重做 · 设计稿 v1（设计文档编写者）——本轮回应 · 设计（归属分层 / 六模块 / 四条数据流 /… | draft |
 | `trading-plugin/design-v2-20261006.md` | 交易插件重做 · 设计稿 v2（设计文档编写者）——本轮回应 13 条（S1/S2 · P1×3 · P2×5 … | draft |
 | `trading-plugin/design-v3-20261006.md` | 设计第 3 轮的增量稿——正文仍看 design-v2；本稿只写"本轮改什么"（战略级 3 · P1×8 已改；… | draft |
-| `trading-plugin/frontend-gap-20261006.md` | 前端未交付清单（交易插件重做）——编码段只交后端（67/78 文件），设计 §6 的 web/app 范围 0 实现；逐条欠账 + 可用端点 + 分批 + 验收口径（批 1 = R-12 + R-05 走通验收 1）；登记 P1-交易101 | active |
+| `trading-plugin/frontend-gap-20261006.md` | 编码段只交付后端（67/78 文件），设计 §6「三端呈现」的 web/app 范围 0 实现——补做清单 + … | active |
 | `trading-plugin/input.md` | 归位之后剩下的"怎么做"——数据现实与处理 / 去重 / 顺序 / 表头识别 / 送股兜底 / 同日行序陷阱 /… | active |
 | `trading-plugin/overview.md` | trading 插件的「一页总览」——定位与整体现状 · 功能全景 · 全部相关 RFC · 未修与待办 · 未… | active |
 | `trading-plugin/requirement-review-20261006-r2.md` | 第一轮问题修复后的复审——12 条判据全部通过，结论：收敛（无 P0/P1），可送人签字；仅剩 P3（一笔生命周… | active |
@@ -71,7 +74,9 @@ tags: [meta, index, workspace]
 | `trading-plugin/review-v3-product-20261006.md` | 只判 3 点——S2 落点是否闭环 / 增量稿与正文是否自相矛盾 / 数量声明是否属实 | draft |
 | `trading-plugin/review-v4-20261006.md` | 产品面收敛性审核——只判上轮战略 S2 + 产品 P1-1 / P1-2 + 三点复核（新引 2 条）是否真闭环… | draft |
 | `trading-plugin/review-v4-backend-20261006.md` | 后端面收敛性审核——只判上轮 2 条战略（S1 闸门 / S2 §9 基线）+ 6 条 P1 是否真闭环 + 本… | active |
+| `trading-plugin/scope-frontend-20261006.md` | 交付完备性机制首跑——设计 §6「三端呈现」逐条对照：本批= R-12 统一导入 + R-05 web 三粒度分… | active |
 | `trading-plugin/thinking-log.md` | 本分支 AI 的思考过程落盘——每轮写「看到什么 → 怎么判断 → 为什么这么选 → 放弃了什么」；与产物（re… | active |
+| `trading-plugin/uiux-discovery-20261007.md` | 双端 UI/UX 重构的当前方向总稿——背景 · 组织原则 · 已定约束（护栏）· 三问（场景/痛点/第一眼）·… | draft |
 
 ## 过期判断
 

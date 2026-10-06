@@ -135,6 +135,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -175,6 +176,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 sync,
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -207,6 +209,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 kline,
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -237,6 +240,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -272,6 +276,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -301,6 +306,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -332,6 +338,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -532,6 +539,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
@@ -1172,6 +1180,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
@@ -1596,6 +1605,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                  testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -1640,6 +1650,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                  testStorage);
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -1950,6 +1961,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -1982,6 +1994,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -2012,6 +2025,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -2557,6 +2571,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -2664,6 +2679,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -2752,6 +2768,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -2785,6 +2802,7 @@ class TradingControllerTest {
                 psychology,
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -2822,6 +2840,7 @@ class TradingControllerTest {
                 psychology,
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
