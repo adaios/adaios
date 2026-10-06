@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-06
 status: active
-lines: 183
+lines: 216
 depends-on:
   - ../../workspace/_directory.md
 related:
@@ -19,6 +19,39 @@ tags: [ai, process]
 # 审核驱动开发流程（review-driven）
 
 > 主链：**需求 → 设计 → 编码**，**文档先行 + 双角色真对打**。定了需求文稿之后**人基本不参与**——全程只在 **4 个点**被叫。全图见 `.agents/rules/assets/ai-context-engineering.md` §4.6。
+
+## 0. 角色全景（15 个角色怎么分工 · 2026-10-06 汇总）
+
+**三类分工——本质区别在「管什么」**：
+
+| 类 | 管什么 | 角色 | 数量 |
+|:--|:--|:--|:--:|
+| **产作者** | **写**产物 | `docs-design-writer`（设计稿）；编码段用**建设技能** `code-api-writer` / `code-domain-writer` | 1（+2 技能）|
+| **审核者（QC）** | 判**产物**对不对 | 需求评审 1 · 域客观官 8 · 对抗官 1 · 外部视角官 3 | 13 |
+| **流程官（QA）** | 盯**过程**顺不顺 | `process-reviewer` | 1 |
+
+**审核者按「从哪个角度判」分四组**：
+
+| 组 | 角色 | 判什么 | 何时派 |
+|:--|:--|:--|:--|
+| **需求评审**（1）| `docs-requirement-reviewer` | 「要什么」是否完整 · 可验证 · **追得到路线**（改方向必须开 RFC）| **需求定稿前**——人签字前的那一环；**无 P0/P1 才送签**（§1）|
+| **域客观官**（8）| `docs-product-reviewer`（产品全局 / 路线）· `code-backend-reviewer`（后端）· `code-frontend-reviewer`（前端）· `ux-interaction-reviewer`（操作流程 / 状态机）· `ux-visual-reviewer`（布局 / 视觉）· `docs-contract-reviewer`（文档一致性 / 断链 / 数字漂移）· `data-knowledge-reviewer`（`os/` 知识 · `data/` 数据）· `ai-context-reviewer`（AI 上下文结构）| 本域内的对错 | **设计段**（审设计稿，§2）· **编码段**（审改动，按 `review.md` 派官表）|
+| **对抗官**（1）| `ai-adversarial-reviewer` | 假设改动**一定有问题**，从「哪里会炸 / 用户哪里会骂 / 边界哪里漏」攻击性找茬 | 与域客观官**互补**；deep 档默认附加（`review.md`）|
+| **外部视角**（3）| `ux-stranger-reviewer`（零上下文 · **禁读源码**）· `ux-social-reviewer`（**递手机那一刻**）· `ux-support-reviewer`（**他一定会问的问题**）| 内部 8 官的结构性盲区（读代码 ⇒ 结构上永远知道按钮在哪）| **面向身边人 / 新用户之前必跑**——**不是每轮**，是"要给人用"之前（`README` / 发布前）|
+
+**派谁（QA-4）**：按**失败模式互补**选官、**不凑数**——跨端设计至少「产品 + 后端」两支。
+实测依据：**后端官跑出了产品官跑不出的 6 条 P1**（两名同质官的边际收益远低于两名异质官）。
+
+**四条独立性铁律**（散见 §7/§8，此处汇总；违反即退化为"自评"）：
+
+1. **作者不审自己**——必须**两个独立 subagent**，各自独立读、**不共享上下文**（行业所谓 *independent reading*）。
+2. **收敛只能由审核者宣布**——编写者与主链**都不许自宣收敛**。
+3. **orchestrator 不代誊**——审核者没落盘 ⇒ **流程官记一条问题**，不许替他写（§8 硬规矩 1）。
+4. **对抗官不参与自评**（会变钝）；**角色不得自改判据**——走「提案 → 守卫 → 人点头」（§8 硬规矩 2）。
+
+> 行业坐标（`thinking-log` 2026-10-06 的对照）：产作者 = Author；审核者 = Inspector / Peer Reviewer（Fagan 1976 · IEEE 1028）；
+> 对抗官 = Devil's advocate；**流程官 = Moderator + Recorder / QA**（Fagan 1976 · IEEE 730 · CMMI OPF）——
+> 前三类本项目早有，**QA 那条中立线是这次补的**。
 
 ## 1. 入口条件：需求已由人拍板定稿
 
