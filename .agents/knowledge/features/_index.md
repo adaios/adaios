@@ -85,7 +85,7 @@ tags: [meta, index, feature, 功能主轴]
 
 | ID | 功能 | 状态 | 需求出处 | 实现出处 | 欠着 |
 |:---|:-----|:----:|:---------|:---------|:-----|
-| `learn.digest` | 学习沉淀 / 整理 | shipped | [20260912-learn-product-digest](../../direction/rfc/20260912-learn-product-digest.md) | feature-ref §17 | P2-learn23、P2-learn33、P2-learn34 |
+| `learn.digest` | 学习沉淀 / 整理 | shipped | [20260912-learn-product-digest](../../direction/rfc/20260912-learn-product-digest.md) | feature-ref §17 | P2-learn23、P2-learn33、P2-learn34、P2-learn37 |
 | `learn.review` | 复习流转 | shipped | [20260917-learn-representation](../../direction/rfc/20260917-learn-representation.md) | feature-ref §17 | — |
 | `learn.share` | 分享追踪 | shipped | [20260914-ios-share-extension](../../direction/rfc/20260914-ios-share-extension.md) | feature-ref §17（进度区）· §19（扩展侧）| P2-分享6 |
 

@@ -24,4 +24,4 @@ tags: [features, learn, 意图卡]
 - **不做什么**：不做知乎 / 小红书 / X / 抖音 / YouTube 的自动抓取（一律人话告知并引导你粘正文或截图，不绕付费墙与登录墙）；不做批量或后台自动转写（只在明确发话时花钱）；不做「要你自己先把字幕搞到」的喂入。
 - **选型理由**：上一版失败的死因正相反——要求用户自己搬运素材（「要我自己搬运，那我为什么不在浏览器里直接看」），真实使用为 0。故把最费力的一步（抓取 → 转写）下沉到服务端，并把花钱变成**先报价、你点头才花**；范围刻意克制（只做喂入 → 抓取 → 结构化 → 落盘 → 回执 → 查看）。
 - **验收**：① 丢一个链接（B站 / 通用文章 / 微博 / 公众号 / 头条，域名白名单内）即由服务端自动抓取并产出结构化卡片，无需你先粘字幕；② 无字幕视频先回报「时长 + 预计费用 + 本月剩余额度」，你确认后才转写、取消不产生费用；③ 素材不可抓或超出月度转写配额时人话拒绝并给替代路径，绝不落半成品；④ 整理失败保留原始素材并如实说可重试；⑤ 非本产品整理的原始卡只读，编辑 / 流转请求被人话拒绝而不改到别的卡（P2-learn23）。
-- **细节**：[feature-reference §17](../reference/manuals/feature-reference.md) · [RFC 20260912](../../direction/rfc/20260912-learn-product-digest.md) · [RFC 20260917](../../direction/rfc/20260917-learn-representation.md) · REVIEW P2-learn23、P2-learn33、P2-learn34。
+- **细节**：[feature-reference §17](../reference/manuals/feature-reference.md) · [RFC 20260912](../../direction/rfc/20260912-learn-product-digest.md) · [RFC 20260917](../../direction/rfc/20260917-learn-representation.md) · REVIEW P2-learn23、P2-learn33、P2-learn34、P2-learn37。
