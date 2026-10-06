@@ -97,14 +97,14 @@ bash .agents/mechanism/scripts/task-cadence.sh daily
 > 而 09-11~09-15 连续 5 天 0 张卡——**「有人在用」和「他在骂什么」，只有这里看得见**。
 > AI 侧的等价入口：`ai-guard-context.sh` 的 C0 心跳发现今日有新记录时会主动提示跑本命令。
 
-### 1~3. 三份通达信导出（顺序不能换）
+### 1~3. 三份通达信导出（**快照必须在流水之前**）
 
-持仓/资金是锚点，先建锚定再补流水：
+持仓/资金是锚点，**先建锚定、再补流水**。两份快照**谁先都行**——它们互为锚定、锚定日取较晚者；下列顺序是 **2026-10-05 用户定的口径（钱先于货）**，**非硬约束**，统一口径即可。**硬约束只有一条：快照在流水之前。**
 
 | 顺序 | 导出什么（通达信） | 打哪个端点 | 关键点 |
 |:--:|:--|:--|:--|
-| 1 | 「持仓股」 | `POST /trading/positions/import` | `replace=true` + `snapshotDate=文件名日期`；当日盈亏列**全表求和**传 `todayPnl`（**含 0 股行**） |
-| 2 | 「资金股份查询」 | `POST /trading/imports/cash` | 必须带 `snapshotDate`，否则锚定日被写成今天 |
+| 1 | 「资金股份查询」 | `POST /trading/imports/cash` | 必须带 `snapshotDate`，否则锚定日被写成今天 |
+| 2 | 「持仓股」 | `POST /trading/positions/import` | `replace=true` + `snapshotDate=文件名日期`；当日盈亏列**全表求和**传 `todayPnl`（**含 0 股行**） |
 | 3 | 「历史成交查询」（当天） | `POST /trading/trades/import` | **唯一成交真相源**；可先 `dryRun=true` 预检不写盘 |
 
 **然后看一眼（30 秒）**：
