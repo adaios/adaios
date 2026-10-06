@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-04
 updated: 2026-10-07
 status: active
-lines: 78
+lines: 79
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index]
@@ -17,7 +17,7 @@ tags: [meta, index]
 
 **职责**：见 [`_directory.md`](./_directory.md)（此处不重复——S5 判据：同一知识只在一处详述）
 
-## 文件清单（43 项）
+## 文件清单（44 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -64,6 +64,7 @@ tags: [meta, index]
 | `scripts/task-noon.d/.gitkeep` | — | active |
 | `scripts/task-noon.sh` | 午间谷时任务壳（工作日 12:01 触发）— 2026-09-16 建 | active |
 | `scripts/task-weekly-audit.sh` | 定时审查（触发侧：每周自动跑，防审查休眠） | active |
+| `scripts/trading-local-up.sh` | ========================================================… | active |
 
 ## 子目录
 

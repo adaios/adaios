@@ -3,9 +3,9 @@ title: scripts/ 目录索引
 description: scripts/ 的文件清单与过期判断；目录的职责边界与依赖契约见 ./_directory.md
 version: 1
 created: 2026-10-03
-updated: 2026-10-05
+updated: 2026-10-07
 status: active
-lines: 52
+lines: 53
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index]
@@ -15,7 +15,7 @@ tags: [meta, index]
 
 > 本文件只列**有什么**；**规则与依赖**见 [`_directory.md`](./_directory.md)。
 
-## 文件清单（25 项）
+## 文件清单（26 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -44,6 +44,7 @@ tags: [meta, index]
 | `task-noon.d/.gitkeep` | — | active |
 | `task-noon.sh` | 午间谷时任务壳（工作日 12:01 触发）— 2026-09-16 建 | active |
 | `task-weekly-audit.sh` | 定时审查（触发侧：每周自动跑，防审查休眠） | active |
+| `trading-local-up.sh` | ========================================================… | active |
 
 ## 过期判断
 

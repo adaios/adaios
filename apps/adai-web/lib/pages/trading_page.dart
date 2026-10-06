@@ -845,6 +845,11 @@ class _TradingPageState extends State<TradingPage> {
                       // P2-交易72：今天的状态盘点（首屏不折叠——最短路径，他打开交易页就看得见）
                       _buildDayStatusRow(),
                       const SizedBox(height: 12),
+                      // 批 A（2026-10-08）：状态条（基础数据全在场，到线抢主位）+ 阿呆说
+                      _buildStatusStrip(),
+                      const SizedBox(height: 10),
+                      _buildAdaiRail(),
+                      const SizedBox(height: 12),
                       // E1（2026-08-16）：Tab 工作区替代纵向堆叠（UI/UX 审查方案）
                       _buildTabWorkspace(),
                     ],
@@ -1159,8 +1164,10 @@ class _TradingPageState extends State<TradingPage> {
             DataColumn(label: Text('今日涨跌幅'), numeric: true),
             DataColumn(label: Text('盈亏'), numeric: true),
             DataColumn(label: Text('盈亏%'), numeric: true),
-            DataColumn(label: Text('止损'), numeric: true),
-            DataColumn(label: Text('买点')),
+              DataColumn(label: Text('止损'), numeric: true),
+              // 批 A（2026-10-08）：只显示**离你更近的那一条线**（全给会变成一堵墙）
+              DataColumn(label: Text('最近的那条线')),
+              DataColumn(label: Text('买点')),
             DataColumn(label: Text('角色')),
             DataColumn(label: Text('操作')),
           ],
@@ -1216,6 +1223,11 @@ class _TradingPageState extends State<TradingPage> {
                     )
                   : Text(slManual?.toStringAsFixed(3) ?? '—',
                       style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3))),
+              // 批 A（2026-10-08）：最近的那条线 —— 破了止损 / 到了放飞 / 离止损还有多少
+              DataCell(Builder(builder: (_) {
+                final nl = _nearestLine(p);
+                return Text(nl.text, style: TextStyle(fontSize: 12.5, color: nl.color));
+              })),
               DataCell(Text(p.buyPoint ?? '—', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3))),
               DataCell(Text(p.role ?? '—', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3))),
               // RFC 20260825：批次明细入口（一买一批跟踪）+ 编辑
@@ -1874,6 +1886,127 @@ class _TradingPageState extends State<TradingPage> {
               style: const TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
         ),
     ]);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 批 A（2026-10-08 · UI/UX 落地，**加法部分**）：状态条 + 阿呆说 + 最近的那条线
+  //   口径：基础数据一个不少（资金 / 当日 / 市值都在场），**重点＝你自己的线**；
+  //   只陈述 + 用你自己的规则对照，不出现「该买 / 该卖 / 建议」（B1 第一原则）。
+  //   ⚠️ Tab 9→6 的 IA 重排不在这一批 —— 它撞了 28 个既有 widget 测试（视窗内的点击
+  //      目标被挤到屏幕外），留作单独一批连着测试一起改，不混在这里。
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// 到线几只：现价已经到了（或破了）**你自己定的**止损。
+  /// 这是首屏最该被看见的那件事 —— 所以它不是列表里的一个细节，而是状态条上的一格。
+  int _positionsOnLineCount() {
+    var n = 0;
+    for (final it in _positions) {
+      final sl = it.effectiveStopLoss;
+      if (sl != null && sl > 0 && it.currentPrice <= sl) n++;
+    }
+    return n;
+  }
+
+  /// 「最近的那条线」——只显示当前更近的一条（全给会变成一堵墙）。
+  ({String text, Color color}) _nearestLine(PositionItem p) {
+    final sl = p.effectiveStopLoss;
+    final tp = p.targetPrice;
+    if (sl != null && sl > 0 && p.currentPrice <= sl) {
+      return (text: '止损 ${sl.toStringAsFixed(2)} ↓破', color: AppColors.darkOrange);
+    }
+    if (tp != null && tp > 0 && p.currentPrice >= tp) {
+      return (text: '放飞 ${tp.toStringAsFixed(2)} ↑到', color: AppColors.darkOrange);
+    }
+    if (sl != null && sl > 0 && p.currentPrice > 0) {
+      final gap = (p.currentPrice - sl) / p.currentPrice * 100;
+      return (text: '离止损 ${gap.toStringAsFixed(1)}%', color: AppColors.darkGrey4);
+    }
+    return (text: '—', color: AppColors.darkGrey5);
+  }
+
+  /// 状态条：资金与涨跌是**基础数据**（都在场），到线才是**重点**（抢主位）。
+  Widget _buildStatusStrip() {
+    final onLine = _positionsOnLineCount();
+    final clean = _integrity == null || !_integrity!.hasIssue;
+    Widget cell(String label, String value, {Color? color}) => Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+            const SizedBox(height: 3),
+            Text(value,
+                style: TextStyle(
+                    fontSize: 15, fontWeight: FontWeight.w600, color: color ?? AppColors.darkGrey1)),
+          ]),
+        );
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
+      ),
+      child: Row(children: [
+        // 资金类基础数据在紧邻的「账户卡」里已经全都在场（总资产/可用/可取/参考市值/当日盈亏），
+        // 这里**不重复** —— 只放账户卡没有、又是重点的那两格：你自己的线 + 账实。
+        cell('到线', '$onLine 只', color: onLine > 0 ? AppColors.darkOrange : AppColors.darkGrey3),
+        cell('到线的票',
+            onLine > 0
+                ? _positions
+                    .where((it) {
+                      final sl = it.effectiveStopLoss;
+                      return sl != null && sl > 0 && it.currentPrice <= sl;
+                    })
+                    .map((it) => it.name)
+                    .join('、')
+                : '没有',
+            color: onLine > 0 ? AppColors.darkGrey1 : AppColors.darkGrey5),
+        cell('账实', clean ? '✓ 对上了' : '⚠ 有差异',
+            color: clean ? AppColors.darkGreen : AppColors.darkOrange),
+      ]),
+    );
+  }
+
+  /// 阿呆说：把**已经在页面上**的事实收成两三句 —— 只陈述 + 用你自己的线对照。
+  Widget _buildAdaiRail() {
+    final onLine = _positionsOnLineCount();
+    final clean = _integrity == null || !_integrity!.hasIssue;
+    final lines = <String>[];
+    lines.add(clean ? '账对上了。' : '账有一处对不上 —— 上面的横条里写了差在哪。');
+    if (onLine > 0) {
+      final hit = _positions
+          .where((it) {
+            final sl = it.effectiveStopLoss;
+            return sl != null && sl > 0 && it.currentPrice <= sl;
+          })
+          .map((it) => '${it.name} ${it.currentPrice.toStringAsFixed(2)}')
+          .join('、');
+      lines.add('$hit 到了你定的止损下面。');
+    } else if (_positions.isNotEmpty) {
+      lines.add('${_positions.length} 只都没有到线。');
+    }
+    if (_marketHealth != null && _marketHealth!.shouldWarn) {
+      lines.add('今天行情没取全 —— 上面的横条里写了原因。');
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.darkOrange.withValues(alpha: 0.30)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('阿呆说', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+        const SizedBox(height: 6),
+        for (var i = 0; i < lines.length; i++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(lines[i],
+                style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.5,
+                    color: i == 0 ? AppColors.darkGrey3 : AppColors.darkGrey1)),
+          ),
+      ]),
+    );
   }
 
   Widget _buildTabWorkspace() {
