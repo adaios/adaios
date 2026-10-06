@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-10-06
 status: active
-lines: 342
+lines: 348
 depends-on:
   - ../../toolkit/checklists/ai-guard-checklist.md
 related:
@@ -340,3 +340,9 @@ tags: [ai, assets, pitfalls]
 | 坑 | 症状 | 根因 | 修复 | 状态 | 复发信号 |
 |:---|:-----|:-----|:-----|:----:|:---------|
 | **`data/*/xxx/` 带尾斜杠 = 只匹配目录，而 git 不把符号链接当目录** | worktree（**link 模式**）的 `git status` 冒出 **12 条** `?? data/...` 未跟踪——全是 `ai-worktree-prep.sh` 链过来的**符号链接**；而主仓库与 copy 模式的线**干干净净** | `.gitignore` 里 `data/*/records/` 这类规则**带尾斜杠**，git 语义是「只匹配目录」；而 `data/adai/records` 在 link 模式下是**符号链接**（`lrwxr-xr-x`），git 眼里是"文件" ⇒ 规则不命中。另有三条（`data/admin` · `data/alice` · `data/family`）**根本没有规则**——其**内容**被按类型的规则盖住，但**目录/链接本身**无人管 | 该段规则**一律去尾斜杠**（不带斜杠同时匹配文件与目录 ⇒ 链接也命中；匹配面更大 = 方向**更安全**）+ 补三条用户层目录规则。⚠️ **不能**图省事写成 `data/*/`：那会排除 `data/adai/` 这个**父目录**，而 git 规则是「**父目录被排除后，其子文件无法再被 `!` 重新包含**」⇒ 会连要入库的 `data/adai/identity/profile.sample.md` 一起干掉 | ✅ 已修（2026-10-06）：① 线 status **12 → 0 条**；12 条逐条 `check-ignore` 均命中新规则；白名单 `profile.sample.md` 仍 `rc=1` 未被忽略；**反向验证**（改回带斜杠 → 未命中、噪音立刻回来；复原 → 归零） | 新建 / 新 clone 的 worktree 里 `git status` 出现成片 `?? data/...`；`git check-ignore -v <路径>` 返回 **rc=1**；或有人把规则"优化"成 `data/*/` 通配（会连带干掉 sample 白名单）。另见 `worktree-workflow.md` §二 的 link/copy 说明 |
+
+## 三十八、总纲文档在结构重构后「只追加、不删旧」⇒ 一个文件里两套结构 + 数字漂移（2026-10-06 总纲收口批）
+
+| 坑 | 症状 | 根因 | 修复 | 状态 | 复发信号 |
+|:---|:-----|:-----|:-----|:----:|:---------|
+| **结构/角色变了，总纲文件没人回头改** | `.agents/README.md` 里 `## 三层结构` 表用的是**六顶层重构前**的旧路径（`assets/` `process/` `state/` `workspace/`），紧接着又是一张「6 个顶层」表 —— **一个文件两套结构**；还留着一条**孤立残行**（`检查清单（人也能用）：8 客观官…`，尾巴挂个 `\|`）；子目录表**丢了标题**。数字全线漂：`roles` 写 12（实际 **15**）· `rfc` 写 68（实际 **67**）· 顶层写 6（实际 **7**，漏了 `workspace/`）。`ai-context-engineering.md` 的「环节现状」表停在 **10-03**（连「产作者（设计）❌ 缺」都还在，而它 10-03 当天就建了）。此外 `audit.md`/`skills-usage.md`/`development.md`/`ai-link-skills.sh` 四处仍写「12 个审查官」 | ① 2026-10-04 六顶层重构 + `workspace/` 提顶层时，README 是**插入新区块**而不是**替换旧区块** ⇒ 两次改写叠加；② 之后每次加角色（10-03 设计产作者、10-06 需求评审官+流程官）只改**新文件**，**没回头改总纲**。**守卫查不出**：M4 只认 `.agents/`/`docs/` 开头的路径形态，`assets/xxx` 这种相对写法**逃检**；**「数字漂移」没有任何守卫** | 2026-10-06 总纲收口批：README **整体重写**（7 顶层 + 子目录表补标题 + 断链修为 `rules/assets/`）；`ai-context-engineering` 主链图补需求评审官、角色现状表更新到 10-06；`audit.md`（2 处）· `skills-usage` · `development` · `ai-link-skills` 的口径统一为 **15 个角色**。**顺带暴露**：M4 应扩展到相对路径写法（待办） | ✅ 已修（2026-10-06） | 做**结构重构 / 加角色**之后，总纲文件（`.agents/README.md` · `rules/assets/ai-context-engineering.md` · `AGENTS.md`）里出现：旧顶层路径、**无标题的表**、孤立残行、`❌ 缺` 而实际早已实现、与 `roles/` 实际数量不符的角色数。**判据**：凡「某个数字/结构在文档里出现 ≥2 次」，重构后必须逐个对拍 |

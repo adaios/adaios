@@ -3,9 +3,9 @@ title: AdaiOS AI 上下文工程体系
 description: 项目级 AI 上下文工程的总览——分层模型（L0 入口 / L1 任务 / L2 约束 / L3 事实 + 横跨的工具层）、完整的目录与文件定位表、层间关系与单一权威来源原则、六张流程图（mermaid：开工 / 改动 / 合并传播 / 发布 / 知识回流 / 全景）、触发词工作流表、个人与团队两种配置、保障体系不腐的机制与守卫、判断依据（企业实践 + 实证数据）、以及现状与目标的落地缺口、**审核驱动开发主链**（需求→设计→编码，含人的 4 个介入点）。机制部分**已生效**；仍缺的项见 §九。
 version: 1
 created: 2026-10-03
-updated: 2026-10-04
+updated: 2026-10-06
 status: active
-lines: 407
+lines: 408
 depends-on:
   - ../../knowledge/reference/status.md
 related:
@@ -242,7 +242,8 @@ flowchart TD
         D1 --> D2
     end
 
-    D2 --> G1{"★ 人的决策门<br/>需求定稿？"}
+    D2 --> RV["需求评审官 docs-requirement-reviewer<br/>审「要什么」是否完整 · 可验证 · 追得到路线<br/>无 P0/P1 才送人签字"]
+    RV --> G1{"★ 人的决策门<br/>需求定稿？"}
     G1 -->|"还要改"| D1
     G1 -->|"准"| R1["需求定稿<br/>→ .agents/direction/rfc/ 或 .agents/knowledge/features/"]
 
@@ -251,7 +252,7 @@ flowchart TD
     subgraph P2["② 设计（AI 自主，人只在被叫时介入）"]
         direction TB
         DA["设计产作者（subagent）<br/>读需求稿 → 设计草案"]
-        DV["设计审核者（subagent）<br/>按角色清单逐条挑"]
+        DV["设计审核者（subagent · 可多官并行）<br/>按角色清单逐条挑<br/>按失败模式互补选官（跨端 ≥ 产品 + 后端）"]
         DA --> DV
         DV -->|"有 P0/P1"| DA
         DV -->|"收敛"| D3["设计定稿草案"]
@@ -268,7 +269,7 @@ flowchart TD
         direction TB
         CA["代码产作者<br/>（skills/code-api-writer · code-domain-writer 引导）"]
         TS["测试：单元 / 集成"]
-        CV["代码审核者（8 客观官 + 对抗官）"]
+        CV["代码审核者（按 review.md 派官表：客观官 + 对抗官）"]
         CA --> TS --> CV
         CV -->|"P0/P1"| CA
         CV -->|"通过"| D4["实现完成"]
@@ -317,12 +318,12 @@ flowchart LR
     AR -.->|"约束"| DS
 ```
 
-| 环节 | 现状（2026-10-03）|
+| 环节 | 现状（2026-10-06）|
 |:--|:--|
-| **审核者** | ✅ 现成——12 个审查官（8 客观 + 对抗 + 3 外部视角）就在 `.agents/toolkit/roles/` |
+| **审核者** | ✅ 现成——**15 个角色**在 `.agents/toolkit/roles/`：产作者 1 · 审核者 13（**需求评审官** `docs-requirement-reviewer`＋域客观官 8＋对抗官 1＋**外部视角 3**）· 流程官 1（`process-reviewer`）；关系全景见 `rules/process/review-driven.md` **§0** |
 | **产作者（编码）** | ✅ 现成——`skills/code-api-writer` / `code-domain-writer` 已是建设技能 |
-| **产作者（设计）** | ❌ **缺**——没有「设计作者」角色（待定：主 agent 兼任，还是建 subagent）|
-| **多轮交叉的流程** | ❌ 缺——本节即其定义，待落成 `.agents/rules/process/review-driven.md` |
+| **产作者（设计）** | ✅ 现成——`docs-design-writer`（2026-10-03 建；与审核者**真对打**：两个独立 subagent、不共享上下文）|
+| **多轮交叉的流程** | ✅ 已落成——`rules/process/review-driven.md`（含 **§0 角色全景** · §9 派单协议 · §9.1 执行档位）|
 | **门禁 / 收工 / 归档** | ✅ 全部现成（`pre-commit` 11 层 + `task-cadence ship`）|
 | **在制品目录** | ✅ `workspace/` **按分支任务组织**——一个分支一个目录（`<分支名>/` 装需求 / 设计 / 审核 / 决策 / 账本，需要才有）· 模板在 `_templates/` · 跨任务的在 `_meta/`（2026-10-06 重构）|
 

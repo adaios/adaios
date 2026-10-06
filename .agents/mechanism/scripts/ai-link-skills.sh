@@ -18,10 +18,10 @@
 #   ⚠️ 出口根 skills/（服务 Qoder）在 .gitignore 里必须是锚定根的 `/skills/`：
 #      写成 `skills/` 会把真相源 .agents/toolkit/skills/ 一起忽略掉。
 #
-# 为什么只注册「直触发」技能而不是 16 个：
-#   ai-engineering/ 下共 16 个技能包（roles/ 12 + skills/ 4），但只有「用户一句话就能直触发」
-#   的才进工具 catalog。12 个审查官是**流程内触发**（process/review.md 按下表派发），
-#   全量注册会常驻会话上下文，并可能在你随口改一行代码时自动派 8+1 官全量走查
+# 为什么只注册「直触发」技能而不是 19 个：
+#   `.agents/toolkit/` 下共 19 个技能包（roles/ 15 + skills/ 4），但只有「用户一句话就能直触发」
+#   的才进工具 catalog。**15 个角色**是**流程内触发**（`process/review.md` / `review-driven.md` 派发），
+#   全量注册会常驻会话上下文，并可能在你随口改一行代码时自动派全套审查官走查
 #   ——那是全项目最贵的 AI 流程（见 checklists/ai-cost-checklist.md / process/audit.md 成本纪律）。
 #
 # 验证：bash .agents/mechanism/guards/ai-guard-tools.sh（T4 按软链真身判定，不认名字）
