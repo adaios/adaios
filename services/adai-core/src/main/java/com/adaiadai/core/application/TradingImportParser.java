@@ -30,6 +30,11 @@ public final class TradingImportParser {
             "余额[:：]\\s*([\\d,.]+)\\s+可用[:：]\\s*([\\d,.]+)\\s+可取[:：]\\s*([\\d,.]+)"
                     + "\\s+参考市值[:：]\\s*([\\d,.]+)\\s+资产[:：]\\s*([\\d,.]+)\\s+盈亏[:：]\\s*([\\d,.]+)");
     private static final DateTimeFormatter TDX_DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
+    /** 文件名里的日期（`20260904004455_持仓股20260904.txt` → 2026-09-04；也容忍 `2026-09-04` / `2026_09_04`）——
+     *  统一入口给快照两类文件定锚定日（设计 §3①「归一化」）；假日期（`20260230` 等）由
+     *  {@link #parseDateFromFilename} 逐字段回验剔除。 */
+    private static final Pattern FILENAME_DATE = Pattern.compile(
+            "(20\\d{2})[-_/]?(0\\d|1[0-2])[-_/]?(0[1-9]|[12]\\d|3[01])");
 
     private TradingImportParser() {}
 
@@ -459,6 +464,249 @@ public final class TradingImportParser {
                 || r.remark().contains("入账"));
     }
 
+    // ── 统一入口（R-12「一次把导出的文件交给它就行」· 2026-10-06 trading 重做 ingest 批）──
+
+    /**
+     * 导入文件类型（统一入口分派 + 回执展示）。{@code order()} = 内部处理顺序：
+     * <b>快照在前、流水在后</b>——用户 2026-10-05 拍板（「钱先于货」，`routine.md` 硬约束）。
+     * <p>
+     * 为什么不按设计稿 §3① 字面的「事件在前、快照最后」：`routine.md` 实测记录
+     * 「顺序反了 → 先补流水、后导快照，会被 auto 模式当『需回放』→ 与快照双计——
+     * 2026-09-07 / 09-09 / 09-12 三次事故都是这个形态」（review P2-4 已标记该冲突、未闭环）。
+     * 快照先落有两层收益：① cash 先于 positions 是硬依赖（持仓导入的当日盈亏写入闸门②
+     * 要求账户快照已存在，见 {@code applyBrokerTodayPnl}）；② 快照把锚定日推到本批日期后，
+     * 随后的流水 ≤ 锚定日一律走补录（不重放、不改账），本批内也不会双计。
+     * <p>
+     * 「资金流水」（银行流水）暂无解析器——无样本不凭空写，归 {@link #UNKNOWN} 如实拒绝（登记待样本）。
+     */
+    public enum ImportKind {
+        CASH("资金股份", 10),
+        POSITIONS("持仓股", 20),
+        TRADES("历史成交", 30),
+        SOLD("清仓股", 40),
+        WATCHLIST("自选股", 50),
+        UNKNOWN("无法识别", 90);
+
+        private final String label;
+        private final int order;
+
+        ImportKind(String label, int order) {
+            this.label = label;
+            this.order = order;
+        }
+
+        /** 人话名称（回执展示「认出来是哪类文件」）。 */
+        public String label() {
+            return label;
+        }
+
+        /** 内部处理顺序权重（小者在前）：资金(10) → 持仓(20) → 成交(30) → 清仓(40) → 自选(50) → 未知(90)。 */
+        public int order() {
+            return order;
+        }
+    }
+
+    /**
+     * 识别文件类型（统一入口第一步 · 设计 §3①「表头识别 fail-closed」）。
+     * <p>
+     * 判据与各链既有表头门槛**逐条一致**（资金链首行正则；成交 / 清仓 / 持仓 / 自选各自的核心列），
+     * 且**不用文件名**——文件名是用户可改的，表头才是数据自身的事实；认不出返回 {@link ImportKind#UNKNOWN}，
+     * 由调用方如实拒绝（不猜、不静默入库）。
+     * <p>
+     * 扫描顺序即判据优先级：历史成交（4 核心列，最具体）→ 清仓股 → 持仓股 → 自选股。
+     * 持仓股判据额外排除资金明细形状（见 {@link #looksLikePositionsHeader}）。
+     */
+    public static ImportKind detectKind(String content) {
+        List<String> lines = split(content);
+        if (!lines.isEmpty() && CASH_HEAD.matcher(lines.get(0)).find()) return ImportKind.CASH;
+        for (String line : lines) {
+            if (isStructuralLine(line)) continue;
+            if (line.startsWith("-")) continue; // 历史成交导出的分隔线（与 parseHistoricalTradesDetailed 同口径）
+            String[] cells = splitCells(line); // 容忍 tab 与空格对齐两种导出（与各链解析同款）
+            if (looksLikeTradesHeader(cells)) return ImportKind.TRADES;
+            if (looksLikeSoldHeader(cells)) return ImportKind.SOLD;
+            if (looksLikePositionsHeader(cells)) return ImportKind.POSITIONS;
+            if (looksLikeWatchlistHeader(cells)) return ImportKind.WATCHLIST;
+        }
+        return ImportKind.UNKNOWN;
+    }
+
+    /** 历史成交表头判据（与 {@link #parseHistoricalTradesDetailed} 的核心列门槛一致）。 */
+    private static boolean looksLikeTradesHeader(String[] cells) {
+        int[] idx = locate(cells, "成交日期", "证券代码", "买卖标志", "成交编号");
+        return idx[0] >= 0 && idx[1] >= 0 && idx[2] >= 0 && idx[3] >= 0;
+    }
+
+    /** 清仓股表头判据（与 {@link #parseSoldWithReport} 的核心列门槛一致：代码 + 介入日期 + 清仓日期）。 */
+    private static boolean looksLikeSoldHeader(String[] cells) {
+        int[] idx = locate(cells, "代码", "介入日期", "清仓日期");
+        return idx[0] >= 0 && idx[1] >= 0 && idx[2] >= 0;
+    }
+
+    /**
+     * 持仓股表头判据（与前端 {@code parseTdxPositions} 的核心列口径一致：代码 + 数量列 + 成本列）。
+     * <p>
+     * 排除资金明细形状（含「当前价」或「浮动盈亏」）——资金链明细也有 证券代码 / 证券数量 / 成本价 列，
+     * 不排除会把资金股份文件抢过来当持仓解析（持仓股导出无这两列，资金明细表头有）。
+     */
+    private static boolean looksLikePositionsHeader(String[] cells) {
+        if (locateFirst(cells, "证券代码", "代码") < 0) return false;
+        if (locateFirst(cells, "证券数量", "股票余额", "持仓数量", "数量") < 0) return false;
+        if (locateFirst(cells, "成本价", "成本") < 0) return false;
+        return locateFirst(cells, "当前价", "浮动盈亏") < 0;
+    }
+
+    /** 自选股表头判据（与 {@link #parseWatchlistDetailed} 的核心列门槛一致：代码 + 至少一个形态列）。 */
+    private static boolean looksLikeWatchlistHeader(String[] cells) {
+        if (locate(cells, "代码")[0] < 0) return false;
+        int[] forms = locate(cells, "长期形态", "中期形态", "短期形态");
+        return forms[0] >= 0 || forms[1] >= 0 || forms[2] >= 0;
+    }
+
+    /**
+     * 解析持仓股导出（统一入口 ingest 批，2026-10-06）——语义与前端 {@code parseTdxPositions} 逐条对齐：
+     * <ul>
+     *   <li>表头核心三列（代码 / 数量 / 成本价）齐才认；不齐 → {@code headerMatched=false}，调用方 fail-closed；</li>
+     *   <li>0 股行 → {@code skipped}（券商文件里保留的已清空标的，不是持仓也不是脏数据），
+     *       其「当日盈亏」仍计入总额（当日清仓的已实现盈亏也在这一列）；</li>
+     *   <li><b>成本价负数合法</b>（反复做 T / 分红摊到 0 以下是真实存在的，实测 600601 方正科技）；</li>
+     *   <li>「当日盈亏」有行取不到数 → 总额置 null（绝不发半截总数）；</li>
+     *   <li>看不懂的行（列不足 / 代码非六位 / 数量非整数 / 成本非数字）→ {@code unparsedRows} 行号 + 原文 + 原因，
+     *       <b>调用方必须拒绝整份导入</b>——持仓导入是全量覆盖，丢一行 = 静默删一只持仓。</li>
+     * </ul>
+     * 数量读取比前端宽容一档：{@code 1,200} / {@code 1200.00} 这类「整数带小数尾」接受
+     * （前端 {@code int.tryParse} 会拒 {@code 1200.00}），非整数（12.5）仍丢行。
+     */
+    public static PositionParse parsePositions(String content) {
+        List<PositionRow> rows = new ArrayList<>();
+        List<String> unparsedRows = new ArrayList<>();
+        List<String> skipped = new ArrayList<>();
+        List<String> lines = split(content);
+        int symbolCol = -1, nameCol = -1, qtyCol = -1, costCol = -1, todayPnlCol = -1, priceCol = -1;
+        boolean headerMatched = false;
+        BigDecimal todayPnlSum = BigDecimal.ZERO;
+        boolean todayPnlBroken = false;
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i);
+            int lineNo = i + 1;
+            if (isStructuralLine(line)) continue;
+            String[] cells = splitCells(line);
+            if (!headerMatched) {
+                if (!looksLikePositionsHeader(cells)) continue;
+                symbolCol = locateFirst(cells, "证券代码", "代码");
+                nameCol = locateFirst(cells, "证券名称", "名称");
+                qtyCol = locateFirst(cells, "证券数量", "股票余额", "持仓数量", "数量");
+                costCol = locateFirst(cells, "成本价", "成本");
+                todayPnlCol = locateFirst(cells, "当日盈亏");
+                priceCol = locateFirst(cells, "现价", "最新价");
+                headerMatched = true;
+                continue;
+            }
+            // 行校验按「实际要读的最大列」判（前端 needMax 同款——行比表头短时不再读到越界列）
+            int needMax = Math.max(symbolCol, Math.max(qtyCol, costCol));
+            if (cells.length <= needMax) {
+                unparsedRows.add(droppedLine(lineNo, line,
+                        "字段不足（需要至少 " + (needMax + 1) + " 列，实际 " + cells.length + " 列）"));
+                continue;
+            }
+            String symbol = cells[symbolCol].trim();
+            if (!symbol.matches("\\d{6}")) {
+                unparsedRows.add(droppedLine(lineNo, line, "代码「" + symbol + "」不是 6 位数字"));
+                continue;
+            }
+            String name = nameCol >= 0 && nameCol < cells.length ? cells[nameCol].trim() : "";
+            // 当日盈亏累计放在 0 股判断之前：0 股行的当日盈亏是本日清仓的已实现盈亏，必须计入总额。
+            if (todayPnlCol >= 0) {
+                BigDecimal t = todayPnlCol < cells.length ? parseNum(cells[todayPnlCol]) : null;
+                if (t == null) todayPnlBroken = true;
+                else todayPnlSum = todayPnlSum.add(t);
+            }
+            Integer quantity = integralOf(parseNum(cells[qtyCol]));
+            if (quantity == null) {
+                unparsedRows.add(droppedLine(lineNo, line,
+                        "数量「" + cells[qtyCol].trim() + "」不是整数"));
+                continue;
+            }
+            if (quantity == 0) {
+                skipped.add(symbol + " " + name + "（0 股，已清空）");
+                continue;
+            }
+            if (quantity < 0) {
+                unparsedRows.add(droppedLine(lineNo, line,
+                        "数量「" + quantity + "」为负，不是有效持仓"));
+                continue;
+            }
+            BigDecimal cost = parseNum(cells[costCol]);
+            if (cost == null) {
+                unparsedRows.add(droppedLine(lineNo, line,
+                        "成本价「" + cells[costCol].trim() + "」不是数字"));
+                continue;
+            }
+            // 现价必须 > 0 才有意义（成本价允许为负，现价不允许）——取不到/非正 → null（不带上送）
+            BigDecimal price = null;
+            if (priceCol >= 0 && priceCol < cells.length) {
+                BigDecimal p = parseNum(cells[priceCol]);
+                if (p != null && p.signum() > 0) price = p;
+            }
+            rows.add(new PositionRow(symbol, name, quantity, cost, price));
+        }
+        BigDecimal todayPnl = todayPnlCol >= 0 && !todayPnlBroken ? todayPnlSum : null;
+        return new PositionParse(rows, unparsedRows, skipped, headerMatched, todayPnl);
+    }
+
+    /** 持仓股解析结果（2026-10-06 统一入口批）。
+     *  @param rows          有效持仓行（数量 > 0）
+     *  @param unparsedRows  没看懂的行（每条「第 N 行「原文」：原因」，行号 = 原文件行号 1 起算）——
+     *                       <b>非空即须拒绝整份导入</b>（全量覆盖语义：丢一行 = 静默删一只持仓）
+     *  @param skipped       看懂但不是持仓的行（0 股残留）——正常导入，只需告知
+     *  @param headerMatched 表头是否识别（false = 选错文件 / 空文件，调用方 fail-closed）
+     *  @param todayPnl      券商「当日盈亏」列之和（含 0 股行）；缺列或有行取不到数 → null（调用方保留旧值不覆盖） */
+    public record PositionParse(List<PositionRow> rows, List<String> unparsedRows, List<String> skipped,
+                                boolean headerMatched, BigDecimal todayPnl) {
+        public PositionParse {
+            if (rows == null) rows = List.of();
+            if (unparsedRows == null) unparsedRows = List.of();
+            if (skipped == null) skipped = List.of();
+        }
+    }
+
+    /** 持仓行（券商「持仓股」导出）：{@code avgCost} 可负（做 T/分红摊薄）；
+     *  {@code currentPrice} 可空（缺列 / 非数字 / 非正 → null，由导入侧保留原有存储价）。 */
+    public record PositionRow(String symbol, String name, int quantity, BigDecimal avgCost,
+                              BigDecimal currentPrice) {}
+
+    /**
+     * 从文件名提取日期（统一入口给快照两类文件定锚定日；设计 §3①「归一化」）。
+     * <p>
+     * 通达信导出文件名惯例：`20260904004455_持仓股20260904.txt`（前导时间戳 + 主题 + 日期），
+     * 也容忍 `2026-09-04` / `2026_09_04` 分隔写法。取**第一个**完整匹配并按 {@link LocalDate} 逐字段回验
+     * ——`20260230` 这类日历上不存在的日期直接跳过（宁可无据，不猜）。
+     *
+     * @return 文件名里的日期；没有 / 非法 → null（调用方退回既有归一化并标「无据」）
+     */
+    public static LocalDate parseDateFromFilename(String filename) {
+        if (filename == null || filename.isBlank()) return null;
+        Matcher m = FILENAME_DATE.matcher(filename);
+        while (m.find()) {
+            try {
+                return LocalDate.of(Integer.parseInt(m.group(1)),
+                        Integer.parseInt(m.group(2)), Integer.parseInt(m.group(3)));
+            } catch (java.time.DateTimeException ignored) {
+                // 假日期（20260230 等）→ 继续找下一个匹配（文件名里可能有别的时间戳）
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 主板代码判据（设计 §11.2「限制**只在账**」）：`600/601/603/605` · `000/001/002/003` 开头才是入账标的；
+     * 科创（688）/ 创业（300/301）/ 北交所（8xx/4xx）/ ETF / 可转债 / 港美股一律**如实拒绝、不静默**。
+     * <p>注意作用域：只对「账」（持仓 / 成交）生效；`cases` / `watchlist` / 行情**不受限**（§11.2）。
+     */
+    public static boolean isMainboardCode(String symbol) {
+        return symbol != null && symbol.matches("^(600|601|603|605|000|001|002|003)\\d{3}$");
+    }
+
     // ── 工具 ──
 
     /**
@@ -486,6 +734,28 @@ public final class TradingImportParser {
             }
         }
         return idx;
+    }
+
+    /** 按「键优先级」表头定位（统一入口批，2026-10-06）：返回首个命中的列索引（-1 = 全未命中）。
+     *  <p>与 {@link #locate} 的区别：locate 是「列在前者优先」，本方法是「键在前的优先」——
+     *  持仓数量列要求「证券数量 / 股票余额」先于兜底的「数量」被找到（列顺序不可控，键顺序可控）。 */
+    private static int locateFirst(String[] header, String... keys) {
+        for (String key : keys) {
+            int idx = locate(header, key)[0];
+            if (idx >= 0) return idx;
+        }
+        return -1;
+    }
+
+    /** 数量的整数值读取（统一入口批）：容忍 `1,200` / `1200.00`（券商文件偶见小数尾），
+     *  非整数（12.5）/ 超界 → null（按「没读到数量」丢行如实上报，绝不四舍五入猜一个数）。 */
+    private static Integer integralOf(BigDecimal v) {
+        if (v == null) return null;
+        try {
+            return v.stripTrailingZeros().intValueExact();
+        } catch (ArithmeticException e) {
+            return null;
+        }
     }
 
     private static int parseIntSafe(int col, String[] cells) {

@@ -214,4 +214,32 @@ class TimelineProjectionTest {
                 entry.mediaPaths(), "全部图（按上传顺序）");
         assertEquals("records/2026/09/media/rec_a.png", entry.mediaPath(), "mediaPath 恒为首图（旧前端兼容）");
     }
+
+    /**
+     * §11.3 六面闸门·面2（2026-10-06）：关插件 → 交易条目不进时间线（读侧过滤）；
+     * 重开即恢复（可逆——数据保留不删）。
+     */
+    @Test
+    void fullTimeline_pluginOff_hidesTradingEntries_reversible() {
+        LocalDateTime t0 = LocalDateTime.of(2026, 8, 15, 9, 30);
+        when(cards.findAll(any())).thenReturn(List.of());
+        when(records.findAll(any())).thenReturn(List.of(
+                new ContentRecord("t1", "record", "user_input", "买入 京东方A",
+                        "买入 京东方A 1000 股 @5.20", List.of(), t0, "log", null, "trading"),
+                record("n1", "note", "记录一", "记录一", "log", t0.plusMinutes(5))));
+
+        com.adaiadai.core.kernel.plugin.PluginService plugins =
+                mock(com.adaiadai.core.kernel.plugin.PluginService.class);
+        when(plugins.hasPlugin("adai", com.adaiadai.core.kernel.plugin.PluginRegistry.PLUGIN_TRADING))
+                .thenReturn(false);
+        TimelineProjection projection = new TimelineProjection(records, cards, plugins);
+
+        List<TimelineEntry> off = projection.fullTimeline("adai");
+        assertEquals(1, off.size(), "关插件：交易条目不进时间线");
+        assertEquals("n1", off.get(0).id(), "生活记录不受影响");
+
+        when(plugins.hasPlugin("adai", com.adaiadai.core.kernel.plugin.PluginRegistry.PLUGIN_TRADING))
+                .thenReturn(true);
+        assertEquals(2, projection.fullTimeline("adai").size(), "重开插件即恢复（可逆）");
+    }
 }

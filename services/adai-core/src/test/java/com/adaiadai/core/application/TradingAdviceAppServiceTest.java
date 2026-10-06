@@ -158,8 +158,7 @@ class TradingAdviceAppServiceTest {
                   "advice": [
                     {
                       "symbol": "000725",
-                      "suggestion": "reduce",
-                      "reason": "仓位集中且涨势透支，按 R81 单票仓位纪律建议减仓",
+                      "statement": "现价 5.46 高于成本 5.20；持仓占比 3.7%（R81 对照仓位上限未超）",
                       "rules": ["R81", "R88"]
                     }
                   ],
@@ -170,21 +169,21 @@ class TradingAdviceAppServiceTest {
 
         TradingAdviceAppService.TradingAdviceResponse res = svc.generateAdvice("default");
 
-        // 逐票建议与持仓一一对应：LLM 只回了 000725，600519 以基础数据补齐
+        // 逐票陈述与持仓一一对应：LLM 只回了 000725，600519 以引擎事实句补齐
         assertEquals(2, res.advice().size());
         TradingAdviceAppService.TradingAdviceItem item = res.advice().get(0);
         assertEquals("000725", item.symbol());
         assertEquals("京东方A", item.name());
-        assertEquals("reduce", item.suggestion());
-        assertTrue(item.reason().contains("R81"), "reason 必须引用规则号");
+        assertTrue(item.statement().contains("R81"), "陈述必须引用规则号");
         assertTrue(item.rules().contains("R81"));
         // position_percent 由后端计算（确定性）：5460 / (5460+142000) ≈ 3.70%
         assertEquals(0, item.positionPercent().compareTo(new BigDecimal("3.70")),
                 "持仓占比应后端计算，实际: " + item.positionPercent());
         TradingAdviceAppService.TradingAdviceItem missing = res.advice().get(1);
         assertEquals("600519", missing.symbol());
-        assertNull(missing.suggestion(), "LLM 漏掉的持仓无建议字段");
-        assertNull(missing.reason());
+        // 批6：LLM 漏掉的持仓不再留空——补引擎事实句（事实永远可给）
+        assertNotNull(missing.statement());
+        assertTrue(missing.statement().contains("现价"), "漏掉的持仓应补引擎事实句：" + missing.statement());
         assertTrue(missing.rules().isEmpty());
         assertEquals("持仓 2 只，京东方仓位占比需下调", res.summary());
 
@@ -193,8 +192,8 @@ class TradingAdviceAppServiceTest {
         verify(ai).generate(hardCtx.capture(), any());
         assertTrue(hardCtx.getValue().prompt().contains("仓位上限 25%"),
                 "茅台占比 96.3% 应触发 R81 超仓硬信号，实际 prompt: " + hardCtx.getValue().prompt());
-        assertTrue(hardCtx.getValue().prompt().contains("→ suggestion 参考 reduce（R81）"),
-                "超仓硬信号应标注参考 reduce");
+        assertTrue(hardCtx.getValue().prompt().contains("→ 陈述里须对照你设的仓位上限（R81）"),
+                "超仓硬信号应要求陈述对照仓位上限");
     }
 
     @Test
@@ -238,15 +237,16 @@ class TradingAdviceAppServiceTest {
 
         TradingAdviceAppService.TradingAdviceResponse res = svc.generateAdvice("default");
 
-        // 兜底：返回基础数据（symbol/name/position_percent），无建议字段，不抛错
+        // 兜底：返回基础数据（symbol/name/position_percent）+ 引擎事实句，不抛错
         assertEquals(2, res.advice().size());
         for (TradingAdviceAppService.TradingAdviceItem item : res.advice()) {
-            assertNull(item.suggestion(), "兜底时无建议字段");
-            assertNull(item.reason());
+            assertNotNull(item.statement(), "兜底时陈述不空——引擎事实句顶上");
+            assertTrue(item.statement().contains("现价"), "兜底陈述应是引擎事实句：" + item.statement());
             assertTrue(item.rules().isEmpty());
             assertTrue(item.positionPercent() != null, "position_percent 由后端计算，兜底也应给出");
         }
         assertTrue(res.summary().contains("总市值"), "兜底 summary 应含基础数据");
+        assertTrue(res.summary().contains("AI 解读暂不可用"), "兜底 summary 应如实说解读暂不可用");
     }
 
     @Test
@@ -260,7 +260,7 @@ class TradingAdviceAppServiceTest {
         TradingAdviceAppService.TradingAdviceResponse res = svc.generateAdvice("default");
 
         assertEquals(2, res.advice().size());
-        assertNull(res.advice().get(0).suggestion(), "坏 JSON 也应降级为无建议字段");
+        assertTrue(res.advice().get(0).statement().contains("现价"), "坏 JSON 也应降级为引擎事实句");
     }
 
     @Test
@@ -289,7 +289,7 @@ class TradingAdviceAppServiceTest {
         when(ai.generate(any(), any())).thenReturn("""
                 {
                   "advice": [
-                    {"symbol": "999999", "suggestion": "buy", "reason": "虚构标的", "rules": ["R81"]}
+                    {"symbol": "999999", "statement": "现价 1.00 虚构标的", "rules": ["R81"]}
                   ],
                   "summary": "x"
                 }
@@ -304,16 +304,16 @@ class TradingAdviceAppServiceTest {
     }
 
     @Test
-    void generateAdvice_suggestionAlias_normalized() {
-        // suggestion 别名归一：sell → clear、持有 → hold，未知值 → null
+    void generateAdvice_advisoryWordsInStatement_fallsBackToEngineFacts() {
+        // 批6（验收 10）：LLM 陈述出现方向词（建议/该走…）→ 出口兜底退回引擎事实句
         MarketDataSource market = mock(MarketDataSource.class);
         when(market.quote(any())).thenReturn(Map.of());
         AiClient ai = mock(AiClient.class);
         when(ai.generate(any(), any())).thenReturn("""
                 {
                   "advice": [
-                    {"symbol": "000725", "suggestion": "sell", "reason": "跌破止损位", "rules": ["R66"]},
-                    {"symbol": "600519", "suggestion": "持有", "reason": "正常", "rules": []}
+                    {"symbol": "000725", "statement": "现价 5.46，建议减仓", "rules": ["R81"]},
+                    {"symbol": "600519", "statement": "该走了，跌破 1400 再说", "rules": []}
                   ],
                   "summary": "x"
                 }
@@ -322,8 +322,11 @@ class TradingAdviceAppServiceTest {
 
         TradingAdviceAppService.TradingAdviceResponse res = svc.generateAdvice("default");
 
-        assertEquals("clear", res.advice().get(0).suggestion(), "sell 应归一为 clear");
-        assertEquals("hold", res.advice().get(1).suggestion(), "持有应归一为 hold");
+        String first = res.advice().get(0).statement();
+        assertTrue(first.contains("现价"), "违禁词陈述应退回引擎事实句：" + first);
+        assertFalse(first.contains("建议"), "出口兜底后不得残留方向词：" + first);
+        String second = res.advice().get(1).statement();
+        assertFalse(second.contains("该走"), "「该走」也应兜底：" + second);
     }
 
     // ── RFC 20260816 §3.1：止损/入场/买点注入 → clear 判定有数据可判 ──
@@ -355,8 +358,8 @@ class TradingAdviceAppServiceTest {
     }
 
     @Test
-    void generateAdvice_currentPriceBelowStop_llmClear_accepted() {
-        // 现价 < 止损位 → prompt 注入两价 + 硬判定；LLM 依数据判 clear（R66）→ 原样输出
+    void generateAdvice_currentPriceBelowStop_hardFactPrefixed() {
+        // 现价 < 止损位 → prompt 注入两价 + 硬判定；LLM 陈述没提关键事实 → 引擎事实句补在最前
         PositionRepository repo = mock(PositionRepository.class);
         when(repo.findAll(any())).thenReturn(List.of(
                 posWithPlan("000725", "京东方A", 1000, "5.20", "5.46", "2026-08-01", "6.00", "B1")));
@@ -369,8 +372,7 @@ class TradingAdviceAppServiceTest {
                   "advice": [
                     {
                       "symbol": "000725",
-                      "suggestion": "clear",
-                      "reason": "现价 4.90 已跌破止损位 6.00，按 R66 止损纪律建议清仓",
+                      "statement": "按 R66 对照，你设的止损位 6.00 与现价 4.90 已触碰",
                       "rules": ["R66"]
                     }
                   ],
@@ -384,8 +386,9 @@ class TradingAdviceAppServiceTest {
         assertEquals(1, res.advice().size());
         TradingAdviceAppService.TradingAdviceItem item = res.advice().get(0);
         assertEquals("000725", item.symbol());
-        assertEquals("clear", item.suggestion(), "跌破止损位 → clear");
-        assertTrue(item.reason().contains("R66"), "reason 应引用 R66");
+        // 批6：LLM 陈述没提关键事实 → 硬判定事实句补在最前（引擎口径优先）
+        assertTrue(item.statement().startsWith("现价 4.9 < 止损位 6，已跌破止损位（R66"), "实际：" + item.statement());
+        assertTrue(item.statement().contains("按 R66 对照"), "LLM 陈述保留在后");
         assertTrue(item.rules().contains("R66"));
 
         // 硬判定数据确实进 prompt（现价/止损位两价同现，LLM 才能判；4.90→4.9、6.00→6 剥尾零呈现）
@@ -463,9 +466,9 @@ class TradingAdviceAppServiceTest {
         when(ai.generate(any(), any())).thenReturn("""
                 {
                   "advice": [
-                    {"symbol": "000725", "suggestion": "clear", "reason": "跌破止损位 5.00，按 R66 只输一根K线", "rules": ["R66"]}
+                    {"symbol": "000725", "statement": "现价 4.80 已跌破止损位 5.00（R66）", "rules": ["R66"]}
                   ],
-                  "summary": "京东方跌破止损建议清仓"
+                  "summary": "京东方已跌破止损位"
                 }
                 """);
         AdviceHistoryRepository history = mock(AdviceHistoryRepository.class);
@@ -478,7 +481,9 @@ class TradingAdviceAppServiceTest {
         verify(history, org.mockito.Mockito.atLeastOnce()).append(eq("default"), captor.capture());
         AdviceEntry recorded = captor.getValue();
         assertEquals("000725", recorded.symbol());
-        assertTrue(recorded.hardVerdict(), "跌破止损位的 clear 是引擎硬判定，应标记");
+        assertTrue(recorded.hardVerdict(), "跌破止损位是引擎硬判定，应标记");
+        assertNull(recorded.suggestion(), "批6：方向词字段退役，留痕不再写 buy/hold/reduce/clear");
+        assertEquals("现价 4.80 已跌破止损位 5.00（R66）", recorded.reason(), "陈述进 reason 字段");
         assertEquals("manual-advice", recorded.source());
     }
 
@@ -494,14 +499,15 @@ class TradingAdviceAppServiceTest {
 
         TradingAdviceAppService.TradingAdviceResponse res = svc.generateAdvice("default");
 
-        assertTrue(res.advice().stream().allMatch(i -> i.suggestion() == null), "降级响应无建议字段");
+        assertTrue(res.advice().stream().allMatch(i -> i.statement() != null && i.statement().contains("现价")),
+                "降级响应给引擎事实句");
         // 降级也留痕（source=degraded，诚实留史——不留就查不到「当时建议过但失败」）
         ArgumentCaptor<AdviceEntry> captor = ArgumentCaptor.forClass(AdviceEntry.class);
         verify(history, org.mockito.Mockito.atLeastOnce()).append(eq("default"), captor.capture());
         assertEquals("degraded", captor.getValue().source());
     }
 
-    /** A3：留痕带「依据快照」（当时的价 / 占比 / 止损 / 买点 / 动作）——只记录事实，不做对错判决。 */
+    /** A3：留痕带「依据快照」（当时的价 / 占比 / 止损 / 买点 / 陈述）——只记录事实，不做对错判决。 */
     @Test
     void generateAdvice_recordsBasisSnapshot() {
         PositionRepository repo = mock(PositionRepository.class);
@@ -512,8 +518,8 @@ class TradingAdviceAppServiceTest {
                 "000725", quote("000725", "京东方A", "5.46", "5.0")));
         AiClient ai = mock(AiClient.class);
         when(ai.generate(any(), any())).thenReturn("""
-                {"advice": [{"symbol": "000725", "suggestion": "reduce",
-                             "reason": "按 R81 单票仓位纪律", "rules": ["R81"]}], "summary": "…"}
+                {"advice": [{"symbol": "000725", "statement": "现价 5.46；按 R81 对照仓位上限",
+                             "rules": ["R81"]}], "summary": "…"}
                 """);
         AdviceHistoryRepository history = mock(AdviceHistoryRepository.class);
         TradingAdviceAppService svc = service(repo, market, ai, history);
@@ -525,7 +531,7 @@ class TradingAdviceAppServiceTest {
         String basis = captor.getValue().basis();
         assertNotNull(basis, "留痕必须带依据快照（铁证④「可追责」的实体）");
         assertTrue(basis.contains("5.46"), "快照要记当时的价：" + basis);
-        assertTrue(basis.contains("reduce"), "快照要记当时的动作：" + basis);
+        assertTrue(basis.contains("statement"), "快照要记当时的陈述：" + basis);
     }
 
     private TradingAdviceAppService service(PositionRepository positions, MarketDataSource market, AiClient ai,
@@ -569,8 +575,8 @@ class TradingAdviceAppServiceTest {
         when(ai.generate(any(), any())).thenReturn("""
                 {
                   "advice": [
-                    {"symbol": "000725", "suggestion": "reduce",
-                     "reason": "按 R66 只输一根K线", "rules": ["R66"]}
+                    {"symbol": "000725", "statement": "现价 5.46 高于成本 5.20（R66 对照）",
+                     "rules": ["R66"]}
                   ],
                   "summary": "持仓 2 只"
                 }
@@ -604,8 +610,8 @@ class TradingAdviceAppServiceTest {
                 "000725", quote("000725", "京东方A", "5.46", "5.0")));
         AiClient ai = mock(AiClient.class);
         when(ai.generate(any(), any())).thenReturn("""
-                {"advice": [{"symbol": "000725", "suggestion": "hold",
-                             "reason": "观望", "rules": ["R999"]}], "summary": "持仓 2 只"}
+                {"advice": [{"symbol": "000725", "statement": "现价 5.46，按 R999 对照",
+                             "rules": ["R999"]}], "summary": "持仓 2 只"}
                 """);
         TradingEvidenceService evidence = mock(TradingEvidenceService.class);
         when(evidence.ruleTextOf(any())).thenReturn(java.util.Optional.empty());
@@ -620,6 +626,6 @@ class TradingAdviceAppServiceTest {
         assertNull(ev.history(), "样本不足 → ①留 null（不拿巧合当规律）");
         assertTrue(ev.ruleTexts().isEmpty(), "查不到原文 → 空列表（不编一条）");
         assertTrue(ev.numbers().contains("5.46"), "②数字证据不受影响");
-        assertEquals("hold", res.advice().get(0).suggestion(), "缺证据不影响建议本身");
+        assertTrue(res.advice().get(0).statement().contains("5.46"), "缺证据不影响陈述本身");
     }
 }

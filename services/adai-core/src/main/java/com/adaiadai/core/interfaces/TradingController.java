@@ -1,7 +1,6 @@
 package com.adaiadai.core.interfaces;
 
 import com.adaiadai.core.application.TradingAdviceAppService;
-import com.adaiadai.core.application.TradingImportParser;
 import com.adaiadai.core.application.TradingParseAppService;
 import com.adaiadai.core.application.TradingAppService;
 import com.adaiadai.core.application.WatchlistBuyPointService;
@@ -21,6 +20,7 @@ import com.adaiadai.core.domain.trading.TransferRecord;
 import com.adaiadai.core.infrastructure.storage.StorageException;
 import com.adaiadai.core.kernel.plugin.PluginRegistry;
 import com.adaiadai.core.kernel.plugin.PluginService;
+import com.adaiadai.core.kernel.storage.FileStorage;
 import com.adaiadai.core.domain.trading.PushSettings;
 import com.adaiadai.core.domain.trading.TradingMarketStage;
 import com.adaiadai.core.infrastructure.storage.MarketPushRepository;
@@ -40,17 +40,12 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
-import org.springframework.beans.factory.annotation.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.YearMonth;
@@ -88,8 +83,8 @@ public class TradingController {
     private final TradingMarketStageRepository marketStageRepository;
     /** 2026-08-30 标的搜索：名称/拼音首字母/代码 → 候选（标注/匹配输入用）。 */
     private final com.adaiadai.core.infrastructure.market.NameToSymbolResolver nameToSymbolResolver;
-    /** P1-1（2026-08-17 走查）：99-inbox 路径配置驱动（生产 /opt/adaios/os/... 由 .env 注入，防硬编码相对路径失效） */
-    private final Path inboxDir;
+    /** §10.2（2026-10-06 设计 final）：promote 候选落点改走用户分层文件存储（data/{userId}/trading/reviews/promote/）——服务端不再直写 git 跟踪的 os/。 */
+    private final FileStorage fileStorage;
     /** RFC 20260905 A 层：个人交易画像（读写端点 + 客观统计）。 */
     private final TradingProfileService profileService;
     /** RFC 20260905 P2：清仓情绪采集（提问生成 + 回答回填）。 */
@@ -118,7 +113,7 @@ public class TradingController {
                              TradePsychologyService psychologyService,
                              TradingSessionPushService sessionPushService,
                              KlineService klineService,
-                             @Value("${adai.knowledge.trading-engine-path:../../os/trading-engine/knowledge/context}") String knowledgeDir) {
+                             FileStorage fileStorage) {
         this.tradingAppService = tradingAppService;
         this.reviewAppService = reviewAppService;
         this.adviceAppService = adviceAppService;
@@ -138,8 +133,7 @@ public class TradingController {
         this.psychologyService = psychologyService;
         this.sessionPushService = sessionPushService;
         this.klineService = klineService;
-        // knowledgeDir 形如 .../knowledge/context → 99-inbox 在其上两级（os/trading-engine/99-inbox）
-        this.inboxDir = Paths.get(knowledgeDir, "../..", "99-inbox").toAbsolutePath().normalize();
+        this.fileStorage = fileStorage;
     }
 
     /**
@@ -315,27 +309,20 @@ public class TradingController {
             @RequestBody(required = false) List<TradingAppService.PositionImportItem> items) {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
+        // P1-交易90（2026-10-06）：品种门（§11.2 账只接主板）对老端点同样生效——
+        // 此前只护统一入口，curl/旧客户端打本端点能绕开门把科创/ETF/北交所写进账。
+        // 非主板行不入账；文件里出现的非主板存量按系统现值保留（replace 不删）。
+        List<TradingAppService.PositionImportItem> requested = items != null ? items : List.of();
         // RFC 20261003 C4「持仓同理」（2026-10-03）：dryRun=true → **只对账、不落盘**——
         // 先看「文件 vs 系统」逐只差多少、replace 会怎么改，人看过再决定覆盖。
         if (dryRun) {
+            TradingAppService.MainboardGate gate = tradingAppService.gatePositions(userId, requested);
+            // 回执构建收口到 service（2026-10-06）：与统一入口 POST /trading/import 共用同一份字段口径
             TradingAppService.PositionsReconcile rec = tradingAppService.reconcilePositions(
-                    userId, items != null ? items : List.of());
-            java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
-            out.put("dryRun", true);
-            out.put("fileCount", rec.fileCount());
-            out.put("systemCount", rec.systemCount());
-            out.put("diffs", rec.diffs().stream().map(d -> {
-                java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
-                m.put("symbol", d.symbol());
-                m.put("name", d.name());
-                m.put("fileQty", d.fileQty());
-                m.put("systemQty", d.systemQty());
-                m.put("diff", d.diff());
-                m.put("why", d.why());
-                return m;
-            }).toList());
-            out.put("note", rec.note());
-            return ResponseEntity.ok(out);
+                    userId, gate.mainboardItems());
+            return ResponseEntity.ok(TradingAppService.mergeExtra(
+                    TradingAppService.positionsReconcileReceipt(rec),
+                    TradingAppService.mainboardGateExtra(gate)));
         }
         // 2026-09-12：锚定日 = 快照自身日期（通达信「持仓股」文件名里的日期）——补导几天前的文件时
         // 不能把锚定日写成今天，否则锚定日之后、快照之前的成交会被误判为「已含在快照内」而丢掉增量
@@ -353,36 +340,70 @@ public class TradingController {
                 throw new TradingException("todayPnl 需为数字（收到「" + todayPnl + "」）");
             }
         }
+        // P1-交易90：过品种门后才落盘（与统一入口同一判据）——非主板行不入账、存量按现值保留
+        TradingAppService.MainboardGate gate = tradingAppService.gatePositions(userId, requested);
         TradingAppService.PositionImportResult result = tradingAppService.importPositions(
-                userId, items != null ? items : List.of(), replace, snapshot, brokerTodayPnl, basis);
+                userId, gate.mainboardItems(), replace, snapshot, brokerTodayPnl, basis);
         // RFC 20260922 B 批 B3：账同步完成 → 交给推送服务决定是否出复盘（收盘后立即出 / 收盘前留给 15:30）
         if (result.imported() > 0) sessionPushService.afterDataSync(userId);
-        java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
-        body.put("imported", result.imported());
-        body.put("missingStopLoss", result.missingStopLoss());
-        // 2026-10-05（P2-交易84）：锚定日**依据**如实回执（有据/无据）——不许静默归一化。
-        // additive 新字段：旧客户端忽略即可，不改变既有字段类型与语义。
-        if (result.anchor() != null) body.put("anchor", anchorReceipt(result.anchor()));
-        return ResponseEntity.ok(body);
+        // 回执构建收口到 service（2026-10-06）：锚定依据如实回执（有据/无据）+ 品种门如实上报
+        return ResponseEntity.ok(TradingAppService.mergeExtra(
+                TradingAppService.positionImportReceipt(result),
+                TradingAppService.mainboardGateExtra(gate)));
     }
 
     /**
-     * 锚定决策 → 回执（2026-10-05，P2-交易84）。字段 additive：旧客户端忽略即可。
-     * <p>{@code basis} = EXPLICIT/FILE_DATE/CLOSED_DAY（有据）或 CLOCK（无据）；
-     * {@code note} = 人话说明（含「你指定的基准日在未来，已忽略」这类如实交代）。
+     * 批量文件导入统一入口（R-12「一次把导出的文件交给它就行」· 2026-10-06 ingest 批）。
+     * <p>
+     * POST /api/v1/trading/import?dryRun=false&mode=auto（multipart/form-data）：
+     * <ul>
+     *   <li>{@code files} 可多选（也接受单份 {@code file}——兼容只传一个的客户端）；</li>
+     *   <li>{@code mode}：历史成交的导入模式（auto=按锚定分派 · append=只补流水），默认 auto；</li>
+     *   <li>{@code dryRun=true}：只识别 + 只报「会做什么」（各链对账/预检），**不落盘、不留存**。</li>
+     * </ul>
+     * 语义：逐份识别（表头 fail-closed）→ 内部排序（**快照在前、流水在后**：资金股份 → 持仓股 →
+     * 历史成交 → 清仓股 → 自选股）→ 逐份处理 → 逐份回执；**一份失败不影响其他份**。
+     * 认不出的文件先留存、后如实拒绝（原始文件不丢，但绝不当成任何一类静默入库）。
+     * 保留既有五端点不变（本端点与它们共用同一 service 链路与回执口径）。
      */
-    private static java.util.Map<String, Object> anchorReceipt(TradingAppService.AnchorDecision d) {
-        java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
-        m.put("anchorDate", d.anchorDate() != null ? d.anchorDate().toString() : null);
-        m.put("fileDate", d.fileDate() != null ? d.fileDate().toString() : null);
-        m.put("basis", d.basis() != null ? d.basis().name() : null);
-        m.put("withEvidence", d.withEvidence());
-        if (d.explicitRejected()) {
-            m.put("explicitDate", d.explicitDate() != null ? d.explicitDate().toString() : null);
-            m.put("explicitRejected", true);
+    @PostMapping(value = "/import", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> importBundle(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestParam(value = "files", required = false) List<org.springframework.web.multipart.MultipartFile> files,
+            @RequestParam(value = "file", required = false) org.springframework.web.multipart.MultipartFile file,
+            @RequestParam(defaultValue = "false") boolean dryRun,
+            @RequestParam(defaultValue = "auto") String mode) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        // 兼容两种提交形状：多选 files + 单份 file
+        List<org.springframework.web.multipart.MultipartFile> effective = new java.util.ArrayList<>();
+        if (files != null) effective.addAll(files);
+        if (file != null) effective.add(file);
+        if (effective.isEmpty()) {
+            throw new TradingException("没有收到文件——请把通达信导出的文件选进来（可一次多选）");
         }
-        m.put("note", d.describe());
-        return m;
+        List<TradingAppService.BundleFileInput> inputs = new java.util.ArrayList<>(effective.size());
+        for (org.springframework.web.multipart.MultipartFile mf : effective) {
+            byte[] bytes;
+            try {
+                bytes = mf.getBytes();
+            } catch (java.io.IOException e) {
+                // 读一份失败不拖累其他份——以「没能读取」进入统一链路，逐份回执里如实报告
+                log.warn("统一入口：文件读取失败 | userId={} | {} | {}",
+                        userId, mf.getOriginalFilename(), e.getMessage());
+                bytes = null;
+            }
+            inputs.add(new TradingAppService.BundleFileInput(mf.getOriginalFilename(), bytes));
+        }
+        TradingAppService.ImportMode importMode = "append".equalsIgnoreCase(mode)
+                ? TradingAppService.ImportMode.APPEND : TradingAppService.ImportMode.AUTO;
+        TradingAppService.BundleImportResult result =
+                tradingAppService.importBundle(userId, inputs, importMode, dryRun);
+        // RFC 20260922 B 批 B3：统一入口也是一次账同步（dryRun 只算计划、不算同步；全部失败不算）
+        if (!dryRun && result.okCount() > 0) {
+            sessionPushService.afterDataSync(userId);
+        }
+        return ResponseEntity.ok(TradingAppService.bundleReceipt(result));
     }
 
     /**
@@ -486,37 +507,8 @@ public class TradingController {
         if (!dryRun && (result.imported() > 0 || result.updated() > 0)) {
             sessionPushService.afterDataSync(userId);
         }
-        // RFC 20260825：响应扩展 syncMode（sync 同步持仓 | append 只补流水）+ 每日操作总结（客观聚合 + 行为标注）
-        java.util.Map<String, Object> resp = new java.util.LinkedHashMap<>();
-        resp.put("imported", result.imported());
-        resp.put("updated", result.updated());
-        resp.put("skipped", result.skipped());
-        resp.put("nonTrades", result.nonTrades());
-        resp.put("lines", result.lines());
-        resp.put("syncMode", result.syncMode() != null ? result.syncMode() : "append");
-        if (result.summary() != null) resp.put("summary", result.summary());
-        // 2026-09-12：无法归属的真实成交必须可见（旧实现只写 WARN + 计入「跳过」，3 笔真实卖出就此消失）
-        resp.put("rejected", result.rejected() != null ? result.rejected() : List.of());
-        // P2-交易43（2026-09-14）：解析层「没看懂的行」带行号+原因透出——「识别出 N 笔」不再掩盖被丢的行
-        if (result.unparsed() != null && !result.unparsed().isEmpty()) {
-            resp.put("unparsed", result.unparsed().stream()
-                    .map(TradingImportParser.UnparsedLine::describe).toList());
-            resp.put("unparsedCount", result.unparsed().size());
-        }
-        if (result.anchor() != null) resp.put("anchor", result.anchor());
-        resp.put("dryRun", dryRun);
-        if (dryRun) {
-            java.util.Map<String, Object> plan = new java.util.LinkedHashMap<>();
-            plan.put("new", result.imported());
-            plan.put("merged", result.updated());
-            plan.put("skipped", result.skipped());
-            plan.put("nonTrades", result.nonTrades());
-            plan.put("wouldReject", result.rejected() != null ? result.rejected().size() : 0);
-            plan.put("anchorKnown", result.anchor() != null && result.anchor().known());
-            plan.put("syncMode", result.syncMode() != null ? result.syncMode() : "append");
-            resp.put("plan", plan);
-        }
-        return ResponseEntity.ok(resp);
+        // RFC 20260825：响应由 service 统一组装（syncMode / 总结 / rejected / unparsed / anchor / plan）
+        return ResponseEntity.ok(TradingAppService.historicalImportReceipt(result, dryRun));
     }
 
     /**
@@ -990,19 +982,23 @@ public class TradingController {
     }
 
     /**
-     * 设置本金（累计净投入，2026-08-18）。
-     * PUT /api/v1/trading/principal，body {"amount":150000}
-     * 只写 principal 字段（总盈亏 = 资产 − 本金），不动现金/资产/市值——本金初始化用。
+     * 设置本金——**已退役（2026-10-06，设计 §9#4）**。
+     * PUT /api/v1/trading/principal
+     * <p>
+     * 原因（G-06）：本金现在由**事件**推出——「转入/转出」自动累计净投入，不再靠手填；
+     * 手填的数与真实出入金两张皮，是「总盈亏基准失真」的源头（P2-交易66）。存量手填值会在
+     * 读账户时**自动迁移为一条一次性出入金调整事件**（资金页可见），之后本金 = 转账净额 + 迁移调整。
+     * <p>
+     * 返回 410 Gone + 人话指路；**读侧保留**（GET /account 的 principal 字段照常返回）。
      */
     @PutMapping("/principal")
     public ResponseEntity<?> setPrincipal(
-            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
-            @RequestBody(required = false) Map<String, String> body) {
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
-        BigDecimal amount = body != null && body.get("amount") != null
-                ? new BigDecimal(body.get("amount").trim()) : null;
-        return ResponseEntity.ok(tradingAppService.setPrincipal(userId, amount));
+        return ResponseEntity.status(410).body(Map.of("error",
+                "设置本金已退役——本金现在由转入/转出自动算出（净投入 = 转存 − 转取）；"
+                        + "要修正本金请到「资金」里补记转入/转出，存量手填的本金会自动迁移进账"));
     }
 
     /** 推送开关（RFC 20260817）：读取用户推送类型开关（GET /api/v1/trading/push-settings）。 */
@@ -1501,6 +1497,35 @@ public class TradingController {
         return ResponseEntity.ok(Map.of("updated", updated > 0, "tradeId", tradeId));
     }
 
+    /**
+     * 流水纠错 · 就地改（R-08 · 设计 §3④ §4.3 §9#24，2026-10-06）：改核心字段（price / volume /
+     * direction / entryDate / tradeTime / fee / orderId / reason 等），**用户面不留痕**，
+     * 系统侧写不可见修改日志，持仓/现金派生自动重算（不可精确撤销的场景 → 400 指路重导快照）。
+     * PUT /api/v1/trading/trades/{tradeId}，body 为要改的字段（未给的字段原样保留）。
+     */
+    @PutMapping("/trades/{tradeId}")
+    public ResponseEntity<?> editTrade(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @PathVariable String tradeId,
+            @RequestBody(required = false) Map<String, Object> body) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        if (body == null || body.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "请求体为空——请给出要修改的字段"));
+        }
+        return ResponseEntity.ok(tradingAppService.editTradeRecord(userId, tradeId, body));
+    }
+
+    /** 流水纠错 · 就地删（R-08）：DELETE /api/v1/trading/trades/{tradeId}（用户面不留痕，系统侧留痕）。 */
+    @DeleteMapping("/trades/{tradeId}")
+    public ResponseEntity<?> deleteTrade(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @PathVariable String tradeId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(tradingAppService.deleteTradeRecord(userId, tradeId));
+    }
+
     /** 推送删除持久化（B10-1，2026-08-23，P1-推送2）：单条推送已读/忽略——
      *  app 左滑删 / web 忽略按钮调用，刷新/重启不再复活。DELETE /api/v1/trading/pushes/{id} */
     @DeleteMapping("/pushes/{id}")
@@ -1530,48 +1555,17 @@ public class TradingController {
         // RFC 20261003 C4（2026-10-03）：dryRun=true → **只对账、不落盘**——先把「券商现金 vs 系统推算」
         // 与差额摆出来，人看过再决定要不要覆盖（治「静默覆盖 → 只能反复导全量」）。
         if (body != null && "true".equalsIgnoreCase(String.valueOf(body.get("dryRun")))) {
+            // 回执构建收口到 service（2026-10-06）：与统一入口共用同一份字段口径
             TradingAppService.CashReconcile rec = tradingAppService.reconcileCash(
                     userId, content != null ? content : "", snapshot, basis);
-            java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
-            out.put("dryRun", true);
-            out.put("brokerCash", rec.brokerCash());
-            out.put("systemCash", rec.systemCash());
-            out.put("diff", rec.diff());
-            out.put("cashAnchorDate", rec.cashAnchorDate() != null ? rec.cashAnchorDate().toString() : "");
-            out.put("ledgerOnlyCount", rec.ledgerOnlyCount());
-            out.put("ledgerOnlyAmount", rec.ledgerOnlyAmount());
-            out.put("adjustmentTotal", rec.adjustmentTotal());
-            out.put("adjustmentCount", rec.adjustmentCount());
-            out.put("since", rec.since().stream().map(k -> {
-                java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
-                m.put("kind", k.kind());
-                m.put("count", k.count());
-                m.put("amount", k.amount());
-                return m;
-            }).toList());
-            out.put("note", rec.note());
-            return ResponseEntity.ok(out);
+            return ResponseEntity.ok(TradingAppService.cashReconcileReceipt(rec));
         }
         TradingAppService.CashImportResult r = tradingAppService.importCashQuery(
                 userId, content != null ? content : "", snapshot, basis);
         // RFC 20260922 B 批 B3：资金股份快照是一次账同步（同步完成 → 可出复盘）
         sessionPushService.afterDataSync(userId);
-        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
-        out.put("cash", r.cash());
-        out.put("assets", r.assets());
-        out.put("updatedCost", r.updatedCost());
-        // P2-交易45：明细里没看懂的行数（>0 时前端提示「这几只的精确成本本次没更新」）
-        // 保持 int 类型不变——旧客户端（web/app）按数字解析，改类型会把导入直接打挂
-        out.put("unparsedRows", r.unparsedRows());
-        // P2-交易83（2026-10-04）：同一批行现在带**行号 + 原文 + 原因**（对齐历史成交回执口径）——
-        // 在原有 int 之外**新增**字段（additive），前端可据此点名是哪只的精确成本没更新
-        if (!r.unparsed().isEmpty()) {
-            out.put("unparsed", r.unparsed());
-            out.put("unparsedCount", r.unparsed().size());
-        }
-        // 2026-10-05（P2-交易84）：现金锚定日**依据**如实回执（有据/无据）——与持仓侧同一口径。
-        if (r.anchor() != null) out.put("anchor", anchorReceipt(r.anchor()));
-        return ResponseEntity.ok(out);
+        // 回执构建收口到 service（2026-10-06）：unparsedRows(int) / unparsed / anchor 与统一入口同口径
+        return ResponseEntity.ok(TradingAppService.cashImportReceipt(r));
     }
 
     /**
@@ -1696,11 +1690,16 @@ public class TradingController {
 
     /**
      * 检测指定日期是否有交易活动。
+     * <p>
+     * §11.3 T19（2026-10-06）：本端点为交易域读端点、直接暴露「有没有交易」→ **补门控**
+     * （与写侧清单同口径）；admin 跨用户查看走 admin 侧端点，不走该用户端点。
      */
     @GetMapping("/has-activity")
-    public ResponseEntity<ActivityCheckResponse> hasTradingActivity(
+    public ResponseEntity<?> hasTradingActivity(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
             @RequestParam(defaultValue = "#{T(java.time.LocalDate).now()}") LocalDate date) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
         boolean hasActivity = reviewAppService.hasTradingActivity(userId, date);
         return ResponseEntity.ok(new ActivityCheckResponse(date.toString(), hasActivity));
     }
@@ -1710,15 +1709,23 @@ public class TradingController {
     /**
      * 将复盘笔记中的内容提升为入库候选。
      * <p>
-     * 写入 {@code os/trading-engine/99-inbox/}，供用户在 trading-engine 工作焦点下审核。
-     * 尊重 os/ 目录独立性：adai-core 只写入 99-inbox/，不做自动入库。
+     * §10.2（2026-10-06 设计 final）：唯一落点
+     * {@code data/{userId}/trading/reviews/promote/{date}_{主题}.md}
+     * ——按用户隔离；**永不覆盖**（同日同名追加 {@code -2}/{@code -3} 序号，取代旧的
+     * 「文件名只带日期 + REPLACE_EXISTING」）。
+     * <p>
+     * **服务端不写 {@code os/}**：{@code os/trading-engine/99-inbox/} 的人工审核融合步骤保留，
+     * 改由 admin / 人工流程把候选提升进 {@code os/}（服务端不再直写 git 跟踪目录）。
+     * <p>
+     * §10.3：非 owner **不 403**——落自己的候选区（各自隔离；owner 的候选才有人工提升的下一跳）。
+     * 无 trading 插件用户仍 403（写侧清单）。
      */
     @PostMapping("/reviews/{date}/promote")
     public ResponseEntity<?> promoteToInbox(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
             @PathVariable LocalDate date,
             @RequestBody PromoteRequest request) {
-        // RFC 20260814：promote 写入 os/trading-engine/99-inbox（共享知识库）→ 仅启用 trading 插件用户可用
+        // RFC 20260814：promote 属交易写入侧 → 仅启用 trading 插件用户可用（§11.3 写侧清单）
         if (!pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING)) {
             return ResponseEntity.status(403).body(Map.of("error", "trading 插件未启用，无法反哺知识"));
         }
@@ -1732,25 +1739,27 @@ public class TradingController {
             String content = buildPromoteContent(date, request, reviewContent);
             // #203：候选文件尾保证换行（markdown 文件约定 EOF newline）
             if (!content.endsWith("\n")) content += "\n";
-            // 写入 os/trading-engine/99-inbox/（P1-1：配置驱动，不再硬编码相对路径）
-            Path inboxPath = inboxDir;
-            Files.createDirectories(inboxPath);
-            // #211：文件名符合 trading-engine 全流水线约定 `YYYY-MM-DD_主题.md`
-            // （原硬编码 `review-{date}.md` 不符，已入库的候选文件一并按此改名）
-            String fileName = date.toString() + "_交易复盘.md";
-            // P1-3（2026-08-17 走查）：原子写——tmp+move 防中途崩溃截断候选文件
-            Path target = inboxPath.resolve(fileName);
-            Path tmp = inboxPath.resolve(fileName + ".tmp");
-            Files.writeString(tmp, content, StandardCharsets.UTF_8);
-            Files.move(tmp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-                    java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            // §10.2 唯一落点：data/{userId}/trading/reviews/promote/{date}_{主题}.md
+            // （FileStorage 按 userId 分层，路径为相对用户层）
+            // P2-交易100（2026-10-06）：{主题} 占位落到实处——request.theme 过了就用它，
+            // 未给/空白 → 「交易复盘」（与旧行为逐字兼容）；危险字符剔除 + 限长 32
+            String stem = "trading/reviews/promote/" + date + "_" + safeTheme(request != null ? request.theme() : null);
+            String path = stem + ".md";
+            // 永不覆盖：同日同名 → -2 / -3 序号（不用 REPLACE_EXISTING，不丢旧候选）
+            // 已知窗口（如实记录，不修）：exists 检查与 write 之间无锁，同一用户**恰好在同一瞬间**
+            // 并发两次 promote 时两者可能取同一序号、后写覆盖前者（单用户 UI 串行触发，概率极低；
+            // FileStorage.write 自身是原子写，不会写坏文件）；为此加锁不值得。
+            for (int seq = 2; fileStorage.exists(userId, path); seq++) {
+                path = stem + "-" + seq + ".md";
+            }
+            fileStorage.write(userId, path, content);
 
-            log.info("复盘内容已提升为入库候选 | date={} | file={}", date, fileName);
-            // #178：提示入库候选不会自动融入 AI context——需在 trading-engine 工作流审核融合后重建 knowledge/context
-            String message = "已写入入库候选。该内容不会自动进入 AI 上下文：请在交易知识库工作流（os/trading-engine）审核后归入正式目录，并在收敛时重建 knowledge/context。";
-            return ResponseEntity.ok(new PromoteResponse("ok", inboxPath.resolve(fileName).toString(), message));
+            log.info("复盘内容已提升为入库候选 | userId={} | date={} | path={}", userId, date, path);
+            // #178：提示入库候选不会自动融入 AI context——需人工审核融合后重建 knowledge/context
+            String message = "已写入你的入库候选区，不会自动进入 AI 上下文：需人工审核后归入交易知识库正式目录，并在收敛时重建 knowledge/context。";
+            return ResponseEntity.ok(new PromoteResponse("ok", path, message));
         } catch (Exception e) {
-            log.error("入库候选写入失败 | date={} | {}", date, e.getMessage());
+            log.error("入库候选写入失败 | userId={} | date={} | {}", userId, date, e.getMessage());
             throw new StorageException("入库候选写入失败: " + e.getMessage(), e);
         }
     }
@@ -1762,19 +1771,20 @@ public class TradingController {
         sb.append("# 入库候选：").append(date).append(" 交易复盘\n\n");
         sb.append("> 此文件由 adai-core 自动生成，待人工审核后归入正式目录。\n");
         sb.append("> 生成时间：").append(java.time.LocalDateTime.now()).append("\n\n");
+        // §10.1 规则 5/6：note 与 sections 全文过 1–4（此前完全不过滤——消除「备注/章节标题带数字直进候选」）
         if (request.note() != null && !request.note().isBlank()) {
-            sb.append("**用户备注：** ").append(request.note()).append("\n\n");
+            sb.append("**用户备注：** ").append(sanitizeReviewContent(request.note())).append("\n\n");
         }
         if (request.sections() != null && !request.sections().isEmpty()) {
             sb.append("## 入选章节\n\n");
             for (String section : request.sections()) {
-                sb.append("- ").append(section).append("\n");
+                sb.append("- ").append(sanitizeReviewContent(section)).append("\n");
             }
             sb.append("\n");
         }
         sb.append("## 完整复盘内容\n\n");
         // #184：promote 内容脱敏——复盘含真实持仓（股数/市值/成本/现价/现金），
-        // 入库候选进 git 追踪的 os/ 目录，必须替换为占位符。
+        // 候选文件必须替换为占位符。
         // 知识价值在 R/E 规则引用与仓位结构讨论，不在具体持仓数字。
         // 标的名保留（公开信息 + 规则引用需要标的语境）；大盘指数等公开行情不误伤。
         sb.append(sanitizeReviewContent(reviewContent));
@@ -1782,24 +1792,45 @@ public class TradingController {
     }
 
     /**
-     * #184：复盘内容脱敏——替换真实持仓数字为占位符。
+     * §10.1（2026-10-06 设计 final）：promote 内容脱敏——六类规则族，替换真实持仓数字为占位符。
      * <p>
-     * 关键词引导的正则（持有/市值/成本/现价/现金余额），只命中持仓数字，
-     * 不误伤大盘指数等公开行情（不含这些关键词）。标的名保留（公开信息）。
+     * 命中面共 6 类：① 股数（书面语 + 口语变体）② 价格（含买入/卖出/成交价）
+     * ③ 金额（含「现金余额」宽形态兜底，兼容「余额为零」这类无数字表述）④ 持仓规模句
+     * ⑤⑥ {@code note()} / {@code sections()} 全文（由 {@link #buildPromoteContent} 逐条代入本方法）。
+     * <p>
+     * 只命中持仓数字，不误伤大盘指数等公开行情（不含关键词）；标的名保留（公开信息）。
+     * 比例不脱（设计 V3：比例可出）。
      */
     static String sanitizeReviewContent(String content) {
         if (content == null || content.isBlank()) return content;
         String s = content;
+        // ① 股数（书面语 + 口语变体 + 标的名紧贴数字）：卖出 500 股 → 卖出 N 股；有研新材600股 → 有研新材N 股
         // W-P3-20（2026-08-17）：数字正则兼容千分位逗号（1,400 此前漏脱敏）
-        // 持仓数量：持有100股 → 持有N股
-        s = s.replaceAll("持有\\s*[\\d,]+(?:\\.\\d+)?\\s*股", "持有N股");
-        // 市值：市值14万 → 市值（已脱敏）
-        s = s.replaceAll("市值\\s*[\\d,.]+\\s*(?:万|千|亿)?", "市值（已脱敏）");
-        // 现金余额：现金余额为零 → 现金余额（已脱敏）
+        // P1-交易89（2026-10-06）：原「动词紧贴数字」形态对「标的名+数字+股」完全失效
+        // （真实复盘「有研新材600股」「加仓中国稀土100股」整句漏脱）→ 改为「数字+股」独立匹配，动词列表不再参与
+        s = s.replaceAll("[\\d,]+(?:\\.\\d+)?\\s*万?\\s*股", "N 股");
+        // ② 价格：成本 1400 → 成本（已脱敏）；含买入价/卖出价/成交价
+        s = s.replaceAll("(成本|现价|止损位|止损价|买入价|卖出价|成交价)\\s*[\\d,.]+", "$1（已脱敏）");
+        // ③ 现金余额宽形态兜底：现金余额为零 → 现金余额（已脱敏）（带数字的钱为「5200 元」也一并吞）
         s = s.replaceAll("现金余额[^，。；\\n]*", "现金余额（已脱敏）");
-        // 成本/现价/止损价：成本1400现价1400 → 成本（已脱敏）现价（已脱敏）
-        s = s.replaceAll("(成本|现价|止损位|止损价)\\s*[\\d,.]+", "$1（已脱敏）");
+        // ③ 金额：市值 14 万 → 市值（已脱敏）；含成交金额/浮动盈亏/本金/总资产
+        s = s.replaceAll("(市值|成交金额|浮动盈亏|本金|总资产)\\s*[\\d,]+\\s*(?:万|千|亿)?", "$1（已脱敏）");
+        // ④ 持仓规模句（动词列表不含「持仓」的形态）：持仓 14 万 → 持仓（已脱敏）
+        s = s.replaceAll("持仓\\s*[\\d,.]+\\s*(?:万|千|亿)", "持仓（已脱敏）");
         return s;
+    }
+
+    /**
+     * promote 落点主题（P2-交易100，2026-10-06）：{主题} 占位落到实处。
+     * <p>
+     * 未给/空白 → {@code 交易复盘}（与旧行为逐字兼容）；剔除路径危险字符（{@code / \ : * ? " &lt; &gt; | .}
+     * 与空白）并限长 32（防越层/超长文件名）；剔完为空 → 回退默认。
+     */
+    static String safeTheme(String theme) {
+        if (theme == null || theme.isBlank()) return "交易复盘";
+        String cleaned = theme.trim().replaceAll("[\\\\/:*?\"<>|.\\s]+", "");
+        if (cleaned.isBlank()) return "交易复盘";
+        return cleaned.length() > 32 ? cleaned.substring(0, 32) : cleaned;
     }
 
     // ── DTO ──
@@ -1853,7 +1884,8 @@ public class TradingController {
 
     public record ActivityCheckResponse(String date, boolean hasActivity) {}
 
-    public record PromoteRequest(String note, List<String> sections) {}
+    /** promote 请求：note 备注 + sections 入选章节 + theme 主题（可选，落点文件名用；P2-交易100）。 */
+    public record PromoteRequest(String note, List<String> sections, String theme) {}
 
     public record PromoteResponse(String status, String path, String message) {}
 }

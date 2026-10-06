@@ -64,7 +64,7 @@ public class TradingReviewAppService {
     private static final String REVIEW_SYSTEM_PROMPT = """
             你是一个个人交易复盘助手。基于用户消息中的上下文（交易系统规则、知识、行情、身份、历史记录）与复盘模板，生成结构化的交易复盘笔记正文。
             严格遵循模板的五个小节（今日交易执行/持仓变化与关注/与系统规则对照/今日教训与心得/明日关注要点）输出正文本身；不要输出 JSON，不要输出 summary，不要用 markdown 代码块包裹，不要使用 emoji。
-            【对抗审 🤔9（2026-09-05）：若上下文含「建议对照」段（阿呆当时说 → 你做了 → 结果），必须原样保留其数字与对照关系并入「与系统规则对照」小节——不得丢弃、不得改写数字、不得用指责语气（主语是你 vs 你的历史，讲事实不下判断）】。
+            【对抗审 🤔9（2026-09-05；2026-10-06 段名同步为「对照」）：若上下文含「对照」段（阿呆当时说 → 你做了 → 结果），必须原样保留其数字与对照关系并入「与系统规则对照」小节——不得丢弃、不得改写数字、不得用指责语气（主语是你 vs 你的历史，讲事实不下判断）】。
             """.strip();
 
     private final RecordRepository recordRepository;
@@ -298,7 +298,8 @@ public class TradingReviewAppService {
         if (soldDay.isEmpty()) return "";
 
         StringBuilder sb = new StringBuilder();
-        sb.append("## 建议对照（阿呆当时说 → 你做了什么 → 结果）\n\n");
+        // B1（§11.6）+ 第一原则：用户可见文案不得含「建议」（2026-10-06 违规修复——原标题「建议对照」）
+        sb.append("## 对照（阿呆当时说 → 你做了什么 → 结果）\n\n");
         boolean any = false;
         for (com.adaiadai.core.domain.trading.SoldTrade s : soldDay) {
             // P1-2（2026-09-05 三官深审）：以该笔 sellDate 为锚回查卖前建议（不用 now()——
@@ -341,13 +342,15 @@ public class TradingReviewAppService {
                     ? s.verdict() : "（无判定）").append("\n");
         }
         if (!any) return "";
-        sb.append("\n> 数字由系统从建议留痕与清仓史推导；这份对照帮你看见「计划 vs 执行」的距离。\n");
+        // B1（§11.6）+ 第一原则：去「由系统」「建议留痕」——用「我和阿呆」视角（2026-10-06 违规修复）
+        sb.append("\n> 数字从阿呆当时的话与清仓史里算出来；这份对照帮你看见「计划 vs 执行」的距离。\n");
         return sb.toString();
     }
 
-    /** ⚠️8（2026-09-05 对抗审）：建议动作枚举 → 中文（复盘用户可读；null/未知 → 占位）。 */
+    /** ⚠️8（2026-09-05 对抗审）：建议动作枚举 → 中文（复盘用户可读；null/未知 → 占位）。
+     *  B1 修复（2026-10-06）：占位文案去「建议」——「（当时没说什么）」仍如实表达「无留痕」。 */
     private String humanSuggestion(String raw) {
-        if (raw == null || raw.isBlank()) return "（当时未给出明确建议）";
+        if (raw == null || raw.isBlank()) return "（当时没说什么）";
         return switch (raw.strip().toLowerCase()) {
             case "buy" -> "加仓";
             case "hold" -> "持有";
@@ -398,7 +401,7 @@ public class TradingReviewAppService {
                 sb.append(adviceCompare).append("\n");
             }
         } catch (Exception e) {
-            log.warn("复盘建议对照注入失败（不影响复盘生成）| userId={} | {}", userId, e.getMessage());
+            log.warn("复盘对照注入失败（不影响复盘生成）| userId={} | {}", userId, e.getMessage());
         }
 
         // 当前持仓

@@ -9,9 +9,12 @@ import '../../widgets/snack.dart';
 
 /// 复盘页签 — 日期列表 + 生成 / 查看 / 反哺入库（真实后端 /trading/reviews）。
 class ReviewsTab extends StatefulWidget {
-  const ReviewsTab({super.key, required this.store});
+  const ReviewsTab({super.key, required this.store, this.userId = 'default'});
 
   final SystemStore store;
+
+  /// 被操作用户（admin 代该用户操作；文案用第三人称——P2-admin1）。
+  final String userId;
 
   @override
   State<ReviewsTab> createState() => _ReviewsTabState();
@@ -112,7 +115,11 @@ class _ReviewsTabState extends State<ReviewsTab> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('将 ${review.title} 提升为 os/trading-engine/99-inbox/ 入库候选。',
+            // 2026-10-06 修复：promote 落点已改 data/{userId}/trading/reviews/promote/（§10.2），
+            // 原文案写死「os/trading-engine/99-inbox/」与实际不符；文案对齐后端 message 口径。
+            // P2-admin1（2026-10-06）：admin 操作的是**被操作用户**的复盘——原第一人称「你的」错位，
+            // 改第三人称写明对象（用户「id」）。
+            Text('将 ${review.title} 提升为入库候选（写入用户「${widget.userId}」的候选区，待人工审核）。',
                 style:
                     const TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
             const SizedBox(height: 10),
@@ -149,9 +156,11 @@ class _ReviewsTabState extends State<ReviewsTab> {
       final result =
           await _store.promoteReview(formatDate(review.date), note: note.isEmpty ? null : note);
       if (!mounted) return;
+      // P2-admin1（2026-10-06）：回执透传后端 message（含「不会自动进入 AI 上下文：需人工审核」
+      // 关键信息）——原实现只显示 status/path，把已解析的 message 丢弃了；message 为空退回旧格式。
       showAppSnack(
         context,
-        '反哺成功：${result.status}（${result.path}）',
+        '反哺成功：${result.message.isNotEmpty ? result.message : '${result.status}（${result.path}）'}',
         AppColors.darkGreen,
       );
     } catch (e) {

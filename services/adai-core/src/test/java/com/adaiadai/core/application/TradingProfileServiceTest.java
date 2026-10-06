@@ -365,7 +365,7 @@ class TradingProfileServiceTest {
 
         String text = svc.profileText("default");
 
-        assertTrue(text.contains("建议遵守率"), "画像应含建议遵守率");
+        assertTrue(text.contains("遵守率"), "画像应含遵守率（2026-10-06 B1：注入文本去「建议」）");
         assertTrue(text.contains("100.0%"), "遵守率数值");
     }
 

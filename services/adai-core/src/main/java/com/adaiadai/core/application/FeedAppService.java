@@ -171,6 +171,9 @@ public class FeedAppService {
 
         List<FeedEntry> allEntries = new ArrayList<>();
 
+        // §11.3 六面闸门（2026-10-06）：关插件 → 交易记录不进 Feed（读侧过滤；数据保留不删，可逆）
+        boolean hasTradingPlugin = pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING);
+
         for (CardRecord card : todayCards) {
             // #209：图片卡追问历史已合并进对应 image 记录 entry，此处跳过避免重复输出
             if (imageQaCardIds.contains(card.id())) continue;
@@ -185,6 +188,8 @@ public class FeedAppService {
             if ("image".equals(r.type()) && qaReferencedImageIds.contains(r.id())) continue;
             // 图文一体：薄附件（被主记录 mediaIds 引用）不单独成条
             if (mediaReferencedIds.contains(r.id())) continue;
+            // §11.3 面1：关插件 → 交易记录（及其 ai_note）整条不进 Feed
+            if (!hasTradingPlugin && "trading".equals(r.domain())) continue;
             allEntries.add(toFeedEntry(userId, r, imageQaCardIds));
             Memory memory = memoriesFor(allMemories, r.id())
                     .orElseGet(() -> crossDayMemories.get(r.id()));
@@ -196,7 +201,7 @@ public class FeedAppService {
         // 待办有自己的地方（清单页），Feed 回归纯对话流。记忆里的 actionable 仍供问答上下文使用。
 
         // 行情相关条目只注入启用 trading 插件的用户（RFC 20260814 T2.6：无 trading 插件 Feed 不出现行情卡）
-        if (pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING)) {
+        if (hasTradingPlugin) {
             // RFC 20260817：用户关闭 market 类型 → 行情条不注入（读侧门控）
             if (pushSettingsRepository.findByUser(userId).isEnabled("market")) {
                 // v0.2.0 L5 行情嵌入：大盘指数行情条（MarketDataSource 60s 缓存，网络失败返回空）
@@ -207,7 +212,6 @@ public class FeedAppService {
         // learn 插件；其余交易类 push 条目仍需 trading 插件（门控放宽不能把残留交易 push 漏给
         // 纯 learn 用户，也不能把 learn-review 漏给纯 trading 用户）。事件类型（MarketPushEvent.type）
         // 在 toPushEntry 映射为 FeedEntry.type="push" 后不可见，故在事件层过滤。
-        boolean hasTradingPlugin = pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING);
         boolean hasLearnPlugin = pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_LEARN);
         if (hasTradingPlugin || hasLearnPlugin) {
             // RFC 20260817：用户关闭某 push 类型 → 该类型不注入（读侧门控）
@@ -663,7 +667,7 @@ public class FeedAppService {
 
     private FeedEntry toPushEntry(MarketPushEvent p, LocalDate date) {
         // B9-2（2026-08-23，P1-推送1 根因修复）：优先用落库透传的**原标题**
-        // （早盘计划/午间跟踪/尾盘建议/今日操作确认/买点提醒…）——前端按标题 switch 的
+        // （早盘计划/午间跟踪/尾盘卖点/今日操作确认/买点提醒…）——前端按标题 switch 的
         // 徽章配色与「确认并入账」按钮判定依赖它；
         // 旧数据（2026-08-23 前落库，无 title 字段）→ 按 type 兜底映射（渐进兼容）。
         String title = p.title() != null && !p.title().isBlank()

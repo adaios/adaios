@@ -12,6 +12,7 @@ import com.adaiadai.core.application.TradingLotService;
 import com.adaiadai.core.domain.trading.TradingProfileService;
 import com.adaiadai.core.application.TradePsychologyService;
 import com.adaiadai.core.domain.trading.TradeLogCandidate;
+import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
 import com.adaiadai.core.infrastructure.storage.MarketPushRepository;
 import com.adaiadai.core.infrastructure.storage.PushSettingsRepository;
 import com.adaiadai.core.infrastructure.storage.TradingMarketStageRepository;
@@ -51,6 +52,8 @@ import java.util.Optional;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -73,15 +76,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * TradingController — 全部 10 端点接口测试。
  * <p>
- * promote 测试写入 os/trading-engine/99-inbox/2099-01-01_交易复盘.md（#211 文件名约定），测试后清理。
+ * promote 落点为 data/{userId}/trading/reviews/promote/（§10.2）：用 InMemoryFileStorage 断言落盘内容，
+ * 不碰磁盘；{@link #LEGACY_PROMOTE_FILE} 仅用于断言「服务端不再写 os/」。
  * 规则冲突检测端点（/trading/knowledge/conflicts）已迁至 AdminController（REVIEW P-be-01），
  * 对应测试移至 AdminControllerTest（仍依赖真实 rules.md）。
  */
 class TradingControllerTest {
 
     private static final String PROMOTE_TEST_DATE = "2099-01-01";
-    private static final Path PROMOTE_TEST_FILE = Paths.get("../../os/trading-engine/99-inbox/" + PROMOTE_TEST_DATE + "_交易复盘.md")
+    /** §10.2 旧落点（os/99-inbox）：仅用于断言「服务端不再直写 git 跟踪目录」。 */
+    private static final Path LEGACY_PROMOTE_FILE = Paths.get("../../os/trading-engine/99-inbox/" + PROMOTE_TEST_DATE + "_交易复盘.md")
             .toAbsolutePath().normalize();
+    /** 测试用文件存储：promote 落点与内容断言（JUnit 每方法新建实例 → 天然清零）。 */
+    private final InMemoryFileStorage testStorage = new InMemoryFileStorage();
 
     private MockMvc buildMvc(TradingAppService tradingAppService,
                              TradingReviewAppService reviewAppService) {
@@ -128,7 +135,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
-                "../../os/trading-engine/knowledge/context");
+                testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -168,7 +175,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 sync,
                 mock(com.adaiadai.core.application.KlineService.class),
-                "../../os/trading-engine/knowledge/context");
+                testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -200,7 +207,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 kline,
-                "../../os/trading-engine/knowledge/context");
+                testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -230,7 +237,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
-                "../../os/trading-engine/knowledge/context");
+                testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -265,7 +272,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
-                "../../os/trading-engine/knowledge/context");
+                testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -294,7 +301,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
-                "../../os/trading-engine/knowledge/context");
+                testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -325,7 +332,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
-                "../../os/trading-engine/knowledge/context");
+                testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -525,7 +532,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
-                "../../os/trading-engine/knowledge/context");
+                testStorage);
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -562,8 +569,8 @@ class TradingControllerTest {
         when(advice.generateAdvice(any())).thenReturn(new TradingAdviceAppService.TradingAdviceResponse(
                 List.of(new TradingAdviceAppService.TradingAdviceItem(
                         "000725", "京东方A", new BigDecimal("30.0"),
-                        "reduce", "仓位占比 30% 超 R81 单票上限，建议减仓至 20%", List.of("R81"))),
-                "持仓 1 只，京东方仓位偏高需调整"));
+                        "现价 12.5；持仓占比 30.0% 超默认仓位上限 25%（R81）", List.of("R81"))),
+                "持仓 1 只，京东方仓位占比 30.0%（R81 上限 25%）"));
         MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class), advice, "trading");
 
         mvc.perform(post("/api/v1/trading/advice").header("X-User-Id", "default"))
@@ -571,8 +578,10 @@ class TradingControllerTest {
                 .andExpect(jsonPath("$.advice[0].symbol").value("000725"))
                 .andExpect(jsonPath("$.advice[0].name").value("京东方A"))
                 .andExpect(jsonPath("$.advice[0].position_percent").value(30.0))
-                .andExpect(jsonPath("$.advice[0].suggestion").value("reduce"))
-                .andExpect(jsonPath("$.advice[0].reason").value(containsString("R81")))
+                .andExpect(jsonPath("$.advice[0].statement").value(containsString("R81")))
+                // 批6 收窄（验收 10）：契约层去建议字段——suggestion/reason 不应再出现在响应里
+                .andExpect(jsonPath("$.advice[0].suggestion").doesNotExist())
+                .andExpect(jsonPath("$.advice[0].reason").doesNotExist())
                 .andExpect(jsonPath("$.advice[0].rules[0]").value("R81"))
                 .andExpect(jsonPath("$.summary").value(containsString("京东方")));
         verify(advice).generateAdvice("default");
@@ -781,6 +790,19 @@ class TradingControllerTest {
                 .andExpect(jsonPath("$.hasActivity").value(false));
     }
 
+    @Test
+    void hasActivity_noTradingPlugin_403() throws Exception {
+        // §11.3 T19（2026-10-06）：交易域读端点补门控——无 trading 插件用户不得探测交易活动；
+        // 且必须在业务层之前拦下（不得触达 review 服务）。
+        TradingReviewAppService review = mock(TradingReviewAppService.class);
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), review, new String[0]);
+
+        mvc.perform(get("/api/v1/trading/has-activity").param("date", "2026-08-02"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("插件未启用")));
+        verify(review, never()).hasTradingActivity(any(), any());
+    }
+
     // ── 截图入账（2026-08-26，交易闭环第一环）──
 
     @Test
@@ -905,7 +927,7 @@ class TradingControllerTest {
 
     @Test
     void promoteToInbox_noTradingPlugin_403() throws Exception {
-        // RFC 20260814：promote 写入 os/trading-engine/99-inbox（共享知识库）→ 无 trading 插件用户 403
+        // §11.3 写侧清单：promote 属交易写入侧 → 无 trading 插件用户 403
         TradingReviewAppService review = mock(TradingReviewAppService.class);
         when(review.getReview(any(), any())).thenReturn("当日复盘内容");
         // 显式空插件（buildMvc 2 参重载默认给 trading，不能用）
@@ -918,61 +940,143 @@ class TradingControllerTest {
                 .andExpect(jsonPath("$.error").value(containsString("插件未启用")));
     }
 
+    /** §10.2：唯一落点 → data/{userId}/trading/reviews/promote/{date}_{主题}.md；服务端不写 os/。 */
     @Test
-    void promoteToInbox_writesInboxFile() throws Exception {
-        try {
-            TradingReviewAppService review = mock(TradingReviewAppService.class);
-            when(review.getReview(any(), any())).thenReturn("当日复盘内容");
-            MockMvc mvc = buildMvc(mock(TradingAppService.class), review);
+    void promoteToInbox_writesToOwnCandidateArea() throws Exception {
+        Files.deleteIfExists(LEGACY_PROMOTE_FILE);
+        TradingReviewAppService review = mock(TradingReviewAppService.class);
+        when(review.getReview(any(), any())).thenReturn("当日复盘内容");
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), review);
 
-            mvc.perform(post("/api/v1/trading/reviews/" + PROMOTE_TEST_DATE + "/promote")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"note\":\"测试\",\"sections\":[\"持仓\"]}"))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.status").value("ok"))
-                    .andExpect(jsonPath("$.path").isString())
-                    // #178 A 档：提示入库候选不会自动融入 AI context（需在 trading-engine 工作流融合后重建 knowledge/context）
-                    .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("knowledge/context")));
+        mvc.perform(post("/api/v1/trading/reviews/" + PROMOTE_TEST_DATE + "/promote")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"note\":\"测试\",\"sections\":[\"持仓\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ok"))
+                .andExpect(jsonPath("$.path").value(
+                        "trading/reviews/promote/" + PROMOTE_TEST_DATE + "_交易复盘.md"))
+                // #178 A 档：提示候选不会自动融入 AI context（需人工审核融合后重建 knowledge/context）
+                .andExpect(jsonPath("$.message").value(containsString("knowledge/context")));
 
-            // 文件真实写入 os/trading-engine/99-inbox/
-            org.junit.jupiter.api.Assertions.assertTrue(Files.exists(PROMOTE_TEST_FILE),
-                    "promote 应写入入库候选文件");
-            String content = Files.readString(PROMOTE_TEST_FILE);
-            org.junit.jupiter.api.Assertions.assertTrue(content.contains("当日复盘内容"));
-            org.junit.jupiter.api.Assertions.assertTrue(content.contains("**用户备注：** 测试"));
-        } finally {
-            Files.deleteIfExists(PROMOTE_TEST_FILE);
-        }
+        String path = "trading/reviews/promote/" + PROMOTE_TEST_DATE + "_交易复盘.md";
+        assertTrue(testStorage.exists("default", path), "promote 应写入自己的候选区");
+        String content = testStorage.read("default", path);
+        assertTrue(content.contains("当日复盘内容"));
+        assertTrue(content.contains("**用户备注：** 测试"));
+        // §10.2：服务端不再直写 git 跟踪的 os/（人工提升保留）
+        assertFalse(Files.exists(LEGACY_PROMOTE_FILE), "服务端不应再写 os/trading-engine/99-inbox/");
+    }
+
+    /** §10.2 永不覆盖：同日两次 promote → 第二份落 -2 序号，第一份内容保留。 */
+    @Test
+    void promoteToInbox_sameDayTwice_appendsSequence_neverOverwrites() throws Exception {
+        TradingReviewAppService review = mock(TradingReviewAppService.class);
+        when(review.getReview(any(), any())).thenReturn("当日复盘内容");
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), review);
+        String base = "trading/reviews/promote/" + PROMOTE_TEST_DATE + "_交易复盘";
+
+        mvc.perform(post("/api/v1/trading/reviews/" + PROMOTE_TEST_DATE + "/promote")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"note\":\"第一次\",\"sections\":[]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.path").value(base + ".md"));
+
+        mvc.perform(post("/api/v1/trading/reviews/" + PROMOTE_TEST_DATE + "/promote")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"note\":\"第二次\",\"sections\":[]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.path").value(base + "-2.md"));
+
+        assertTrue(testStorage.read("default", base + ".md").contains("第一次"), "第一份候选不被覆盖");
+        assertTrue(testStorage.read("default", base + "-2.md").contains("第二次"));
+    }
+
+    /** §10.3：非 owner 不 403——落自己的候选区（各自隔离，不再静默丢弃）。 */
+    @Test
+    void promoteToInbox_nonOwner_landsInOwnCandidateArea() throws Exception {
+        TradingReviewAppService review = mock(TradingReviewAppService.class);
+        when(review.getReview(any(), any())).thenReturn("alice 的复盘");
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), review);
+        String path = "trading/reviews/promote/" + PROMOTE_TEST_DATE + "_交易复盘.md";
+
+        mvc.perform(post("/api/v1/trading/reviews/" + PROMOTE_TEST_DATE + "/promote")
+                        .header("X-User-Id", "alice")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"note\":\"测试\",\"sections\":[]}"))
+                .andExpect(status().isOk());
+
+        assertTrue(testStorage.exists("alice", path), "非 owner 落自己的候选区");
+        assertFalse(testStorage.exists("default", path), "不落他人（default）候选区");
+    }
+
+    /** §10.1 规则 5/6：note 与 sections 全文也被清洗（此前完全不过滤——反向回归）。 */
+    @Test
+    void promoteToInbox_sanitizesNoteAndSections() throws Exception {
+        TradingReviewAppService review = mock(TradingReviewAppService.class);
+        when(review.getReview(any(), any())).thenReturn("复盘正文");
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), review);
+
+        mvc.perform(post("/api/v1/trading/reviews/" + PROMOTE_TEST_DATE + "/promote")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"note\":\"今天卖了 500 股\",\"sections\":[\"成交金额 5200 元\"]}"))
+                .andExpect(status().isOk());
+
+        String content = testStorage.read("default",
+                "trading/reviews/promote/" + PROMOTE_TEST_DATE + "_交易复盘.md");
+        assertFalse(content.contains("500"), "note 里的股数被脱敏，实际: " + content);
+        assertFalse(content.contains("5200"), "sections 里的金额被脱敏，实际: " + content);
+        assertTrue(content.contains("卖了 N 股"));
+        assertTrue(content.contains("成交金额（已脱敏）"));
     }
 
     /**
-     * #184：promote 内容脱敏——复盘含真实持仓数字，入库候选（进 git 追踪的 os/）必须替换为占位符。
+     * §10.1 六类规则族反向回归：逐类断言清洗后不含原文数字。
+     * ① 股数（书面 + 口语）② 价格（含买入/卖出/成交价）③ 金额 ④ 持仓规模句；
+     * 标的名保留（公开信息 + 规则引用需要语境）；大盘指数不误伤；比例不脱（设计 V3）。
      */
     @Test
-    void sanitizeReviewContent_masksPositionNumbers() {
+    void sanitizeReviewContent_coversSixRuleFamilies() {
         String review = """
-                今日无交易。持仓贵州茅台未动，成本1400现价1400。
-                贵州茅台持有100股，市值14万，占用全部资金，现金余额为零。
+                今日无交易。贵州茅台未动，成本 1400 现价 1400。
+                昨天卖了 500 股，贵州茅台持有 1,400 股，市值 14 万。
+                持仓 14 万的位置不动，现金余额为零。
+                今日卖出 500 股，成交金额 5200 元。买入价 10.5 卖出价 11.8 成交价 10.8。
+                有研新材600股，加仓中国稀土100股。
                 大盘三大指数收红（上证+1.02%、深证+1.42%）。
                 """;
         String sanitized = TradingController.sanitizeReviewContent(review);
 
-        // 持仓数字全部脱敏
-        org.junit.jupiter.api.Assertions.assertFalse(sanitized.contains("100股"), "股数应脱敏");
-        org.junit.jupiter.api.Assertions.assertFalse(sanitized.contains("14万"), "市值应脱敏");
-        org.junit.jupiter.api.Assertions.assertFalse(sanitized.contains("1400"), "成本/现价应脱敏");
-        org.junit.jupiter.api.Assertions.assertFalse(sanitized.contains("现金余额为零"), "现金余额应脱敏");
-
-        // 占位符已替换
-        org.junit.jupiter.api.Assertions.assertTrue(sanitized.contains("持有N股"));
-        org.junit.jupiter.api.Assertions.assertTrue(sanitized.contains("市值（已脱敏）"));
-        org.junit.jupiter.api.Assertions.assertTrue(sanitized.contains("成本（已脱敏）现价（已脱敏）"));
-        org.junit.jupiter.api.Assertions.assertTrue(sanitized.contains("现金余额（已脱敏）"));
+        // ① 股数（书面 + 口语变体）
+        assertFalse(sanitized.contains("500"), "书面/口语两种股数变体都应脱敏");
+        assertFalse(sanitized.contains("1,400"), "千分位股数应脱敏");
+        assertTrue(sanitized.contains("卖出 N 股"));
+        assertTrue(sanitized.contains("卖了 N 股"));
+        assertTrue(sanitized.contains("持有 N 股"));
+        // P1-交易89：标的名紧贴数字（无动词前缀）的真实复盘形态不得漏脱
+        assertFalse(sanitized.contains("600股"), "「标的名+数字+股」应脱敏，实际: " + sanitized);
+        assertFalse(sanitized.contains("100股"), "「动词+名+数字+股」应脱敏，实际: " + sanitized);
+        assertTrue(sanitized.contains("有研新材N 股"));
+        assertTrue(sanitized.contains("中国稀土N 股"));
+        // ② 价格（含买入价/卖出价/成交价）
+        assertFalse(sanitized.contains("1400"), "成本/现价应脱敏");
+        assertTrue(sanitized.contains("成本（已脱敏）"));
+        assertTrue(sanitized.contains("现价（已脱敏）"));
+        assertTrue(sanitized.contains("买入价（已脱敏）"));
+        assertTrue(sanitized.contains("成交价（已脱敏）"));
+        // ③ 金额
+        assertFalse(sanitized.contains("14 万"), "市值应脱敏");
+        assertFalse(sanitized.contains("5200"), "成交金额应脱敏");
+        assertTrue(sanitized.contains("市值（已脱敏）"));
+        assertTrue(sanitized.contains("成交金额（已脱敏）"));
+        assertTrue(sanitized.contains("现金余额（已脱敏）"));
+        // ④ 持仓规模句
+        assertTrue(sanitized.contains("持仓（已脱敏）"));
 
         // 标的名保留（公开信息 + 规则引用需要标的语境）
-        org.junit.jupiter.api.Assertions.assertTrue(sanitized.contains("贵州茅台"));
+        assertTrue(sanitized.contains("贵州茅台"));
         // 大盘指数等公开行情不误伤
-        org.junit.jupiter.api.Assertions.assertTrue(sanitized.contains("上证+1.02%"));
+        assertTrue(sanitized.contains("上证+1.02%"));
+        assertTrue(sanitized.contains("深证+1.42%"));
     }
 
     @Test
@@ -1068,7 +1172,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
-                "../../os/trading-engine/knowledge/context");
+                testStorage);
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -1198,6 +1302,77 @@ class TradingControllerTest {
                 .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("锚定")));
     }
 
+    // ── 2026-10-06 ingest 批：统一入口 POST /trading/import（R-12「一次把导出的文件交给它就行」）──
+
+    @Test
+    void importBundle_multiFiles_returnsPerFileReceipt() throws Exception {
+        // 一次多选：逐份回执（认得出的 / 认不出的都要出现在 files[] 里）——一份失败不影响其他份
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.importBundle(any(), any(), any(), anyBoolean())).thenReturn(
+                new TradingAppService.BundleImportResult(List.of(
+                        new TradingAppService.BundleFileResult("20261006000000_持仓股20261006.txt",
+                                "trading/imports/2026-10/abc_持仓股.txt", "positions", "持仓股", true, null,
+                                java.util.Map.of("imported", 2)),
+                        new TradingAppService.BundleFileResult("银行流水.txt", null,
+                                "unknown", "无法识别", false, "没认出这份文件是哪类导出", java.util.Map.of())),
+                        1, 1, false));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(multipart("/api/v1/trading/import")
+                        .file(new MockMultipartFile("files", "20261006000000_持仓股20261006.txt",
+                                "text/plain", "x".getBytes()))
+                        .file(new MockMultipartFile("files", "银行流水.txt", "text/plain", "y".getBytes())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.dryRun").value(false))
+                .andExpect(jsonPath("$.okCount").value(1))
+                .andExpect(jsonPath("$.failedCount").value(1))
+                .andExpect(jsonPath("$.files[0].kind").value("positions"))
+                .andExpect(jsonPath("$.files[0].kindLabel").value("持仓股"))
+                .andExpect(jsonPath("$.files[0].ok").value(true))
+                .andExpect(jsonPath("$.files[0].savedPath").exists())
+                .andExpect(jsonPath("$.files[0].detail.imported").value(2))
+                .andExpect(jsonPath("$.files[1].kind").value("unknown"))
+                .andExpect(jsonPath("$.files[1].ok").value(false))
+                .andExpect(jsonPath("$.files[1].error").value(org.hamcrest.Matchers.containsString("没认出")))
+                .andExpect(jsonPath("$.files[1].savedPath").doesNotExist());
+        verify(trading).importBundle(eq("default"), any(), eq(TradingAppService.ImportMode.AUTO), eq(false));
+    }
+
+    @Test
+    void importBundle_dryRun_passesFlagThrough() throws Exception {
+        // 预检：dryRun=true 透传到 service（不落盘不留存由 service 侧测试钉住）
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.importBundle(any(), any(), any(), anyBoolean())).thenReturn(
+                new TradingAppService.BundleImportResult(List.of(
+                        new TradingAppService.BundleFileResult("自选股.txt", null, "watchlist", "自选股",
+                                true, null, java.util.Map.of("dryRun", true, "wouldImport", 2))),
+                        1, 0, true));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(multipart("/api/v1/trading/import?dryRun=true&mode=append")
+                        .file(new MockMultipartFile("file", "自选股.txt", "text/plain", "x".getBytes())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.dryRun").value(true))
+                .andExpect(jsonPath("$.files[0].detail.wouldImport").value(2));
+        verify(trading).importBundle(eq("default"), any(), eq(TradingAppService.ImportMode.APPEND), eq(true));
+    }
+
+    @Test
+    void importBundle_noFiles_400WithHumanMessage() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class));
+        mvc.perform(multipart("/api/v1/trading/import"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("没有收到文件")));
+    }
+
+    @Test
+    void importBundle_withoutTradingPlugin_403() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class), new String[0]);
+        mvc.perform(multipart("/api/v1/trading/import")
+                        .file(new MockMultipartFile("files", "a.txt", "text/plain", "x".getBytes())))
+                .andExpect(status().isForbidden());
+    }
+
     @Test
     void integrity_returnsReport() throws Exception {
         TradingAppService trading = mock(TradingAppService.class);
@@ -1264,21 +1439,17 @@ class TradingControllerTest {
     }
 
     @Test
-    void setPrincipal_updatesPrincipal() throws Exception {
+    void setPrincipal_retired_returns410WithGuidance() throws Exception {
+        // 2026-10-06 设计 §9#4：写侧 PUT /principal 退役（本金由转入/转出自动推出）
         TradingAppService trading = mock(TradingAppService.class);
-        when(trading.setPrincipal(any(), any())).thenReturn(
-                new AccountSnapshot(new BigDecimal("112566.91"), new BigDecimal("657.91"),
-                        new BigDecimal("657.91"), new BigDecimal("657.91"),
-                        new BigDecimal("111909.00"), new BigDecimal("18688.28"), BigDecimal.ZERO,
-                        new BigDecimal("150000"), LocalDate.of(2026, 8, 18)));
         MockMvc mvc = buildMvc(trading);
 
         mvc.perform(put("/api/v1/trading/principal")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"amount\":150000}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.principal").value(150000));
-        verify(trading).setPrincipal(eq("default"), eq(new BigDecimal("150000")));
+                .andExpect(status().isGone())
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("退役")))
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("转入/转出")));
     }
 
     @Test
@@ -1425,7 +1596,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
-                 "../../os/trading-engine/knowledge/context");
+                 testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -1469,7 +1640,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
-                 "../../os/trading-engine/knowledge/context");
+                 testStorage);
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(
@@ -1480,6 +1651,13 @@ class TradingControllerTest {
                 .andExpect(status().isForbidden());
     }
 
+    /** P1-交易90（2026-10-06）：controller 的 /positions/import 现在先过品种门——
+     *  mock 约定：门透传输入 items（不筛），筛选判据另有 service 层专测与 TradingBundleImportTest 覆盖。 */
+    private static void stubMainboardGate(TradingAppService trading) {
+        when(trading.gatePositions(any(), any())).thenAnswer(inv -> new TradingAppService.MainboardGate(
+                inv.getArgument(1), java.util.List.of(), java.util.List.of()));
+    }
+
     @Test
     void importPositions_importsAndReportsMissingStopLoss() throws Exception {
         TradingAppService trading = mock(TradingAppService.class);
@@ -1487,6 +1665,7 @@ class TradingControllerTest {
         when(trading.importPositions(any(), any(), anyBoolean(), any(), any(), any())).thenReturn(
                 new TradingAppService.PositionImportResult(2,
                         java.util.List.of("600519 贵州茅台", "000725 京东方A")));
+        stubMainboardGate(trading);
         MockMvc mvc = buildMvc(trading);
 
         mvc.perform(post("/api/v1/trading/positions/import")
@@ -1498,12 +1677,45 @@ class TradingControllerTest {
     }
 
     @Test
+    void importPositions_nonMainboardGate_appliesBeforeImportAndReports() throws Exception {
+        // P1-交易90（2026-10-06）：老端点同样过品种门——非主板行不入账、系统没持有的如实报「未入账」。
+        // 门留下 600206、拦下 512690；importPositions 只应收到门后的 items（不是原始两行）。
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.gatePositions(any(), any())).thenReturn(new TradingAppService.MainboardGate(
+                java.util.List.of(new TradingAppService.PositionImportItem(
+                        "600206", "有研新材", 900, new java.math.BigDecimal("46.012"),
+                        null, null, null, null, null)),
+                java.util.List.of("512690 酒ETF（1000 股）"),
+                java.util.List.of()));
+        when(trading.importPositions(any(), any(), anyBoolean(), any(), any(), any()))
+                .thenReturn(new TradingAppService.PositionImportResult(1, java.util.List.of()));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(post("/api/v1/trading/positions/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[{\"symbol\":\"600206\",\"name\":\"有研新材\",\"quantity\":900,\"avgCost\":46.012},"
+                                + "{\"symbol\":\"512690\",\"name\":\"酒ETF\",\"quantity\":1000,\"avgCost\":1.5}]"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.imported").value(1))
+                .andExpect(jsonPath("$.unsupported[0]").value(containsString("512690")))
+                .andExpect(jsonPath("$.unsupportedNote").value(containsString("账只接主板")));
+
+        @SuppressWarnings("unchecked")
+        org.mockito.ArgumentCaptor<java.util.List<TradingAppService.PositionImportItem>> cap =
+                org.mockito.ArgumentCaptor.forClass(java.util.List.class);
+        verify(trading).importPositions(any(), cap.capture(), eq(false), any(), any(), any());
+        assertEquals(1, cap.getValue().size(), "importPositions 只收到门后的主板行");
+        assertEquals("600206", cap.getValue().get(0).symbol());
+    }
+
+    @Test
     void importPositions_passesBrokerTodayPnlFromQuery() throws Exception {
         // 2026-09-13 用户实测：持仓股导出的「当日盈亏」列一直被丢（前端不解析、后端无入参），
         // 账户卡只能退回系统自算。本用例锁住「该列能一路传到 service」。
         TradingAppService trading = mock(TradingAppService.class);
         when(trading.importPositions(any(), any(), anyBoolean(), any(), any(), any())).thenReturn(
                 new TradingAppService.PositionImportResult(1, java.util.List.of()));
+        stubMainboardGate(trading);
         MockMvc mvc = buildMvc(trading);
 
         mvc.perform(post("/api/v1/trading/positions/import")
@@ -1535,6 +1747,7 @@ class TradingControllerTest {
                         new TradingAppService.AnchorDecision(java.time.LocalDate.of(2026, 9, 18),
                                 java.time.LocalDate.of(2026, 9, 18), java.time.LocalDate.of(2026, 9, 18),
                                 com.adaiadai.core.domain.trading.AnchorBasis.EXPLICIT)));
+        stubMainboardGate(trading);
         MockMvc mvc = buildMvc(trading);
 
         mvc.perform(post("/api/v1/trading/positions/import")
@@ -1560,6 +1773,7 @@ class TradingControllerTest {
         TradingAppService trading = mock(TradingAppService.class);
         when(trading.importPositions(any(), any(), anyBoolean(), any(), any(), any())).thenReturn(
                 new TradingAppService.PositionImportResult(2, java.util.List.of()));
+        stubMainboardGate(trading);
         com.adaiadai.core.application.TradingSessionPushService sync =
                 mock(com.adaiadai.core.application.TradingSessionPushService.class);
         MockMvc mvc = buildMvcWithSync(trading, sync);
@@ -1578,6 +1792,7 @@ class TradingControllerTest {
         TradingAppService trading = mock(TradingAppService.class);
         when(trading.importPositions(any(), any(), anyBoolean(), any(), any(), any())).thenReturn(
                 new TradingAppService.PositionImportResult(0, java.util.List.of()));
+        stubMainboardGate(trading);
         com.adaiadai.core.application.TradingSessionPushService sync =
                 mock(com.adaiadai.core.application.TradingSessionPushService.class);
         MockMvc mvc = buildMvcWithSync(trading, sync);
@@ -1735,7 +1950,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
-                "../../os/trading-engine/knowledge/context");
+                testStorage);
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .addFilter(new WebConfig().corsFilter().getFilter())
@@ -1767,7 +1982,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
-                "../../os/trading-engine/knowledge/context");
+                testStorage);
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -1797,7 +2012,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
-                "../../os/trading-engine/knowledge/context");
+                testStorage);
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -2342,7 +2557,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
-                "../../os/trading-engine/knowledge/context");
+                testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -2449,7 +2664,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
-                "../../os/trading-engine/knowledge/context");
+                testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -2537,7 +2752,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
-                "../../os/trading-engine/knowledge/context");
+                testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -2570,7 +2785,7 @@ class TradingControllerTest {
                 psychology,
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
-                "../../os/trading-engine/knowledge/context");
+                testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -2607,7 +2822,7 @@ class TradingControllerTest {
                 psychology,
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
-                "../../os/trading-engine/knowledge/context");
+                testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);

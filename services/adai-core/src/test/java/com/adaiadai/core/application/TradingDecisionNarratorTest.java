@@ -167,11 +167,12 @@ class TradingDecisionNarratorTest {
         Position p = pos("600519", "贵州茅台", "1400.00", "1486.80", "1380.00", "B2", 100);
 
         var block = narrator.sellPointBlock("adai", p, quote("600519", "贵州茅台", "1486.80", "6.2"),
-                new BigDecimal("96.5"), "清仓参考（R66）", List.of("R66"));
+                new BigDecimal("96.5"), "已跌破你设的止损位 1380（R66）", List.of("R66"));
 
         assertTrue(block.isPresent());
         String text = block.get().text();
-        assertTrue(text.contains("贵州茅台（600519） 现价 1486.8") && text.contains("→ 清仓参考（R66）"), text);
+        assertTrue(text.contains("贵州茅台（600519） 现价 1486.8")
+                && text.contains("→ 已跌破你设的止损位 1380（R66）"), text);
         assertTrue(text.contains("① 你的历史：你过去 8 次在「+5~10%」了结，7 次盈利、平均 +7.1%、平均持 4 天"), text);
         assertTrue(text.contains("② 证据：成本 1400 · 占比 96.5% · 止损 1380 · 持有 100 股"), text);
         assertTrue(text.contains("③ 规则：《止损位跌破即离场》R66 原文「现价跌破"), text);
@@ -184,7 +185,7 @@ class TradingDecisionNarratorTest {
         when(evidence.ruleTextOf("R66")).thenReturn(Optional.empty());
         Position p = pos("600519", "贵州茅台", "1400.00", "1486.80", "1380.00", "B2", 100);
         assertTrue(narrator.sellPointBlock("adai", p, quote("600519", "贵州茅台", "1486.80", "6.2"),
-                new BigDecimal("96.5"), "清仓参考（R66）", List.of("R66")).isEmpty());
+                new BigDecimal("96.5"), "已跌破你设的止损位 1380（R66）", List.of("R66")).isEmpty());
     }
 
     @Test

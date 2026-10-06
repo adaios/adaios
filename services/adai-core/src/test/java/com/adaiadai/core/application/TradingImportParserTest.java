@@ -6,6 +6,7 @@ import com.adaiadai.core.domain.trading.WatchlistItem;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -475,6 +476,192 @@ class TradingImportParserTest {
         assertFalse(TradingImportParser.isNonTradableCode("512690"), "场内基金（5 开头）不误伤");
         assertFalse(TradingImportParser.isNonTradableCode("12345"), "非 6 位不匹配");
         assertFalse(TradingImportParser.isNonTradableCode(null));
+    }
+
+    // ── 2026-10-06 ingest 批：统一入口（识别 / 排序 / 持仓解析 / 文件名日期 / 主板判据）──
+
+    @Test
+    void importKind_order_snapshotsBeforeTrades() {
+        // 统一入口内部排序（用户 2026-10-05 拍板「快照在前、流水在后」，偏离设计 §3① 字面）：
+        // 资金(10) → 持仓(20) → 成交(30) → 清仓(40) → 自选(50) → 未知(90)——order 必须严格递增。
+        // 快照先落有硬依赖：① 持仓导入的「当日盈亏」写入要求账户快照已存在；
+        // ② 锚定日推进后本批流水 ≤ 锚定日一律走补录（不重放、批内不双计）。
+        TradingImportParser.ImportKind[] chain = {
+                TradingImportParser.ImportKind.CASH,
+                TradingImportParser.ImportKind.POSITIONS,
+                TradingImportParser.ImportKind.TRADES,
+                TradingImportParser.ImportKind.SOLD,
+                TradingImportParser.ImportKind.WATCHLIST,
+                TradingImportParser.ImportKind.UNKNOWN};
+        for (int i = 1; i < chain.length; i++) {
+            assertTrue(chain[i - 1].order() < chain[i].order(),
+                    chain[i - 1] + "(" + chain[i - 1].order() + ") 必须先于 " + chain[i]
+                            + "(" + chain[i].order() + ") 处理");
+        }
+        assertEquals("资金股份", TradingImportParser.ImportKind.CASH.label());
+        assertEquals("持仓股", TradingImportParser.ImportKind.POSITIONS.label());
+        assertEquals("历史成交", TradingImportParser.ImportKind.TRADES.label());
+        assertEquals("清仓股", TradingImportParser.ImportKind.SOLD.label());
+        assertEquals("自选股", TradingImportParser.ImportKind.WATCHLIST.label());
+        assertEquals("无法识别", TradingImportParser.ImportKind.UNKNOWN.label());
+    }
+
+    @Test
+    void detectKind_recognizesAllFiveKinds() {
+        // 五类真实导出表头形状——判据与各链既有门槛逐条一致（不认文件名：文件名用户可改）
+        String cash = "人民币: 余额:292.88  可用:292.88  可取:292.88  参考市值:110212.00  资产:110504.88  盈亏:15235.55\n"
+                + "编号 证券代码 证券名称 证券数量 成本价 当前价 浮动盈亏\n"
+                + "1 600206 有研新材 900 46.012 50.78 100.0\n";
+        String trades = "成交日期\t证券代码\t买卖标志\t成交数量\t成交价格\t成交编号\n"
+                + "20261006\t600206\t买入\t100\t50.00\t1\n";
+        String sold = "代码\t名称\t涨幅%\t现价\t介入日期\t清仓日期\t持仓天数\t买卖次数\t持仓期涨幅%\n"
+                + "600206\t有研新材\t6.60\t53.65\t20260731\t20260826\t26\t6+2\t32.45\n";
+        String positions = "证券代码\t证券名称\t证券数量\t成本价\t当日盈亏\n"
+                + "600206\t有研新材\t900\t46.012\t100.00\n";
+        String watchlist = "代码\t名称\t细分行业\t一二级行业\t长期形态\t中期形态\t短期形态\t近日指标提示\n"
+                + "000725\t京东方Ａ\t元器件\t信息产业-元器件\t6\t8\t1\tKDJ死叉\n";
+
+        assertEquals(TradingImportParser.ImportKind.CASH, TradingImportParser.detectKind(cash));
+        assertEquals(TradingImportParser.ImportKind.TRADES, TradingImportParser.detectKind(trades));
+        assertEquals(TradingImportParser.ImportKind.SOLD, TradingImportParser.detectKind(sold));
+        assertEquals(TradingImportParser.ImportKind.POSITIONS, TradingImportParser.detectKind(positions));
+        assertEquals(TradingImportParser.ImportKind.WATCHLIST, TradingImportParser.detectKind(watchlist));
+    }
+
+    @Test
+    void detectKind_cashDetailHeaderNotStolenByPositions() {
+        // 资金明细表头（若首行丢了/被截断）不得被认成持仓股——持仓判据必须排除「当前价/浮动盈亏」形状。
+        // 排除理由：资金明细也有 证券代码/证券数量/成本价 列，不排除会把资金股份文件抢过来当持仓解析。
+        String cashDetailOnly = "编号\t证券代码\t证券名称\t证券数量\t成本价\t当前价\t浮动盈亏\n"
+                + "1\t600206\t有研新材\t900\t46.012\t50.78\t100.0\n";
+        assertEquals(TradingImportParser.ImportKind.UNKNOWN, TradingImportParser.detectKind(cashDetailOnly),
+                "含「当前价」列 = 资金明细形状，不能被抢成持仓股");
+        // 对照：同一形状去掉「当前价」后就应按持仓识别（证明排除项正是这两列）
+        String asPositions = "编号\t证券代码\t证券名称\t证券数量\t成本价\t当日盈亏\n"
+                + "1\t600206\t有研新材\t900\t46.012\t100.0\n";
+        assertEquals(TradingImportParser.ImportKind.POSITIONS, TradingImportParser.detectKind(asPositions));
+    }
+
+    @Test
+    void detectKind_unknownForGarbageOrEmpty() {
+        // 认不出 → 如实 UNKNOWN（不猜、不静默入库）；空文件与乱文都不例外
+        assertEquals(TradingImportParser.ImportKind.UNKNOWN, TradingImportParser.detectKind(""));
+        assertEquals(TradingImportParser.ImportKind.UNKNOWN, TradingImportParser.detectKind(null));
+        String bankFlow = "交易日期\t摘要\t发生额\t余额\n"
+                + "20261006\t转账\t500.00\t3000.00\n";
+        assertEquals(TradingImportParser.ImportKind.UNKNOWN, TradingImportParser.detectKind(bankFlow),
+                "银行流水（资金流水）暂无解析器——登记待样本，如实拒绝");
+    }
+
+    @Test
+    void parsePositions_realExport_negativeCostAllowedZeroQtySkippedTodayPnlSummed() {
+        // 真实形态（2026-09-13 负成本批 + 0 股残留）：
+        // ① 成本价 -5.078 合法（反复做 T/分红摊到 0 以下，实测 600601 方正科技）；
+        // ② 0 股行进 skipped（看懂但不是持仓），其「当日盈亏」仍计入总额（当日清仓的已实现盈亏）。
+        String content = "证券代码\t证券名称\t证券数量\t成本价\t现价\t当日盈亏\n"
+                + "600601\t方正科技\t3000\t-5.078\t7.51\t408.00\n"
+                + "000725\t京东方Ａ\t0\t6.0421\t5.81\t-122.57\n"
+                + "600206\t有研新材\t900\t46.012\t50.78\t100.00\n";
+        TradingImportParser.PositionParse p = TradingImportParser.parsePositions(content);
+
+        assertTrue(p.headerMatched());
+        assertTrue(p.unparsedRows().isEmpty(), "正常文件不得报丢行：" + p.unparsedRows());
+        assertEquals(2, p.rows().size(), "0 股行不算持仓");
+        TradingImportParser.PositionRow first = p.rows().get(0);
+        assertEquals("600601", first.symbol());
+        assertEquals(3000, first.quantity());
+        assertEquals(0, new BigDecimal("-5.078").compareTo(first.avgCost()), "负数成本合法，不得拒");
+        assertEquals(0, new BigDecimal("7.51").compareTo(first.currentPrice()));
+        assertEquals(1, p.skipped().size(), "0 股残留进 skipped（看懂但不是持仓）");
+        assertTrue(p.skipped().get(0).contains("0 股"), p.skipped().get(0));
+        assertEquals(0, new BigDecimal("385.43").compareTo(p.todayPnl()),
+                "当日盈亏 = 408.00 - 122.57 + 100.00（含 0 股行的当日已实现）");
+    }
+
+    @Test
+    void parsePositions_badRows_reportedNotSilentlyDropped() {
+        // 持仓导入是全量覆盖：丢一行 = 静默删一只持仓 → 每一行没看懂的都必须带行号+原文+原因上报。
+        String content = "证券代码\t证券名称\t证券数量\t成本价\t当日盈亏\n"
+                + "600000\t浦发银行\t1000\t10.5\t1.00\n"
+                + "600001\t不足列\n"
+                + "6004\t截断代码\t100\t1.0\t0\n"
+                + "600002\t坏数量\t12.5\t1.0\t0\n"
+                + "600003\t坏成本\t100\tabc\t0\n";
+        TradingImportParser.PositionParse p = TradingImportParser.parsePositions(content);
+
+        assertEquals(1, p.rows().size(), "只有第 2 行是有效持仓");
+        assertEquals(4, p.unparsedRows().size(), "4 行没看懂必须逐行上报（原来会静默丢）");
+        assertTrue(p.unparsedRows().get(0).startsWith("第 3 行"), p.unparsedRows().get(0));
+        assertTrue(p.unparsedRows().get(0).contains("字段不足"), p.unparsedRows().get(0));
+        assertTrue(p.unparsedRows().get(1).contains("6 位数字"), p.unparsedRows().get(1));
+        assertTrue(p.unparsedRows().get(2).contains("不是整数"), p.unparsedRows().get(2));
+        assertTrue(p.unparsedRows().get(3).contains("不是数字"), p.unparsedRows().get(3));
+    }
+
+    @Test
+    void parsePositions_wrongFileOrEmpty_headerNotMatched() {
+        // 选错文件（资金明细表头）与空文件：headerMatched=false，调用方 fail-closed（绝不静默 0 只）
+        String cashDetail = "编号\t证券代码\t证券名称\t证券数量\t成本价\t当前价\t浮动盈亏\n"
+                + "1\t600206\t有研新材\t900\t46.012\t50.78\t100.0\n";
+        assertFalse(TradingImportParser.parsePositions(cashDetail).headerMatched(),
+                "含「当前价」的资金明细不能被当作持仓解析");
+        assertTrue(TradingImportParser.parsePositions(cashDetail).rows().isEmpty());
+        assertFalse(TradingImportParser.parsePositions("").headerMatched());
+    }
+
+    @Test
+    void parsePositions_currentPriceOnlyWhenPositive() {
+        // 现价必须 > 0 才有意义（成本价允许为负，现价不允许）——取不到/非正 → null
+        // （导入侧保留原有存储价，绝不写回 0 或成本价——P2-交易65 同源）
+        String content = "证券代码\t证券名称\t证券数量\t成本价\t现价\t当日盈亏\n"
+                + "600000\t浦发银行\t1000\t10.5\t0.00\t1.00\n"
+                + "600001\t示例股\t100\t1.0\t--\t0\n";
+        TradingImportParser.PositionParse p = TradingImportParser.parsePositions(content);
+
+        assertEquals(2, p.rows().size());
+        assertNull(p.rows().get(0).currentPrice(), "现价 0.00 → null，不得带上送");
+        assertNull(p.rows().get(1).currentPrice(), "现价不是数字 → null");
+    }
+
+    @Test
+    void parseDateFromFilename_realNamingAndFakeDateSkipped() {
+        // 通达信文件名惯例：前导时间戳 + 主题 + 日期；假日期（20260230）跳过继续找，宁可无据不猜
+        assertEquals(LocalDate.of(2026, 9, 4),
+                TradingImportParser.parseDateFromFilename("20260904004455_持仓股20260904.txt"));
+        assertEquals(LocalDate.of(2026, 9, 4),
+                TradingImportParser.parseDateFromFilename("2026-09-04_资金股份.txt"));
+        assertNull(TradingImportParser.parseDateFromFilename("20260230_持仓股.txt"),
+                "日历上不存在的日期 → null（无据）");
+        assertEquals(LocalDate.of(2026, 9, 4),
+                TradingImportParser.parseDateFromFilename("20260230_20260904_持仓股.txt"),
+                "假日期跳过继续找后面的真日期");
+        assertNull(TradingImportParser.parseDateFromFilename("持仓股.txt"));
+        assertNull(TradingImportParser.parseDateFromFilename(null));
+    }
+
+    @Test
+    void isMainboardCode_onlyBoardSegments() {
+        // 设计 §11.2「限制只在账」：600/601/603/605 · 000/001/002/003 才入账；
+        // 科创/创业/北交所/ETF/可转债/港美股如实拒绝（不静默）
+        assertTrue(TradingImportParser.isMainboardCode("600519"));
+        assertTrue(TradingImportParser.isMainboardCode("601066"));
+        assertTrue(TradingImportParser.isMainboardCode("603206"));
+        assertTrue(TradingImportParser.isMainboardCode("605499"));
+        assertTrue(TradingImportParser.isMainboardCode("000725"));
+        assertTrue(TradingImportParser.isMainboardCode("001979"));
+        assertTrue(TradingImportParser.isMainboardCode("002428"));
+        assertTrue(TradingImportParser.isMainboardCode("003816"));
+        assertFalse(TradingImportParser.isMainboardCode("688981"), "科创板不入账");
+        assertFalse(TradingImportParser.isMainboardCode("300750"), "创业板不入账");
+        assertFalse(TradingImportParser.isMainboardCode("301111"), "创业板不入账");
+        assertFalse(TradingImportParser.isMainboardCode("830799"), "北交所不入账");
+        assertFalse(TradingImportParser.isMainboardCode("430047"), "北交所不入账");
+        assertFalse(TradingImportParser.isMainboardCode("512690"), "ETF 不入账");
+        assertFalse(TradingImportParser.isMainboardCode("113050"), "可转债不入账");
+        assertFalse(TradingImportParser.isMainboardCode("007001"));
+        assertFalse(TradingImportParser.isMainboardCode("12345"));
+        assertFalse(TradingImportParser.isMainboardCode(null));
+        assertFalse(TradingImportParser.isMainboardCode(""));
     }
 }
 

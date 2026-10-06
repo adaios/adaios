@@ -10,6 +10,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * DomainActivityService 单元测试。
@@ -91,5 +93,30 @@ class DomainActivityServiceTest {
                 .findFirst().orElseThrow();
         assertEquals(0, life.weekCount());
         assertEquals("inactive", life.trend());
+    }
+
+    /**
+     * §11.3 六面闸门·面4（2026-10-06）：关插件 → 交易域整条不出（读侧过滤）；
+     * 重开即恢复（可逆——数据保留不删）。
+     */
+    @Test
+    void getActivity_pluginOff_hidesTradingDomain_reversible() {
+        recordRepository.save("default", new ContentRecord(
+                "rec_gate_trade", "note", "user_input", "trading", "买了股票",
+                List.of(), LocalDateTime.now(), null, null, "trading"));
+
+        com.adaiadai.core.kernel.plugin.PluginService plugins =
+                mock(com.adaiadai.core.kernel.plugin.PluginService.class);
+        when(plugins.hasPlugin("default", com.adaiadai.core.kernel.plugin.PluginRegistry.PLUGIN_TRADING))
+                .thenReturn(false);
+        DomainActivityService service = new DomainActivityService(recordRepository, plugins);
+
+        assertTrue(service.getActivity("default").domains().stream()
+                .noneMatch(d -> "trading".equals(d.domain())), "关插件：交易域整条不出");
+
+        when(plugins.hasPlugin("default", com.adaiadai.core.kernel.plugin.PluginRegistry.PLUGIN_TRADING))
+                .thenReturn(true);
+        assertTrue(service.getActivity("default").domains().stream()
+                .anyMatch(d -> "trading".equals(d.domain())), "重开插件即恢复（可逆）");
     }
 }

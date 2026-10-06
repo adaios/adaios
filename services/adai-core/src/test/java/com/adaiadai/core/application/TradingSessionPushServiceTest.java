@@ -21,6 +21,7 @@ import com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine;
 import com.adaiadai.core.domain.trading.engine.TradingRuleEngine;
 import com.adaiadai.core.domain.trading.market.MarketData;
 import com.adaiadai.core.domain.trading.market.MarketDataSource;
+import com.adaiadai.core.infrastructure.storage.MarketPushRepository;
 import com.adaiadai.core.infrastructure.storage.PushSettingsRepository;
 import com.adaiadai.core.infrastructure.storage.TradingMarketStageRepository;
 import com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository;
@@ -133,6 +134,8 @@ class TradingSessionPushServiceTest {
         AccountRepository accounts = mock(AccountRepository.class);
         PluginService plugin = mock(PluginService.class);
         AdviceHistoryRepository adviceRepo = mock(AdviceHistoryRepository.class);
+        /** design-final §9#16：日上限守卫——默认计数源为空（未达上限，恒放行）。 */
+        TradingPushGovernor governor = new TradingPushGovernor(mock(MarketPushRepository.class));
         AccountSnapshot account = defaultAccount();
         List<SoldTrade> sold = List.of();
         TradingSyncState sync = TradingSyncState.empty();
@@ -172,7 +175,7 @@ class TradingSessionPushServiceTest {
             TradingSessionPushService svc = spy(new TradingSessionPushService(posRepo, market, accounts, plugin, engine,
                     List.of(channel), acc, buyPoint, watchlist, pushSettings,
                     tradeLog, trading, stageRepo, adviceRepo,
-                    narrator, syncState, soldRepo, evidence, planService, knowledgeDir));
+                    narrator, syncState, soldRepo, evidence, planService, governor, knowledgeDir));
             // P2-工程11（2026-10-01）：把「今天是否交易日」固定为 true，与真实日历解耦。
             // 原先测试吃真实 LocalDate.now() → 每逢法定节假日（如 10-01 国庆）全量必红 24 条
             // ⚠️ 只有**节假日**会红，周末不会——闸门走 isTradingDay（只查节假日表、不判周末，
@@ -542,7 +545,8 @@ class TradingSessionPushServiceTest {
         String content = m.content();
         assertEquals("尾盘卖点", m.title());
         assertTrue(content.contains("按你 09-19 的账"), "尾盘必须标账日期，实际: " + content);
-        assertTrue(content.contains("清仓参考（R66）"), "破止损应给 R66，实际: " + content);
+        // design-final §11.6 B1：action 改为陈述式事实（旧「清仓参考（R66）」含动作词，已退役）
+        assertTrue(content.contains("已跌破你设的止损位 1380（R66）"), "破止损应给 R66 陈述句，实际: " + content);
         assertTrue(content.contains("① 你的历史：") && content.contains("③ 规则："),
                 "卖点必须带四要素，实际: " + content);
         assertTrue(content.contains("R66"), "③ 应引用规则编号，实际: " + content);
@@ -605,6 +609,19 @@ class TradingSessionPushServiceTest {
         assertEquals("session-push", entry.source());
         assertTrue(entry.basis() != null && entry.basis().contains("1370"),
                 "A3 依据快照应记下当时的价，实际: " + entry.basis());
+    }
+
+    /** design-final §9#16（★V1）：当日推送已达 8 条上限 → 定时推送整个跳过（不落盘、不打扰）。 */
+    @Test
+    void dailyCapReached_sessionPush_skips() {
+        Rig rig = new Rig();
+        rig.governor = mock(TradingPushGovernor.class);
+        when(rig.governor.admit(any(), any())).thenReturn(List.of());
+        TradingSessionPushService svc = rig.build();
+
+        svc.morningPlan();
+
+        verify(rig.channel, never()).push(any(), any());
     }
 
     // ── B3 · 收盘复盘（同步后触发）──

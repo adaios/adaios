@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-06
 status: active
-lines: 216
+lines: 217
 depends-on:
   - ../../workspace/_directory.md
 related:
@@ -107,6 +107,7 @@ v1: 编写者（读需求定稿）→ 审核者（读 design-v1）→ 判定
 | **审核者** | `roles/*`，按 `review.md` §3 的**派官表** | 至少一轮 |
 
 - 编码阶段的审核**沿用增量深审**（`review.md`），**不另起一套**——本流程只规定"必须派、派谁、何时升级"，具体执行标准归 `review.md`。
+- **落盘（在制品期）**：编码段审核报告落 `workspace/<任务名>/`（如 `review-code-<日期>.md`）——**不落** `docs/records/audits/`、**不改** `REVIEW.md`；编号**预分配**（接续现最大号），誊写与归档**留收工**（细则见 `review.md` §5「任务在制品期口径」）。
 - 出口：审核报「无 P0/P1」+ 测试通过 → 进 **`ship`**（`process/ship.md`）。
 
 ## 4. 人的介入点（仅 4 个）

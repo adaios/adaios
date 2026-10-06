@@ -209,7 +209,7 @@ class TradingReviewAppServiceTest {
         ArgumentCaptor<ContentRecord> recordCaptor = ArgumentCaptor.forClass(ContentRecord.class);
         verify(contextEngine).compose(any(), eq("trading"), recordCaptor.capture());
         String content = recordCaptor.getValue().content();
-        assertTrue(content.contains("建议对照"), "复盘正文应含建议对照节");
+        assertTrue(content.contains("## 对照（阿呆当时说"), "复盘正文应含对照节（B1 修复 2026-10-06：去「建议」）");
         assertTrue(content.contains("阿呆当时说"), "应含阿呆当时说");
         assertTrue(content.contains("清仓"), "应含当时建议动作（中文，⚠️8）");
         assertTrue(content.contains("长电科技"), "应含标的");
@@ -219,7 +219,7 @@ class TradingReviewAppServiceTest {
 
     @Test
     void generateReview_noAdviceCompare_whenNoSoldThatDay() {
-        // 当日无清仓 → 无建议对照段（不影响复盘）
+        // 当日无清仓 → 无对照段（不影响复盘）
         LocalDate date = LocalDate.of(2026, 9, 5);
         RecordRepository recordRepository = mock(RecordRepository.class);
         when(recordRepository.findAll(any())).thenReturn(List.of());
@@ -249,7 +249,7 @@ class TradingReviewAppServiceTest {
         ArgumentCaptor<ContentRecord> recordCaptor = ArgumentCaptor.forClass(ContentRecord.class);
         verify(contextEngine).compose(any(), eq("trading"), recordCaptor.capture());
         String content = recordCaptor.getValue().content();
-        assertFalse(content.contains("建议对照"), "当日无清仓不应有建议对照节");
+        assertFalse(content.contains("## 对照（阿呆当时说"), "当日无清仓不应有对照节");
     }
 
     @Test
@@ -296,7 +296,7 @@ class TradingReviewAppServiceTest {
         ArgumentCaptor<ContentRecord> recordCaptor = ArgumentCaptor.forClass(ContentRecord.class);
         verify(contextEngine).compose(any(), eq("trading"), recordCaptor.capture());
         String content = recordCaptor.getValue().content();
-        assertFalse(content.contains("建议对照"), "只有清仓后建议 → 对照段不应出现（卖后建议不算「当时说」）");
+        assertFalse(content.contains("## 对照（阿呆当时说"), "只有清仓后的留痕 → 对照段不应出现（卖后不算「当时说」）");
     }
 
     // ── 2026-09-07 复盘超时修复批：提交即返回（后台生成）+ 同日去重 ──

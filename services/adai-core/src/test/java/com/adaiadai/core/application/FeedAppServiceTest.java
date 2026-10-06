@@ -164,6 +164,39 @@ class FeedAppServiceTest {
         assertTrue(resp.entries().stream().noneMatch(e -> "digest".equals(e.type())));
     }
 
+    /**
+     * §11.3 六面闸门·面1（2026-10-06）：关插件 → Feed 不含任何 domain=trading 条目（读侧过滤）；
+     * 重开即恢复（可逆——数据保留不删）。
+     */
+    @Test
+    void getFeed_pluginOff_hidesTradingRecords_reversible() {
+        LocalDate day = LocalDate.of(2026, 9, 4); // 与 TRADING_CLOCK 同日（周五）
+        RecordRepository recordRepository = mock(RecordRepository.class);
+        when(recordRepository.findAll(any())).thenReturn(List.of(
+                new ContentRecord("rec_trade_feed", "record", "user_input", "买入 京东方A",
+                        "买入 京东方A 1000 股 @5.20", List.of(), day.atTime(10, 0), "log", null, "trading"),
+                new ContentRecord("rec_life_feed", "record", "user_input", "散步", "今天去公园散步了",
+                        List.of(), day.atTime(11, 0), "log", null, "life")));
+        CardFileRepository cardRepository = mock(CardFileRepository.class);
+        when(cardRepository.findTodayCards(any(), any())).thenReturn(List.of());
+        MemoryService memoryService = mock(MemoryService.class);
+        when(memoryService.findByDate(any(), any())).thenReturn(List.of());
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.indices()).thenReturn(Map.of());
+
+        FeedAppService off = new FeedAppService(recordRepository, memoryService, cardRepository,
+                market, emptyPush(), pluginService("default"), defaultPushSettings(), TRADING_CLOCK);
+        assertTrue(off.getFeed("default", day, 0, 20).entries().stream()
+                        .noneMatch(e -> "trading".equals(e.domain())),
+                "关插件：Feed 不含任何 domain=trading 条目（验收 1）");
+
+        FeedAppService on = new FeedAppService(recordRepository, memoryService, cardRepository,
+                market, emptyPush(), pluginService("default", "trading"), defaultPushSettings(), TRADING_CLOCK);
+        assertTrue(on.getFeed("default", day, 0, 20).entries().stream()
+                        .anyMatch(e -> "trading".equals(e.domain())),
+                "重开插件即恢复（可逆）");
+    }
+
     @Test
     void getFeed_includesMarketEntry_whenIndicesAvailable() {
         MarketDataSource market = mock(MarketDataSource.class);

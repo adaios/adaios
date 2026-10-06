@@ -20,7 +20,10 @@ public interface ContextContributor {
      * @param scene 场景标识（trading / life / research / note）
      * @return true 表示此贡献者能为此场景提供上下文
      */
-    boolean supports(String scene);
+    default boolean supports(String scene) {
+        // 2026-10-06 §8 改造（design-final）：只做全局注入的贡献者无需再写空方法。
+        return false;
+    }
 
     /**
      * 为此场景贡献额外上下文内容。
@@ -32,7 +35,10 @@ public interface ContextContributor {
      * @param record      当前记录
      * @return 额外的上下文内容（Markdown 格式），空字符串表示无额外内容
      */
-    String enrich(String userId, String identityRef, ContentRecord record);
+    default String enrich(String userId, String identityRef, ContentRecord record) {
+        // 2026-10-06 §8 改造（design-final）：只做全局注入的贡献者无需再写空方法。
+        return "";
+    }
 
     /**
      * 是否为默认兜底贡献者。

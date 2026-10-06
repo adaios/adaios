@@ -5,7 +5,7 @@ version: 2
 created: 2026-10-04
 updated: 2026-10-06
 status: active
-lines: 79
+lines: 80
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index, workspace]
@@ -27,7 +27,7 @@ tags: [meta, index, workspace]
 
 > **规则**：**一个分支 = 一个目录 = 一个任务**（主键唯一 ⇒ **零冲突**）；目录里**需要什么才有什么**（轻活就一个 `LEDGER.md`）。
 
-## 文件清单（40 项）
+## 文件清单（41 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -62,6 +62,7 @@ tags: [meta, index, workspace]
 | `trading-plugin/requirement-review-20261006-r3.md` | A 归位（业务规则并回需求、机制留给设计）之后的复审——12 条判据全过 + 归位核对通过；结论：收敛，可送人签… | active |
 | `trading-plugin/requirement-review-20261006.md` | 用「需求文稿审核官（草案）」的 12 条判据，对本分支需求文稿的第一轮审核——结论：不收敛（P1×2 / P2×… | active |
 | `trading-plugin/requirement.md` | 交易插件重做的需求（要什么 · 现状无关）——问题动机 · 谁在什么时刻要什么 · 目标与不目标 · 用户要付出… | active |
+| `trading-plugin/review-code-deep-20261006.md` | 编码段 deep 深审（三官隔离并行 + 主会话逐条复验）——P0 无；P1×6 + P2×8 共 14 条**预分配**编号（P1-交易89~94 · P2-交易95~100 · P2-admin1 · P2-工程16）；含收工契约账（align FAIL 待补），待收工誊写 REVIEW.md | active |
 | `trading-plugin/review-r2-backend-20261006.md` | 只核 r1 → r2 三条改动是否真到位 + 有无连带新引 P0/P1，逐条给 文件:行 证据；判定：三条全部真… | draft |
 | `trading-plugin/review-v1-20261006.md` | 对设计稿 v1 的产品架构审查——无 P0；战略级 2 条（L6 反哺闭环被砍无 RFC · 定位扩容未进蓝图）… | active |
 | `trading-plugin/review-v2-20261006.md` | 对设计稿 v2 的产品架构审查——无 P0；战略级 1 条（S2 的 RFC/roadmap 仍在分支外）· P… | active |

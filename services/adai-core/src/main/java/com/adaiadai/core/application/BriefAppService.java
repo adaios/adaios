@@ -61,6 +61,8 @@ public class BriefAppService {
     // 多用户预留：Brief 缓存按 userId 隔离（2026-08-02）
     private final java.util.Map<String, String> cachedBriefByUser = new java.util.HashMap<>();
     private final java.util.Map<String, LocalDateTime> cachedBriefAtByUser = new java.util.HashMap<>();
+    /** P1-交易91（2026-10-06）：该条缓存生成时是否含交易域信号——停插件后据此忽略旧缓存（不泄已关域）。 */
+    private final java.util.Map<String, Boolean> cachedBriefIncludedTradingByUser = new java.util.HashMap<>();
 
     public BriefAppService(IdentityRepository identityRepository,
                            RecordRepository recordRepository,
@@ -94,18 +96,31 @@ public class BriefAppService {
         String cached = cachedBriefByUser.get(userId);
         LocalDateTime at = cachedBriefAtByUser.get(userId);
         if (cached != null && at != null
-                && java.time.Duration.between(at, LocalDateTime.now()).toMinutes() < 5) {
+                && java.time.Duration.between(at, LocalDateTime.now()).toMinutes() < 5
+                && !staleTradingCache(userId)) {
             return cached;
         }
         return "";
     }
 
+    /**
+     * P1-交易91（2026-10-06）：缓存是在 trading 插件开着时生成的、而现在插件已关 → 视为失效。
+     * <p>背景：简报缓存 5 分钟——关插件后缓存窗口内 Feed/生成仍会吐出含交易域的旧简报
+     * （§11.3 面5 门控被缓存旁路；上一条测试的「可逆」只在缓存过期后成立）。
+     * 判据：生成时带交易 && 当前不带 → 忽略缓存重新生成（重开插件后新缓存不含交易也无害）。
+     */
+    private boolean staleTradingCache(String userId) {
+        return Boolean.TRUE.equals(cachedBriefIncludedTradingByUser.get(userId))
+                && !pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING);
+    }
+
     public String generateBrief(String userId) {
-        // 5 minutes cache（按 userId 隔离）
+        // 5 minutes cache（按 userId 隔离）；P1-交易91：停插件后含交易域的旧缓存不得命中
         String cached = cachedBriefByUser.get(userId);
         LocalDateTime cachedAt = cachedBriefAtByUser.get(userId);
         if (cached != null && cachedAt != null
-                && java.time.Duration.between(cachedAt, LocalDateTime.now()).toMinutes() < 5) {
+                && java.time.Duration.between(cachedAt, LocalDateTime.now()).toMinutes() < 5
+                && !staleTradingCache(userId)) {
             return cached;
         }
 
@@ -114,17 +129,27 @@ public class BriefAppService {
         List<ContentRecord> allForBrief = recordRepository.findAll(userId);
         java.util.Set<String> attachmentIds =
                 com.adaiadai.core.kernel.record.MediaAttachments.referencedIds(allForBrief);
+        // §11.3 六面闸门·面5（2026-10-06）：关插件 → 交易记录/记忆不进简报（读侧过滤；可逆——重开即恢复）
+        boolean hasTradingPlugin = pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING);
+        java.util.Set<String> hiddenTradingRecordIds = hasTradingPlugin ? java.util.Set.of()
+                : allForBrief.stream().filter(r -> "trading".equals(r.domain()))
+                        .map(ContentRecord::id).collect(java.util.stream.Collectors.toSet());
         List<ContentRecord> todayRecords = allForBrief.stream()
                 .filter(r -> !attachmentIds.contains(r.id()))
+                .filter(r -> !hiddenTradingRecordIds.contains(r.id()))
                 .filter(r -> r.createdAt().toLocalDate().equals(LocalDate.now()))
                 .toList();
         List<ContentRecord> recentRecords = allForBrief.stream()
                 .filter(r -> !attachmentIds.contains(r.id()))
+                .filter(r -> !hiddenTradingRecordIds.contains(r.id()))
                 .filter(r -> r.createdAt().toLocalDate().isAfter(LocalDate.now().minusDays(2)))
                 .toList();
         // RFC 20260923 A 批：统一走 recentActive（过滤 superseded）——原来用 recent()，
         // 已被取代/作废的记忆照样注入，是「天天提醒」的第二条通路（与 ContextEngine 口径对齐）。
-        List<Memory> recentMemories = memoryService.recentActive(userId, 7);
+        List<Memory> recentMemories = memoryService.recentActive(userId, 7).stream()
+                // §11.3 面5：交易来源的记忆同样过滤（记忆无 domain 字段——recordId 反查交易记录 id 集）
+                .filter(m -> m.recordId() == null || !hiddenTradingRecordIds.contains(m.recordId()))
+                .toList();
         // 2026-09-16「第一次见面」批：name 现在允许为空（新用户还没填昵称）。
         // 分开两用——给 AI 的空值兜底成 "the user"，给用户看的问候语则在空时整段省掉称呼，
         // 避免拼出「☀️  早上好！」这种双空格或把英文塞进中文问候。
@@ -151,6 +176,7 @@ public class BriefAppService {
                     ));
             cachedBriefByUser.put(userId, truncateLines(understanding.summary(), 4)); // 1+3：首行问候 + 3 行内容（阿呆 08-13 层次反馈）
             cachedBriefAtByUser.put(userId, LocalDateTime.now());
+            cachedBriefIncludedTradingByUser.put(userId, hasTradingPlugin);   // P1-交易91：记下这份缓存含不含交易域
             return cachedBriefByUser.get(userId);
         } catch (Exception e) {
             log.warn("Brief AI failed: {}", e.getMessage());
@@ -175,6 +201,7 @@ public class BriefAppService {
             fallback.append("\n☕ 慢慢来，一件件来");
             cachedBriefByUser.put(userId, truncateLines(fallback.toString(), 4));
             cachedBriefAtByUser.put(userId, LocalDateTime.now());
+            cachedBriefIncludedTradingByUser.put(userId, hasTradingPlugin);   // P1-交易91：降级缓存同样记账
             return cachedBriefByUser.get(userId);
         }
     }
@@ -347,10 +374,13 @@ public class BriefAppService {
             List<Todo> openTodos = todoRepository.findAll(TodoStatus.OPEN, userId);
             List<Todo> pendingActions = actionReviewService.pendingReviews(userId, MAX_BRIEF_TODOS).stream()
                     .filter(t -> !RhythmDetector.isRhythmLike(t.title()))
+                    // §11.4：关插件时「来源为交易记录」的对话动作不进简报（Todo 无 source 字段——sourceRecordId 反查）
+                    .filter(t -> !hiddenTradingAction(userId, t))
                     .toList();
             List<Todo> otherTodos = openTodos.stream()
                     .filter(t -> pendingActions.stream().noneMatch(p -> p.id().equals(t.id())))
                     .filter(t -> !RhythmDetector.isRhythmLike(t.title()))
+                    .filter(t -> !hiddenTradingAction(userId, t))
                     .limit(Math.max(0, MAX_BRIEF_TODOS - pendingActions.size()))
                     .toList();
 
@@ -420,6 +450,16 @@ public class BriefAppService {
         sb.append("8. Never invent reminders. Do NOT bring up habits, routines or recurring events (e.g. \"you usually work late on Thursdays\") as things to do or to prepare for.\n");
 
         return sb.toString();
+    }
+
+    /** §11.4：关插件时，来源为交易记录的待办不进简报（Todo 无 source 字段——用 sourceRecordId 反查 domain）。 */
+    private boolean hiddenTradingAction(String userId, Todo t) {
+        if (pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING)) return false;
+        String rid = t.sourceRecordId();
+        if (rid == null || rid.isBlank()) return false;
+        return recordRepository.findById(userId, rid)
+                .map(r -> "trading".equals(r.domain()))
+                .orElse(false);
     }
 
 }

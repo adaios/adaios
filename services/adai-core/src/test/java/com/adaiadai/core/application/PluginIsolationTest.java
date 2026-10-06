@@ -200,9 +200,9 @@ class PluginIsolationTest {
         String adaiPrompt = engineWithMarket.compose("adai", "question", record("今天大盘怎么样"), null).prompt();
         String alicePrompt = engineWithMarket.compose("alice", "question", record("今天大盘怎么样"), null).prompt();
 
-        assertTrue(adaiPrompt.contains("交易系统状态"), "adai（trading 插件）应注入行情/持仓上下文");
+        assertTrue(adaiPrompt.contains("大盘与持仓行情"), "adai（trading 插件）应注入行情/持仓上下文");
         assertTrue(adaiPrompt.contains("上证指数"), "adai 应注入大盘指数行情");
-        assertFalse(alicePrompt.contains("交易系统状态"), "alice（无插件）不应注入行情上下文——行情服务跟插件走");
+        assertFalse(alicePrompt.contains("大盘与持仓行情"), "alice（无插件）不应注入行情上下文——行情服务跟插件走");
         assertFalse(alicePrompt.contains("上证指数"), "alice 不应收到大盘行情");
     }
 }

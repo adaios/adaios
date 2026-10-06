@@ -367,6 +367,8 @@ public class ContextEngine {
             List<ContentRecord> recent = allRecords.stream()
                     .filter(r -> !attachmentIds.contains(r.id()))
                     .filter(r -> !r.id().equals(currentRecord.id()))
+                    // §11.3 面6：关插件 → 交易记录不进「相关历史记录」（读侧过滤；可逆）
+                    .filter(r -> !hiddenTradingRecord(userId, r))
                     .limit(policy.fallbackRecentMax())
                     .collect(Collectors.toList());
             if (recent.isEmpty()) return "";
@@ -393,6 +395,8 @@ public class ContextEngine {
                 .map(id -> recordRepository.findById(userId, id).orElse(null))
                 .filter(Objects::nonNull)
                 .filter(r -> !r.id().equals(currentRecord.id()))
+                // §11.3 面6：标签命中的交易记录同样过滤
+                .filter(r -> !hiddenTradingRecord(userId, r))
                 .collect(Collectors.toList());
 
         if (related.isEmpty()) {
@@ -413,6 +417,22 @@ public class ContextEngine {
                     .append(summary).append("\n");
         }
         return sb.toString();
+    }
+
+    /** §11.3 面6：关插件时交易记录不进上下文（读侧；存量与新增一致地被隐藏，可逆——重开即恢复）。 */
+    private boolean hiddenTradingRecord(String userId, ContentRecord r) {
+        return pluginService != null && "trading".equals(r.domain())
+                && !pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING);
+    }
+
+    /** §11.3 面5：关插件时交易来源的记忆不进上下文（记忆无 domain 字段——recordId 反查所在记录）。 */
+    private boolean hiddenTradingMemory(String userId, Memory m) {
+        if (pluginService == null || pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING)) return false;
+        String rid = m.recordId();
+        if (rid == null || rid.isBlank()) return false;
+        return recordRepository.findById(userId, rid)
+                .map(r -> "trading".equals(r.domain()))
+                .orElse(false);
     }
 
     /**
@@ -461,7 +481,10 @@ public class ContextEngine {
     private String loadMemorySummary(String userId) {
         // 记忆进化 Phase 4：回读确认——更新近期记忆 lastConfirmed，让常回读的记忆保持时效权重
         memoryService.touchActive(userId);
-        List<Memory> recentMemories = memoryService.recentActive(userId, MEMORY_DAYS);
+        // §11.3 面5：关插件 → 交易来源的记忆不进「AI 对你的近期理解」（recordId 反查；可逆）
+        List<Memory> recentMemories = memoryService.recentActive(userId, MEMORY_DAYS).stream()
+                .filter(m -> !hiddenTradingMemory(userId, m))
+                .collect(Collectors.toList());
         if (recentMemories.isEmpty()) {
             return "";
         }
@@ -525,6 +548,8 @@ public class ContextEngine {
         if (limit <= 0) return "";
 
         List<Memory> prefs = memoryService.recentActive(userId, CORE_MEMORY_LOOKBACK_DAYS).stream()
+                // §11.3 面5：交易来源的偏好同样过滤（recordId 反查；可逆）
+                .filter(m -> !hiddenTradingMemory(userId, m))
                 .filter(m -> "preference".equals(m.kind()))
                 .filter(m -> m.createdAt() != null)
                 .filter(m -> m.summary() != null && !m.summary().isBlank())

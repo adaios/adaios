@@ -234,12 +234,13 @@ public class TradingProfileService {
         return new AdviceAdherence(withAdvice, followed, rate);
     }
 
-    /** 建议遵守率注入文本（画像 A 层引用；无建议对照史 → 空）。 */
+    /** 遵守率注入文本（画像 A 层引用；无对照史 → 空）。
+     *  2026-10-06 B1 修复：注入文本去「建议」——防 LLM 在复盘/建议生成中复述遗留词。 */
     public String adviceAdherenceText(String userId) {
         AdviceAdherence a = computeAdviceAdherence(userId);
         if (a.withAdviceCount() == 0) return "";
-        return "- 建议遵守率 " + a.followRatePct() + "%（阿呆给过 clear/reduce 建议的 "
-                + a.withAdviceCount() + " 笔里，" + a.followedCount() + " 笔在建议后 10 天内执行）\n";
+        return "- 遵守率 " + a.followRatePct() + "%（阿呆说过 clear/reduce 的 "
+                + a.withAdviceCount() + " 笔里，" + a.followedCount() + " 笔在 10 天内执行）\n";
     }
 
     /**
@@ -274,7 +275,7 @@ public class TradingProfileService {
         if (objective.isBlank() && adherence.isBlank() && subjective.isBlank()) return "";
         StringBuilder sb = new StringBuilder();
         if (!objective.isBlank()) sb.append(objective).append("\n\n");
-        if (!adherence.isBlank()) sb.append("## 建议遵守（B 反哺 A）\n\n").append(adherence).append("\n");
+        if (!adherence.isBlank()) sb.append("## 说过 vs 做过（B 反哺 A）\n\n").append(adherence).append("\n");
         if (!subjective.isBlank()) sb.append(subjective);
         return sb.toString().strip();
     }

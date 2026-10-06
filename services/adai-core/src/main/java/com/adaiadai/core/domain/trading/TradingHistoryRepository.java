@@ -72,4 +72,21 @@ public interface TradingHistoryRepository {
      */
     int mergeFromImport(String userId, String tradeId, LocalDate entryDate,
                         String orderId, BigDecimal fee, LocalTime tradeTime);
+
+    /**
+     * 就地把一笔流水替换为修改后的版本（纠错 · R-08，设计 §3④，2026-10-06）。
+     * <p>
+     * 跨月全扫按 {@code tradeId} 精确命中（与 {@code updateTradeMeta} 同定位策略），
+     * 保留原 id/落盘时间戳（由调用方传入的 {@code updated} 自持）。派生量重算由调用方负责。
+     *
+     * @return 实际更新笔数（0 = 未找到该 id，调用方须如实报错、不得静默）
+     */
+    int replaceTrade(String userId, String tradeId, TradeRecord updated);
+
+    /**
+     * 就地删除一笔流水（纠错 · R-08，设计 §3④，2026-10-06）。派生量重算由调用方负责。
+     *
+     * @return 实际删除笔数（0 = 未找到该 id）
+     */
+    int deleteTrade(String userId, String tradeId);
 }

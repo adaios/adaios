@@ -73,4 +73,31 @@ class SearchServiceTest {
                 "薄附件不进搜索结果（summary 是系统视角哨兵）");
         assertEquals(1, service.search("adai", "球局").size(), "主记录照常可搜");
     }
+
+    /**
+     * §11.3 六面闸门·面3（2026-10-06）：关插件 → 交易记录不进搜索结果（读侧过滤）；
+     * 重开即恢复（可逆——数据保留不删）。
+     */
+    @Test
+    void search_pluginOff_hidesTradingRecords_reversible() {
+        RecordRepository records = mock(RecordRepository.class);
+        when(records.findAll(any())).thenReturn(List.of(
+                new ContentRecord("rec_trade", "record", "user_input", "买入 京东方A",
+                        "买入 京东方A 1000 股 @5.20", List.of(), LocalDateTime.now(), "log", null, "trading"),
+                record("rec_life", "note", "散步", "今天去公园散步了", null)));
+
+        com.adaiadai.core.kernel.plugin.PluginService plugins =
+                mock(com.adaiadai.core.kernel.plugin.PluginService.class);
+        when(plugins.hasPlugin("adai", com.adaiadai.core.kernel.plugin.PluginRegistry.PLUGIN_TRADING))
+                .thenReturn(false);
+        SearchService service = new SearchService(records, plugins);
+
+        org.junit.jupiter.api.Assertions.assertTrue(service.search("adai", "京东方").isEmpty(),
+                "关插件：交易记录不进搜索结果");
+        assertEquals(1, service.search("adai", "散步").size(), "生活记录不受影响");
+
+        when(plugins.hasPlugin("adai", com.adaiadai.core.kernel.plugin.PluginRegistry.PLUGIN_TRADING))
+                .thenReturn(true);
+        assertEquals(1, service.search("adai", "京东方").size(), "重开插件即恢复（可逆）");
+    }
 }

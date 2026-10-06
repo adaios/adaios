@@ -1,5 +1,7 @@
 package com.adaiadai.core.application;
 
+import com.adaiadai.core.kernel.plugin.PluginRegistry;
+import com.adaiadai.core.kernel.plugin.PluginService;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
 import org.springframework.stereotype.Service;
@@ -17,9 +19,19 @@ import java.util.*;
 public class DomainActivityService {
 
     private final RecordRepository recordRepository;
+    /** §11.3 六面闸门（2026-10-06）：关插件时交易域不出现在活跃度信号里（读侧过滤；可逆）。可空=兼容构造。 */
+    private final PluginService pluginService;
 
-    public DomainActivityService(RecordRepository recordRepository) {
+    /** 主构造（Spring 注入）：带插件门控。 */
+    @org.springframework.beans.factory.annotation.Autowired
+    public DomainActivityService(RecordRepository recordRepository, PluginService pluginService) {
         this.recordRepository = recordRepository;
+        this.pluginService = pluginService;
+    }
+
+    /** 兼容构造（测试/旧调用）：不接插件门控——行为与历史版本逐字一致。 */
+    public DomainActivityService(RecordRepository recordRepository) {
+        this(recordRepository, null);
     }
 
     /**
@@ -58,8 +70,11 @@ public class DomainActivityService {
         }
 
         List<DomainActivityItem> items = new ArrayList<>();
+        // §11.3 六面闸门（2026-10-06）：关插件 → 交易域整条不出（读侧过滤；可逆——重开即恢复）
+        boolean hideTrading = pluginService != null
+                && !pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING);
         // 确保主要 domain 都有条目（RFC 20260917：project 插件已撤，不再是记录 domain）
-        for (String domain : new String[]{"life", "trading"}) {
+        for (String domain : hideTrading ? new String[]{"life"} : new String[]{"life", "trading"}) {
             int todayCount = todayCounts.getOrDefault(domain, 0);
             int weekCount = weekCounts.getOrDefault(domain, 0);
             int prevCount = prevWeekCounts.getOrDefault(domain, 0);
