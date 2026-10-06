@@ -189,7 +189,10 @@ for f in files:
 
 # M4 正文路径引用扫描：强制区文档正文中的仓库内路径（`docs/...`、`ai-engineering/...`、`bash <script>`）
 # 断言目标存在——堵 M1 盲区（frontmatter 边之外，正文路径引用断链）
-M4_SKIP = ('.agents/direction/rfc/', '.agents/records/', 'docs/records/', 'docs/README.md')  # 决策记录与存档含"当时"的路径，不查正文
+M4_SKIP = ('.agents/direction/rfc/', '.agents/records/', 'docs/records/', 'docs/README.md',
+           '.agents/workspace/_meta/')  # 决策记录与存档含"当时"的路径，不查正文
+# ⚠️ `.agents/workspace/_meta/`（跨任务过程档）同样豁免：**派单文件按设计就会指向"尚未落盘的交付物"**
+#    （r1/r2 各撞过一次：M4 报"指向不存在的报告"，而报告落盘后自动消解）。这是流程的固有摩擦，不是缺陷。
 for f in files:
     rel = str(f.relative_to(ROOT))
     if rel.startswith(M4_SKIP): continue
