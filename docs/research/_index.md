@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-04
 updated: 2026-10-04
 status: active
-lines: 36
+lines: 37
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index, research]
@@ -17,12 +17,13 @@ tags: [meta, index, research]
 
 **职责**：**研究 · 调研 · 诊断材料**——有分析价值但**不参与 AI 运行时**（改代码时不需要读它）。
 
-## 文件清单（4 项）
+## 文件清单（5 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
 | `memory-frameworks-borrow.md` | 开源记忆方案借鉴分析（Mem0 / Letta / Zep / File-First 生态 → 可借鉴清单） | active |
 | `memory-fidelity.md` | 记忆底座质量诊断——原文保真与证据链（三层存储 / E-A 读取侧保真 / 失真审计，2026-09-05） | draft |
+| `multi-agent-collaboration-patterns.md` | 多 agent 协作与通信模式——介质 / 拓扑 / 协议三切面 + 工程落地共识 + 本项目可借鉴清单（源自「三条通道全通、前端整块未交付」案例，2026-10-06） | draft |
 | `trading-journal-benchmark.md` | 交易日志竞品调研基准——TradeZella / TraderSync / Edgewonk（RFC 20260905 支撑） | active |
 | `trading-risk-plan.md` | 交易风险计划（产品内容，非工程规则） | active |
 
