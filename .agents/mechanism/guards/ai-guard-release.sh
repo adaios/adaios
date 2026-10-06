@@ -287,13 +287,13 @@ else
                 ;;
             web)
                 printf '  【Web 桌面端】\n'
-                printf '    cd apps/adai-web && sh .agents/mechanism/scripts/serve_web.sh https://api.adaiadai.com --build-only\n'
+                printf '    cd apps/adai-web && sh scripts/serve_web.sh https://api.adaiadai.com --build-only\n'
                 printf '    cd build/web && tar -cf - . | ssh %s "sudo rm -rf /opt/adaios/web.new && sudo mkdir -p /opt/adaios/web.new && sudo tar -xf - -C /opt/adaios/web.new && sudo chown -R adaios:adaios /opt/adaios/web.new && sudo rm -rf /opt/adaios/web && sudo mv /opt/adaios/web.new /opt/adaios/web && sudo systemctl restart adaios-web"\n' "$HOST"
                 printf '    （完整步骤见 .agents/rules/deployment/backend-deployment.md §8）\n'
                 ;;
             admin)
                 printf '  【管理后台】\n'
-                printf '    cd apps/adai-admin && sh .agents/mechanism/scripts/serve_web.sh https://api.adaiadai.com --build-only\n'
+                printf '    cd apps/adai-admin && sh scripts/serve_web.sh https://api.adaiadai.com --build-only\n'
                 printf '    cd build/web && tar -cf - . | ssh %s "sudo rm -rf /opt/adaios/admin.new && sudo mkdir -p /opt/adaios/admin.new && sudo tar -xf - -C /opt/adaios/admin.new && sudo chown -R adaios:adaios /opt/adaios/admin.new && sudo rm -rf /opt/adaios/admin && sudo mv /opt/adaios/admin.new /opt/adaios/admin && sudo systemctl restart adaios-admin"\n' "$HOST"
                 printf '    （base-href=/admin/ 已内置在 serve_web.sh，漏了会显示成 Web 桌面壳）\n'
                 ;;

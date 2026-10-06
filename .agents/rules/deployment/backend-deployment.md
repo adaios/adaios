@@ -3,7 +3,7 @@ title: AdaiOS 后端服务部署方案
 description: 后端部署（deploy.sh + 生产环境）——环境信息 / 配置项真值表 / systemd / 部署步骤 / learn 插件单实例硬约束；2026-10-04 自 docs/deployment 迁入
 version: 1
 created: 2026-08-15
-updated: 2026-10-04
+updated: 2026-10-06
 status: active
 lines: 554
 depends-on: []
@@ -338,9 +338,9 @@ iPhone Safari「添加到主屏幕」后以独立 App 形式全屏运行。**目
 ```bash
 # ① 本地构建（脚本内置 base-href + CanvasKit 补丁 + 字体本地化补丁 + 三条硬校验）
 cd apps/adai-app
-sh .agents/mechanism/scripts/build_web.sh https://api.adaiadai.com /m/
+sh apps/adai-app/scripts/build_web.sh https://api.adaiadai.com /m/
 #   ⚠️ 必须传 /m/ 作为 BASE_HREF：字体补丁路径会跟着子路径走（漏了 → 中文全框）
-#   ⚠️ 构建与补丁逻辑在 .agents/mechanism/scripts/build_web.sh（serve_web.sh 只负责本地起服务，不再重复实现）
+#   ⚠️ 构建与补丁逻辑在 apps/adai-app/scripts/build_web.sh（serve_web.sh 只负责本地起服务，不再重复实现）
 #   ⚠️ 校验会 FAIL 的三种情况：补丁未注入 / 补丁缺 base-href 前缀 / 字体文件不在产物内
 
 # ② 上传（原子替换，admin 同款 tar 管道）

@@ -3,7 +3,7 @@ title: 固定动作清单（每天 / 每周 / 到期）
 description: AdaiOS 的周期性人肉工作总清单——哪些系统已自动（只需看）、哪些必须你亲自做（生产日报/盘后导入/备份/审查）、哪些是到期红线；配套 task-check-deadlines.py、ai-guard-prod.sh 与三个 LaunchAgent
 version: 1
 created: 2026-09-14
-updated: 2026-10-03
+updated: 2026-10-06
 status: active
 lines: 190
 depends-on:
@@ -149,7 +149,7 @@ python3 .agents/mechanism/scripts/task-check-deadlines.py --ics          # 生�
 | 日期 | 事项 | 状态（2026-09-15） |
 |:--|:--|:--|
 | ~~2026-09-30~~ | 公安联网备案（ICP 后 30 天内） | ✅ **已办结（2026-09-24）**——`京公网安备11011402057309号` 已挂 web/admin 底部（壳 + 登录页）与两份 privacy 页（REVIEW P1-合规1 已关闭） |
-| **2026-12-14** | **TestFlight 构建过期**（当前构建 1） | ⚠️ **90 天有效**；到期手机上的测试版打不开 → 发新构建即可（`sh .agents/mechanism/scripts/release_testflight.sh --build-number N`） |
+| **2026-12-14** | **TestFlight 构建过期**（当前构建 1） | ⚠️ **90 天有效**；到期手机上的测试版打不开 → 发新构建即可（`sh apps/adai-app/scripts/release_testflight.sh --build-number N`） |
 | 2027-01-30 | 域名 adaiadai.com 到期 | ✅ |
 | 2027-09-13 | Apple Developer 账号到期 | ✅ 账号与描述文件同日 |
 | 2027-09-13 | iOS 描述文件到期 | ✅ |

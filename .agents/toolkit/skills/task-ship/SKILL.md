@@ -4,7 +4,7 @@ description: 当开发批次完成需要收尾（/ship）时加载——五件�
 name: task-ship
 version: 1
 created: 2026-08-20
-updated: 2026-08-20
+updated: 2026-10-06
 status: active
 lines: 51
 depends-on:

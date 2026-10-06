@@ -3,7 +3,7 @@ title: guards/ 目录契约
 description: guards/ 的职责边界 · 依赖关系 · 触发关系 · 约束 · 守卫 · 维护方式（机器可校验的目录级元数据）
 version: 1
 created: 2026-10-03
-updated: 2026-10-03
+updated: 2026-10-06
 status: active
 lines: 50
 depends-on: []
@@ -43,7 +43,7 @@ tags: [meta, directory]
 
 ## 守卫（谁保证这里不腐烂）
 
-- 自身：`shell-lint`（$VAR 花括号）· `ai-guard-tools` T1–T7
+- 自身：`shell-lint`（$VAR 花括号）· `ai-guard-tools` T1–T8
 
 ## 维护动作
 

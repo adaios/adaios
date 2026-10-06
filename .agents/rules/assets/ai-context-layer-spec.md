@@ -3,7 +3,7 @@ title: 项目级 AI 上下文中间层规范（AI Context Layer Spec）
 description: AdaiOS 项目级 AI 上下文的中间层规范——定义 AI 资产**放在哪**（真相源）、**怎么被各工具发现**（出口）、**怎么新增工具与维护一致性**。行业标准管「长什么样」（Agent Skills 管技能格式、Agent Plugins 管包结构、AGENTS.md 管背景契约），没有管「项目层一份、多工具都看见」这一段——本规范补的正是这一段。
 version: 1
 created: 2026-10-03
-updated: 2026-10-05
+updated: 2026-10-06
 status: active
 lines: 211
 depends-on:

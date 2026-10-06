@@ -3,7 +3,7 @@ title: 规范归集（Conventions）
 description: 代码/文档/协作三组规范集中声明——从原根 CLAUDE.md（2026-08-19 删除）与 AI 工程层归集；单一事实源，不复制到子项目文档
 version: 1
 created: 2026-08-15
-updated: 2026-08-18
+updated: 2026-10-06
 status: active
 lines: 55
 depends-on: []

@@ -3,7 +3,7 @@ title: TestFlight 外部测试（邀请外人使用）
 description: 把阿呆通过 TestFlight 发给非团队成员使用的完整流程——内测/外测怎么选、Beta 审核备注模板（含测试账号说明）、可直接转发的测试员须知、邀请与续期
 version: 2
 created: 2026-09-17
-updated: 2026-09-21
+updated: 2026-10-06
 status: active
 lines: 186
 depends-on:
@@ -135,9 +135,9 @@ English summary:
 
 ```bash
 cd apps/adai-app
-python3 .agents/mechanism/scripts/testflight_external.py --status
-ASC_DEMO_PASSWORD='…' python3 .agents/mechanism/scripts/testflight_external.py --submit-review
-python3 .agents/mechanism/scripts/testflight_external.py --invite friend@example.com
+python3 apps/adai-app/scripts/testflight_external.py --status
+ASC_DEMO_PASSWORD='…' python3 apps/adai-app/scripts/testflight_external.py --submit-review
+python3 apps/adai-app/scripts/testflight_external.py --invite friend@example.com
 ```
 
 ## 5. 测试员须知（可直接复制转发）

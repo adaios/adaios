@@ -57,7 +57,7 @@ tags: [review, backend, skill]
 
 ## 四、存放位置
 
-- **技能本体**：**审查官是扁平的** `.agents/toolkit/roles/<name>.md`（防守侧，**不进技能出口**）· 建设/流程技能用 `.agents/toolkit/skills/<name>/SKILL.md`（官方目录布局，进攻侧）+ `.agents/toolkit/skills/<name>/SKILL.md`（建设/流程技能，进攻侧——code-api-writer / code-domain-writer / ship / data-learn-writer）——留在治理体系内（frontmatter/索引/ai-guard-meta 门禁齐全）
+- **技能本体**：**审查官是扁平的** `.agents/toolkit/roles/<name>.md`（防守侧，**不进技能出口**）· 建设/流程技能用 `.agents/toolkit/skills/<name>/SKILL.md`（官方目录布局，进攻侧——code-api-writer / code-domain-writer / ship / data-learn-writer）——留在治理体系内（frontmatter/索引/ai-guard-meta 门禁齐全）
 - **布局与出口（规则出处）**：技能放哪、怎么被各工具发现、出口怎么维护、新增工具怎么接 —— **一律见 [`ai-context-layer-spec.md`](ai-context-layer-spec.md)**（项目级 AI 上下文中间层规范）。本文只管技能包的**格式**：五段结构 + frontmatter 十字段融合。
 - **规范**：本文件（assets/ 层）
 - **工具侧加载路径**：由工具自己配置（见 AGENTS.md「工具接入」），项目内零迁移

@@ -4,7 +4,7 @@ description: 当需要新增 Domain OS / 重大架构能力时加载——RFC+�
 name: code-domain-writer
 version: 1
 created: 2026-08-20
-updated: 2026-08-20
+updated: 2026-10-06
 status: active
 lines: 54
 depends-on:

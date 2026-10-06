@@ -3,9 +3,9 @@ title: docs/records 目录契约
 description: docs/records/ 的职责边界 · 依赖关系 · 约束 · 维护方式（机器可校验的目录级元数据）
 version: 2
 created: 2026-10-04
-updated: 2026-10-04
+updated: 2026-10-06
 status: active
-lines: 1
+lines: 43
 depends-on: []
 related: [./_index.md]
 tags: [meta, directory]

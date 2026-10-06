@@ -97,7 +97,7 @@ flowchart TB
 | 架构事实（技术栈 · 五层 · 红线）| `ARCHITECTURE.md` | `ai-guard-meta` |
 | 接口事实（端点表）| `.agents/knowledge/reference/contracts/api-spec.md` | **`ai-guard-align` A1：与源码 `@Mapping` 逐一对拍** |
 | 状态事实（测试数 · 端点 · 环境 · 发布态）| `.agents/knowledge/reference/status.md` | **`ai-guard-align` A2：与实测对拍** |
-| 契约与设计（**13 份**：api-spec / data-format-freeze / 五层架构 / 插件模型 / 记忆设计 / 交易设计…）| `.agents/knowledge/reference/{contracts,designs,manuals}/*.md` | `ai-guard-meta` · `ai-guard-align` |
+| 契约与设计（**12 份**：api-spec / data-format-freeze / 五层架构 / 插件模型 / 记忆设计 / 交易设计…）| `.agents/knowledge/reference/{contracts,designs}/*.md` | `ai-guard-meta` · `ai-guard-align` |
 | 功能手册（**4 份**：admin-features / feature-reference / task-plugin-model / trading-features）| `.agents/knowledge/reference/{contracts,designs,manuals}/*.md` | `ai-guard-meta` |
 | 领域 wiki | `os/*/11-context/*.md`（现 life-os / project-os）| 人/AI |
 

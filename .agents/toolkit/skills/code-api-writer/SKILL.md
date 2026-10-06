@@ -4,7 +4,7 @@ description: 当需要新增/修改 API 端点时加载——从代码到契约�
 name: code-api-writer
 version: 1
 created: 2026-08-20
-updated: 2026-08-20
+updated: 2026-10-06
 status: active
 lines: 55
 depends-on:

@@ -7,7 +7,7 @@ updated: 2026-10-06
 status: active
 lines: 66
 depends-on: []
-related: [./_directory.md]
+related: [./_index.md]
 tags: [meta, directory, ai]
 ---
 
@@ -53,7 +53,7 @@ tags: [meta, directory, ai]
 - `guards/ai-guard-structure.sh`：**目录级自洽**（S1 两件套齐备 / S2 清单⇄实际 / S3 契约依赖存在 / S4 契约提到的守卫存在）
 - `guards/ai-guard-meta.sh`：**文件级**（M1 断链 / M2 lines / M3 孤儿 / M4 正文路径）
 - `guards/ai-guard-skills.sh`：技能包合规（S3/S4/S5/S7）
-- `guards/ai-guard-tools.sh`：工具接入自检（T1–T7，含出口真身）
+- `guards/ai-guard-tools.sh`：工具接入自检（T1–T8，含出口真身）
 
 ## 维护动作
 1. **新增子目录** → 建 `_index.md` + `_directory.md` + 在根 `_index.md` 登记

@@ -129,6 +129,12 @@ if FIX:
     import datetime
     today = datetime.date.today().isoformat()
     changed = []
+    # 2026-10-06（体检 r3 · P2-2）：`updated` 此前**只在 lines 漂移时**刷新 ⇒ **「内容改了但行数没变」**
+    # 的文件日期永远不动（实测 6 个：把 `ai-engineering/` 换成 `.agents/` 不改行数）。改为**按 git**：
+    # 凡工作区/暂存区相对 HEAD 有改动的文件，一并刷 `updated`。一次调用拿全集，不在循环里逐个跑 git。
+    import subprocess
+    _DIRTY = set(subprocess.run(["git", "diff", "--name-only", "HEAD"], cwd=str(ROOT),
+                                capture_output=True, text=True).stdout.split())
     for f in files:
         whole = f.read_text(encoding='utf-8')
         lines = whole.split('\n')
@@ -143,13 +149,15 @@ if FIX:
             if lines[i].startswith('lines:') and lines[i] != 'lines: %d' % actual:
                 lines[i] = 'lines: %d' % actual
                 lines_fixed = True
-        # updated 只在 lines 实际漂移（内容变更）时刷新，避免无改动也写盘
-        if lines_fixed:
+        # updated：lines 漂移 **或** git 显示该文件有改动时刷新（后者治「改内容不改行数」）
+        if lines_fixed or str(f.relative_to(ROOT)) in _DIRTY:
+            _new = list(lines)
             for i in range(1, end):
-                if lines[i].startswith('updated:'):
-                    lines[i] = 'updated: %s' % today
-            f.write_text('\n'.join(lines), encoding='utf-8')
-            changed.append(f.relative_to(ROOT))
+                if _new[i].startswith('updated:'):
+                    _new[i] = 'updated: %s' % today
+            if _new != lines:                      # 幂等：只在真变化时写盘
+                f.write_text('\n'.join(_new), encoding='utf-8')
+                changed.append(f.relative_to(ROOT))
     if changed:
         print('--fix: %d 文件回写 lines/updated' % len(changed))
         for c in changed: print('   ', c)
@@ -198,9 +206,12 @@ for f in files:
     if rel.startswith(M4_SKIP): continue
     text = f.read_text(encoding='utf-8')
     # 代码块中的 bash 命令路径：```bash 块内 bash <path> 行
-    for block in re.findall(r'```bash\n(.*?)\n```', text, re.S):
+    for block in re.findall(r'```(?:bash|sh|zsh)\n(.*?)\n```', text, re.S):
         for line in block.splitlines():
-            m = re.match(r'^\s*bash\s+([\w./-]+)', line)
+            # 2026-10-06（体检 r3 · P2-1）：**`sh` / `zsh` / `python3` 整类此前逃检**——只认 `bash`
+            # ⇒ 18 行发版 runbook 指向不存在的脚本而守卫全绿（含 `ai-guard-release.sh` 自己打印的
+            # 「下一步命令」）。命令前缀以本处与行内处**两处为准**，加新解释器要同时改。
+            m = re.match(r'^\s*(?:bash|sh|zsh|python3?)\s+([\w./-]+)', line)
             if not m: continue
             cmd = m.group(1)
             target = (ROOT / cmd).resolve()
@@ -211,7 +222,7 @@ for f in files:
     # ⚠️ 只认**像路径的**（含 `/` 或以 `.sh`/`.py` 结尾）——否则 `bash -n` / `bash TOKEN=…` / `bash cd …`
     # 这类参数与命令会被误判成路径（首版实测 57 条里绝大多数是这个）。
     # 解析基准：先按仓库根，再按**本文件所在目录**（相对写法如 `../mechanism/guards/x.sh`）。
-    for m in re.finditer(r'`bash\s+((?:[\w.@-]+/)+[\w.@-]+|[\w.-]+\.(?:sh|py))', text):
+    for m in re.finditer(r'`(?:bash|sh|zsh|python3?)\s+((?:[\w.@-]+/)+[\w.@-]+|[\w.-]+\.(?:sh|py))', text):
         cmd = m.group(1)
         if not (ROOT / cmd).exists() and not (f.parent / cmd).exists():
             fails.append(f'M4 {rel}: 行内 bash 命令路径不存在 {cmd}')

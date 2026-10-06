@@ -50,7 +50,7 @@ tags: [meta, index, docs]
 | 区 | 说明 |
 |:--|:--|
 | [**archive/**](archive/_index.md) | 🗄 退役文档——3 份 `superseded` RFC + 早期 AI Context 模板 + project-os-usage |
-| [**records/**](records/_index.md) | 🗃 历史存档——走查存档 **30** 份 · 事故记录（TestFlight 合同缺失）· 发布史 · 归档问题清单 |
+| [**records/**](records/_index.md) | 🗃 历史存档——走查存档 **31** 份 · 事故记录（TestFlight 合同缺失）· 发布史 · 归档问题清单 |
 | [**research/**](research/_index.md) | 🔬 研究 · 调研 · 诊断材料（记忆方案借鉴 / 记忆保真诊断 / 交易日志竞品 / 风险计划） |
 | [**ideas/**](ideas/_index.md) | 💡 未定型但有价值的想法（成熟后升级为 `.agents/direction/rfc/`） |
 | [**legal/**](legal/_index.md) | ⚖️ 对外材料——隐私政策正文 |

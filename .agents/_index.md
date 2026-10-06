@@ -1,6 +1,6 @@
 ---
 title: .agents/ 目录索引
-description: AdaiOS AI 运行时容器的顶层索引——**6 个顶层目录**（按知识性质分）+ 顶层文件清单；判据＝「AI 上下文运行时是否需要」；根契约见 ./_directory.md
+description: AdaiOS AI 运行时容器的顶层索引——**7 个顶层目录**（按知识性质分）+ 顶层文件清单；判据＝「AI 上下文运行时是否需要」；根契约见 ./_directory.md
 version: 2
 created: 2026-10-03
 updated: 2026-10-06
@@ -39,7 +39,7 @@ tags: [meta, index, ai]
 
 | 文件 | 职责 |
 |:--|:--|
-| `README.md` | 本容器的入口——定位（规则与机制层）+ 三层结构 + 任何 AI 工具如何接入 |
+| `README.md` | 本容器的入口——定位（规则与机制层）+ 顶层结构 + 任何 AI 工具如何接入 |
 | `frontmatter-spec.md` | AdaiOS 全项目文档 YAML frontmatter 契约——字段定义、维护职责、图谱与治理机制 |
 
 ## 过期判断

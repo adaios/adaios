@@ -3,7 +3,7 @@ title: reference/ 目录契约
 description: .agents/knowledge/reference/ 的职责边界 · 依赖关系 · 触发关系 · 约束 · 守卫 · 维护方式（机器可校验的目录级元数据）
 version: 1
 created: 2026-10-04
-updated: 2026-10-04
+updated: 2026-10-06
 status: active
 lines: 54
 depends-on: []
