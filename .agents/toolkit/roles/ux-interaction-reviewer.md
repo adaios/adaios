@@ -4,9 +4,9 @@ description: 当需要走查功能操作流程/状态机/异常流/跨端一致�
 name: ux-interaction-reviewer
 version: 1
 created: 2026-08-15
-updated: 2026-08-19
+updated: 2026-10-06
 status: active
-lines: 51
+lines: 53
 depends-on:
   - ../../frontmatter-spec.md
   - ../checklists/ux-interaction-reviewer.md
@@ -42,6 +42,8 @@ tags: [review, ux, skill]
 ## 输出要求
 
 同 docs-product-reviewer：P0 → 战略 → P1 → P2/P3 中文问题清单，每条含位置/问题/建议。
+
+**交付判据（C1）**：被派进审核主链时，产出**必须落盘**在 `workspace/<分支名>/` + **登记 `workspace/_index.md`** + **两道守卫 PASS**——只回报结论不算交付。
 
 ## 参考资料
 

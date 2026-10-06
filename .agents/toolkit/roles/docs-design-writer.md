@@ -8,10 +8,10 @@ updated: 2026-10-04
 status: active
 lines: 60
 depends-on:
-  - ../../workspace/designs/_directory.md
+  - ../../workspace/_directory.md
 related:
   - ./ai-context-reviewer.md
-  - ../../workspace/designs/_template-design.md
+  - ../../workspace/_templates/design.md
 tags: [ai, role, design]
 ---
 
@@ -19,7 +19,7 @@ tags: [ai, role, design]
 
 ## 触发条件
 
-- **何时被派出**：`workspace/requirements/<需求id>.md` **已由人拍板定稿**，主链进入**设计阶段**（见 `.agents/rules/assets/ai-context-engineering.md` §4.6）。
+- **何时被派出**：`workspace/<分支名>/requirement.md` **已由人拍板定稿**（且已过需求审核），主链进入**设计阶段**（见 `.agents/rules/assets/ai-context-engineering.md` §4.6）。
 - **每轮一次**：**v1** 只读需求定稿；**vN（N≥2）** 读需求定稿 + **上一轮** `review-v<N-1>-<YYYYMMDD>.md`。
 - **不归你触发**：需求未定稿**不启动**——需求定稿是人的介入点 ①，AI 不得自行宣布。
 - **对打关系**：你与**设计文档审核者**是**两个独立 subagent**，各自独立工作、不共享上下文；多轮交叉直至审核报「无 P0/P1」。
@@ -32,7 +32,7 @@ tags: [ai, role, design]
 4. **记取舍**：做过的选择 + **为什么**（两个方案都行时选了哪个、依据是什么）。
 5. **标未决**：★ 需要人拍板的项——**取值取舍** / 与既有边界冲突 / 成本与范围权衡。**不自己定**。
 6. **自评风险**：我认为哪里最可能被审核者打回（主动暴露，别等对方挑）。
-7. **落盘**：`cp ../../workspace/designs/_template-design.md ../../workspace/designs/<需求id>/design-v<N>-<YYYYMMDD>.md` 后填写。
+7. **落盘**：`cp ../../workspace/_templates/design.md ../../workspace/<分支名>/design-v<N>-<日期>.md` 后填写。**文件不存在 = 未完成**；写完**登记 `workspace/_index.md`** 并跑**两道守卫 PASS**。
 
 ## 约束与规则
 
@@ -46,15 +46,15 @@ tags: [ai, role, design]
 
 ## 输出要求
 
-- **一份** `workspace/designs/<需求id>/design-v<N>-<YYYYMMDD>.md`，模板 A 的**五节齐全**：「本轮回应」「设计」「取舍」「★ 未决」「自评风险」。
+- **一份** `workspace/<分支名>/design-v<N>-<日期>.md`，模板的**五节齐全**：「本轮回应」「设计」「取舍」「★ 未决」「自评风险」。
 - 「本轮回应」**必须逐条对应上一轮审核的编号**（对不上的视为未回应）。
 - 「★ 未决」**非空时显式呼叫用户**（`ask_user_question` 或直接提问），**不要留着让流程静默卡住**。
 - 命名严格照契约：`design-v<N>-<YYYYMMDD>.md`（同日多轮靠 `v<N>` 区分）。
 
 ## 参考资料
 
-- `../../workspace/designs/_template-design.md` —— 模板 A（本角色的产出形态）
-- `../../workspace/designs/_directory.md` —— 目录契约：轮次命名 / 收敛判据 / 一需求一目录
-- `../../workspace/designs/_template-review.md` —— 对家的产出形态（知道会被怎么挑）
+- `../../workspace/_templates/design.md` —— 设计文档模板（本角色的产出形态）
+- `../../workspace/_directory.md` —— 目录契约：**一分支一目录** / 轮次命名 / **交付判据**（落盘 + 登记 + 守卫）
+- `../../workspace/_templates/review-design.md` —— 对家的产出形态（知道会被怎么挑）
 - `.agents/rules/assets/ai-context-engineering.md` §4.6 —— 主链全图与两条判据
 - `./ai-context-reviewer.md` —— 同类五段结构参考

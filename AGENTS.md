@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-10-04
 status: active
-lines: 84
+lines: 85
 depends-on:
   - .agents/README.md
 related:
@@ -27,6 +27,7 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 
 0. **开工自举（必做，零人工）**：任何 AI 开始工作前**自动执行** `bash .agents/mechanism/guards/ai-guard-context.sh`，以其输出（状态/未修项/边界/坑/规范/待办/成本提醒）为上下文基线——用户不需要手动跑脚本、不需要回忆任何事（2026-08-18 用户确立）
 0b. **跨会话记忆（自动）**：DSH/Claude 等工具会话开始时**自动注入**项目根 `AGENTS.local.md`——上次收尾的状态快照（机器生成勿手改；真相源是 `docs/` 源文件；体积预算见 .agents/toolkit/checklists/ai-cost-checklist.md C7）。**收尾时强制两步，缺一不可**：① `bash .agents/mechanism/guards/ai-guard-context.sh --write-local`（刷 AGENTS.local.md 快照）② `bash .agents/mechanism/guards/ai-guard-cost.sh --record`（今日成本入账）——下次开工自动带上，用户零操作（2026-08-20 确立，2026-08-22 补 cost 强制）
+0c. **派单收件箱（消息通道丢载荷时的兜底）**：开工先看 `.agents/workspace/_meta/inbox.md`——**有分配给你的任务就执行，没有就忽略**（任务做完把结果落盘到你自己的交付文件）。**背景**：2026-10-06 实测本环境 `spawn_agent(message)` 与 `followup_task` **均会丢载荷**（子代理只收到 AGENTS.md／技能／环境／协作规则），**而子代理必读本文件**——所以**收件箱是唯一可靠的派单通道**（2026-10-06 确立，详见 `.agents/workspace/_meta/process-issues-20261006.md` 甲层）
 1. **必读文档**：先读 `.agents/direction/VISION.md`（理念）→ `ARCHITECTURE.md`（架构红线）→ `.agents/direction/product-roadmap.md`（唯一蓝图）→ `.agents/README.md`（本会话协作标准）
 2. **工作焦点分离**：子项目有独立 AGENTS.md（分层应用、就近原则——`services/adai-core`、`apps/*`、`os/*`）；在哪个目录工作只看哪个领域
 3. **入口统一，后台分流**：`POST /api/v1/records` 是唯一输入入口

@@ -1,22 +1,23 @@
 ---
 title: 设计审核文件模板
-description: 模板 B——设计审核文件（设计文档审核者产出）：审核对象 · 结论 · 问题清单（P0–P3）· 收敛判定；每轮一份，与设计稿成对
+description: 审核文件模板（设计 / 需求共用）：审核对象 · 结论 · 问题清单（P0–P3）· 收敛判定；每轮一份，与稿成对
 version: 1
 created: 2026-10-03
 updated: 2026-10-04
 status: active
-lines: 35
+lines: 36
 depends-on: []
-related: [./_directory.md, ./_template-design.md]
-tags: [review, design, workspace, template]
+related: [./design.md, ./requirement.md]
+tags: [template, review, workspace]
 ---
 
-# <需求id> 设计审核 v<N>
+# <分支名> 审核 v<N>
 
 **轮次**：v<N> · <YYYY-MM-DD> · **审核**：设计文档审核者（subagent）
-**审核对象**：`design-v<N>-<YYYYMMDD>.md`
+**审核对象**：同目录 `design-v<N>-<日期>.md`（或 `requirement.md`）
 
-> **用法**：`cp _template-review.md <需求id>/review-v<N>-<YYYYMMDD>.md`。**每轮一份，与同轮设计稿成对**。
+> **用法**：`cp _templates/review-design.md <分支名>/review-v<N>-<日期>.md`。**每轮一份，与同轮稿成对**。
+> **硬要求**：**落盘（文件不存在 = 未完成）+ 登记 `workspace/_index.md` + 跑两道守卫 PASS**——**只回报结论不算交付**。
 
 ## 结论
 （择一填写：**✅ 通过** / **⚠️ 有条件通过** / **❌ 打回**）

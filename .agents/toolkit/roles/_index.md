@@ -3,9 +3,9 @@ title: roles/ 目录索引
 description: roles/ 的文件清单与过期判断；目录的职责边界与依赖契约见 ./_directory.md
 version: 1
 created: 2026-10-03
-updated: 2026-10-04
+updated: 2026-10-06
 status: active
-lines: 40
+lines: 42
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index]
@@ -15,7 +15,7 @@ tags: [meta, index]
 
 > 本文件只列**有什么**；**规则与依赖**见 [`_directory.md`](./_directory.md)。
 
-## 文件清单（13 项）
+## 文件清单（15 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -23,6 +23,8 @@ tags: [meta, index]
 | `code-backend-reviewer.md` | 当需要对 services/adai-core/ 后端代码做审查时加载——分层、数据安全、AI 集成健壮性、测试… | active |
 | `ai-context-reviewer.md` | 当需要审查 AI 上下文结构（AGENTS.md 加载结构、os/*/11-context/）时加载——四问：P… | active |
 | `docs-design-writer.md` | 审核驱动主链的产作者（与设计文档审核者真对打）——读需求定稿与上一轮审核结论，产出设计文档：本轮回应 / 设计 … | active |
+| `docs-requirement-reviewer.md` | 需求文稿写完、人签字之前派它审——判据 13 条（含 design-independent 与可验证性 + 路线对齐）；只审「要什么」不审「怎么做」 | active |
+| `process-reviewer.md` | **流程官（QA）**——中立盯「做事的方式」：记流程问题、出改进提案、当自迭代的门；不判内容、不代笔 | active |
 | `docs-contract-reviewer.md` | 当需要审查文档一致性/断链/数字漂移/frontmatter 合规时加载——api-spec、REVIEW、AG… | active |
 | `code-frontend-reviewer.md` | 当需要对 apps/（Flutter 三端）前端代码做审查时加载——状态管理、生命周期、DTO 契约、跨端对拍、… | active |
 | `data-knowledge-reviewer.md` | 当需要审查 os/ 知识资产与 data/ 数据健康时加载——跨层闭环、隐私面、数据格式契约 | active |

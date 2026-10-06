@@ -4,9 +4,9 @@ description: 当需要从产品全局审视改动/功能归属/路线对齐时�
 name: docs-product-reviewer
 version: 1
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-10-06
 status: active
-lines: 52
+lines: 54
 depends-on:
   - ../../frontmatter-spec.md
   - ../checklists/docs-product-reviewer.md
@@ -43,6 +43,8 @@ tags: [review, product, skill]
 ## 输出要求
 
 P0 → 战略 → P1 → P2/P3 中文问题清单，每条含位置/问题/建议。附「新增检查点建议」。
+
+**交付判据（C1）**：被派进审核主链时，产出**必须落盘**在 `workspace/<分支名>/` + **登记 `workspace/_index.md`** + **两道守卫 PASS**——只回报结论不算交付。
 
 ## 参考资料
 

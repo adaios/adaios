@@ -4,9 +4,9 @@ description: 当产品要交给人用之前加载——预演「他一定会问�
 name: ux-support-reviewer
 version: 1
 created: 2026-09-13
-updated: 2026-09-13
+updated: 2026-10-06
 status: active
-lines: 68
+lines: 70
 depends-on:
   - ../../frontmatter-spec.md
   - ../checklists/ux-support-reviewer.md
@@ -61,6 +61,8 @@ tags: [review, external, skill]
 
 一张表：`问题 | 类别 | 归属(PASS/P2/P1/P0) | 答案在哪（或无处可答）`；
 末尾附**「邀请时必须说的 5 句话」**与**「答不上来的问题数」**（这个数字就是产品的用户教育负债）。
+
+**交付判据（C1）**：被派进审核主链时，产出**必须落盘**在 `workspace/<分支名>/` + **登记 `workspace/_index.md`** + **两道守卫 PASS**——只回报结论不算交付。
 
 ## 参考资料
 

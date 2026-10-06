@@ -3,9 +3,9 @@ title: 技能包规范（Skills Spec）
 description: AdaiOS 版 SKILL.md 技能包标准——审查官与高频流程封装为跨工具技能包（name/description + 触发/步骤/约束/输出/参考 五段），兼容 Agent Skills 开放标准
 version: 1
 created: 2026-08-19
-updated: 2026-10-03
+updated: 2026-10-06
 status: active
-lines: 85
+lines: 97
 depends-on:
   - ../../frontmatter-spec.md
 related:
@@ -79,6 +79,18 @@ tags: [review, backend, skill]
 | 3 | **过渡期部分技能仍扁平** | 同上 | `code-api-writer` / `code-domain-writer` / `ship` 暂留 `<name>.md` | 按需迁移——不为形式一致付全量迁移成本（`ai-context-layer-spec.md` §八 反模式 5）|
 | 4 | **不做哈希锁定（S8）** | 生态中有 `skills-lock.json`（Vercel CLI） | **不做** | 本项目单人 + git 已覆盖版本控制；哈希锁是给"无版本管理的技能市场"用的 |
 | 5 | **`触发条件` 的等价标题** | 段落名为「触发条件」 | 三个外部视角官用 **`为什么需要你`**（`ai-guard-skills` S5 视其为等价） | 对陌生人官/社会性官/支持台官，这一问比"何时触发"更有力——**表达优先于形式对称** |
+
+## 七、自迭代门禁（角色 / 判据 / 清单怎么改）
+
+角色与清单**可以自我迭代**——但必须挂在**外部信号**上，否则会朝「看起来更顺眼」漂移（模型自评的通病）。
+
+| # | 门 | 规则 |
+|:--:|:--|:--|
+| ① | **判据绑事故** | 新增 / 修改任何判据，必须绑定一次**真实事故**（REVIEW 编号 / 走查发现 / 实测）——**无事故不加判据** |
+| ② | **改角色走门禁** | 角色 / 技能 / 清单的修改走「**提案 → 守卫 → 人点头**」三关；**角色不得自改**自己的定义 |
+| ③ | **对抗官不自评** | 对抗官（`ai-adversarial-reviewer`）不参与「自己找得准不准」的自评——否则会变钝 |
+
+> 出处：PDCA / 戴明环 · Kaizen · Agile 回顾会 · **CMMI 5 级 "Optimizing"**（过程自改进本身即最高成熟度等级）· SRE 无责复盘；AI 侧 Self-Refine / Reflexion / STOP / Voyager。**自迭代须有外部信号**（编译 / 测试 / 守卫 / 真值 / 事故）。
 
 ---
 

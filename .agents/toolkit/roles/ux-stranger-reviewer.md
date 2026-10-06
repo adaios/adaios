@@ -4,9 +4,9 @@ description: 当产品要交给没听过 AdaiOS 的人用之前加载——零�
 name: ux-stranger-reviewer
 version: 1
 created: 2026-09-13
-updated: 2026-09-13
+updated: 2026-10-06
 status: active
-lines: 60
+lines: 62
 depends-on:
   - ../../frontmatter-spec.md
   - ../checklists/ux-stranger-reviewer.md
@@ -52,6 +52,8 @@ tags: [review, external, skill]
 
 P0（装不上/拿不到账号/卡死不前）→ P1（能完成但要猜、要人教）→ P2（能完成但别扭）。
 每条含四段：**位置 / 他看到的 / 他以为要做的 / 实际该做的**。
+
+**交付判据（C1）**：被派进审核主链时，产出**必须落盘**在 `workspace/<分支名>/` + **登记 `workspace/_index.md`** + **两道守卫 PASS**——只回报结论不算交付。
 
 ## 参考资料
 

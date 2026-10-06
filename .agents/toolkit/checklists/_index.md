@@ -3,9 +3,9 @@ title: checklists/ 目录索引
 description: checklists/ 的文件清单与过期判断；目录的职责边界与依赖契约见 ./_directory.md
 version: 1
 created: 2026-10-03
-updated: 2026-10-03
+updated: 2026-10-06
 status: active
-lines: 41
+lines: 43
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index]
@@ -15,7 +15,7 @@ tags: [meta, index]
 
 > 本文件只列**有什么**；**规则与依赖**见 [`_directory.md`](./_directory.md)。
 
-## 文件清单（14 项）
+## 文件清单（16 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -28,6 +28,8 @@ tags: [meta, index]
 | `data-knowledge-reviewer.md` | data-knowledge-reviewer 逐条检查项（人也能用）——os/ 消费链路/data/ 健康/隐… | active |
 | `docs-contract-reviewer.md` | docs-contract-reviewer 逐条检查项（人也能用）——契约真相源/RFC 决策漂移/文档资产健… | active |
 | `docs-product-reviewer.md` | docs-product-reviewer 逐条检查项（人也能用）——五层架构/数据流/Roadmap/原则/功… | active |
+| `docs-requirement-reviewer.md` | docs-requirement-reviewer 逐条检查项（人也能用）——13 条需求质量判据（含 design-independent 与可验证性 + 路线对齐）| active |
+| `process-reviewer.md` | process-reviewer 逐条检查项（人也能用）——P-01…P-10：观测性/交付判据/轮次纪律/自迭代门禁 | active |
 | `ux-interaction-reviewer.md` | ux-interaction-reviewer 逐条检查项（人也能用）——操作路径/状态机/异常流/反馈/跨端/… | active |
 | `ux-social-reviewer.md` | ux-social-reviewer 逐条检查项（人也能用）——通知暴露面/递手机/付出门槛/人情/退出口/体面 | active |
 | `ux-stranger-reviewer.md` | ux-stranger-reviewer 逐条检查项（人也能用）——三端入口可达/开号/空世界首屏/第一件事/五… | active |

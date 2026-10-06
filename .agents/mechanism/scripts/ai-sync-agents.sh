@@ -37,7 +37,9 @@ REGISTER=(
   ai-adversarial-reviewer ux-stranger-reviewer code-backend-reviewer
   ai-context-reviewer docs-contract-reviewer code-frontend-reviewer data-knowledge-reviewer
   docs-product-reviewer ux-social-reviewer ux-support-reviewer ux-visual-reviewer ux-interaction-reviewer
+  docs-requirement-reviewer   # 需求文稿审核官（介入点①前一步，2026-10-06）
   docs-design-writer   # 审核驱动主链的产作者（与设计文档审核者真对打，2026-10-03）
+  process-reviewer   # 流程官（QA）——盯流程 / 记问题 / 提改进，不判内容、不代笔（2026-10-06）
 )
 
 # ── 目标工具 subagent 目录：**清单的唯一真相源在 lib/ai-export-targets.sh**（2026-10-05 起）──

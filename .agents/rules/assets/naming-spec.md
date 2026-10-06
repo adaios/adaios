@@ -33,8 +33,8 @@ tags: [ai, spec, naming]
 
 | 域 | 管什么 | 归属位置 | 成员 |
 |:--|:--|:--|:--|
-| **`task-`** | **任务生命周期**（横向，跨阶段）| `workspace/tasks/` | `task-init` · `task-status` · `task-done` · `task-review` |
-| **`docs-`** | **文档产出与审查** | `workspace/designs/` · `roles/` | `docs-design-writer` · `docs-design-reviewer` · `docs-contract-reviewer` |
+| **`task-`** | **任务生命周期**（横向，跨阶段）| `workspace/<分支>/`（2026-10-06 起）| `task-init` · `task-status` · `task-done` · `task-review` |
+| **`docs-`** | **文档产出与审查** | `workspace/<分支>/` · `roles/` | `docs-design-writer` · `docs-design-reviewer` · `docs-contract-reviewer` |
 | **`code-`** | **代码产出与审查** | 代码库 · `roles/` | `code-writer` · `code-backend-reviewer` · `code-frontend-reviewer` |
 | **`ux-`** | **用户体验与外部视角** | `roles/` | `ux-interaction-reviewer` · `ux-visual-reviewer` · `ux-stranger-reviewer` · `ux-social-reviewer` · `ux-support-reviewer` |
 | **`data-`** | **知识与数据** | `roles/` | `data-knowledge-reviewer` |

@@ -1,55 +1,58 @@
 ---
 title: workspace/ 目录契约
-description: .agents/workspace/ 的职责边界 · 生命周期 · 使用规则（**全工程最活跃目录**）；2026-10-04 提为顶层
-version: 1
+description: .agents/workspace/ 的职责与规则——**按「分支任务」组织**：一个分支一个目录（需求 / 设计 / 审核 / 决策都挂在它名下，需要才有）；分支上只动 workspace、归档留给合并后；**在制品也要登记索引**
+version: 2
 created: 2026-10-04
-updated: 2026-10-04
+updated: 2026-10-06
 status: active
-lines: 55
+lines: 58
 depends-on: []
-related: [./_index.md, ../rules/process/review-driven.md, ../rules/process/review.md]
+related: [./_index.md]
 tags: [meta, directory, workspace]
 ---
 
 # workspace/ 目录契约
 
-**职责**：**在制品容器（Work-in-Progress）**——回答「**正在发生什么**」。
-
-> **2026-10-04 提为顶层**（原 `records/workspace/`）：用户指出「**机制成熟后这是最活跃的目录**」。
-> 与 `records/` 的区别是**性质相反**：`records/` 是**只追加的历史账本**（REVIEW / change-log），
-> 本目录是**会清空的在制品**（需求稿 / 设计稿 / 任务卡）。混在一起会掩盖"这里应该有活"的信号。
-
-## 怎么用（**本节是重点**）
-
-| 何时 | 动作 |
-|:--|:--|
-| **开工一件需求** | 从 `requirements/_template.md` 复制到 `requirements/<需求id>/`（一需求一目录），先写**需求文稿** |
-| **设计对打** | 在 `designs/<需求id>/` 按轮次落 `design-v<N>-<YYYYMMDD>.md` 与 `review-v<N>.md`（轮次 ≤3，不收敛**升级给人**） |
-| **拆任务** | 在 `tasks/` 落任务卡（当批要做的事），完成后**删除**（不是标记完成——避免堆积） |
-| **需求验收后** | **归档**：把定稿移入 `../records/`（账本）或 `docs/`（档案馆），**然后清空本需求的目录** |
-| **收工前** | 扫一遍：**本目录里还有没有"该结没结"的东西**？有 → 要么推进、要么登记到 `../records/REVIEW.md` |
-
-**判据**：**本目录应当"会变空"**。如果它长期堆着一堆文件不动 → 说明**有任务卡在半路**（这本身就是一个信号，比任何报表都直接）。
+**职责**：**分支在制品容器**——每条活跃分支**一个目录**（`.agents/workspace/<分支名>/`），装这条任务的**全部产物**（需求 / 设计 / 审核 / 决策 / 账本）；**需要什么才有什么**。
 
 ## 职责边界
-- **放**：需求文稿 · 设计稿（含对家评审稿）· 任务卡 · 一切**尚未定稿**的在制品
-- **不放**：定稿的（→ `../records/` 或 `docs/`）· 只追加的历史（→ `../records/`）· 事实/规则（→ `../knowledge/` `../rules/`）
+
+- **放**：`<分支名>/`（一条活跃分支一个目录）· `_templates/`（模板）· `_meta/`（**跨任务**的：流程问题 / 规范草案）
+- **不放**：全局账本（`change-log` / `REVIEW` / `status`）· **已归档的定稿**（→ `.agents/direction/rfc/` 或 `knowledge/features/`）
 
 ## 依赖关系
 
-| 方向 | 对象 | 说明 |
-|:--|:--|:--|
-| 规则 | `../rules/process/review-driven.md` | **审核驱动主链**：需求 → 设计 → 编码，双角色真对打（在制品放本目录） |
-| 规则 | `../rules/process/review.md` | 按改动派审查官 |
-| 出口 | `../records/` | 定稿后归档为账本 |
-| 守卫 | `../mechanism/guards/ai-guard-meta.sh` | frontmatter / 断链 / 孤儿 |
+- **上游**：`AGENTS.md`（协作规则）· `_templates/`（开分支时复制模板）；
+- **下游**：`ai-guard-structure`（清单 ⇄ 实际）· `ai-guard-meta`（frontmatter / `lines` / 孤儿）；
+- **对等**：各 `<分支名>/` **互不读写**；跨任务的共享放 `_meta/`。
+
+## 目录命名
+
+- **分支名去类型前缀**：分支 `feat/trading-plugin` → 目录 **`trading-plugin/`**（`/` 不能做目录名）；
+- **一个目录 = 一个任务**；目录里**既有需求也有设计也有审核**（按需）——**轻活就一个 `LEDGER.md`**。
 
 ## 约束
-- **一需求一目录**（避免同名覆盖）
-- **轮次命名固定**（`design-v<N>-<YYYYMMDD>.md` / `review-v<N>.md`）
-- 子目录级 `_index.md` + `_directory.md` **保留**（模板与契约常在）；**在制品本身不入清单**（它们是动态的）
+
+- **分支上只动 `.agents/workspace/`**：外围（`.agents/rules` / `knowledge` / `records` / `docs`）**一律登记待交接**，留给合并后的主会话；
+- **归档 ≠ 定稿**：**定稿 / 设计收敛在分支内**；**归档（搬进 `rfc/` / `knowledge/` / `records/`）在合并后**；
+- **在制品也要登记**——`_index.md` 的文件清单用 rglob **逐个列**（原「**在制品本身不入清单**」的说法**已废弃**：它与 `ai-guard-structure` 的 S2 双向校验、`ai-guard-meta` 的 M3 孤儿判据**直接冲突**）；
+- frontmatter **10 字段**（`ai-guard-meta` 查）。
+
+## 触发关系
+
+| 时机 | 做什么 |
+|:--|:--|
+| **开分支** | `cp _templates/ledger.md <分支名>/LEDGER.md`；要跑主链就再 `cp _templates/requirement.md <分支名>/requirement.md` |
+| **开发中** | 只改**自己那一个目录** |
+| **合并** | 按 `LEDGER.md` 的「待交接」搬完 → **删整目录** → 跑 `ai-guard-structure.sh --fix` 刷清单 |
+
+## 守卫（谁保证这里不腐烂）
+
+- `ai-guard-structure`：`workspace/` **根**的两件套 · 清单⇄实际 · 依赖引用有效
+- `ai-guard-meta`：frontmatter / `lines` / 断链 / 孤儿
 
 ## 维护动作
-1. 需求定稿 → 归档 → **清空该需求目录**
-2. 收工前扫「该结没结」→ 推进或登记 REVIEW
-3. 本目录的理想状态是**接近空**（只有模板与两件套）
+
+1. 开分支 → 建 `<分支名>/` + 复制 `_templates/ledger.md` 为 `LEDGER.md`；
+2. 开发中 → 只改本目录；每个产出物**落盘 + 登记 `_index.md` + 跑两道守卫**；
+3. 合并 → 搬完「待交接」→ 删整目录 → `ai-guard-structure.sh --fix`。

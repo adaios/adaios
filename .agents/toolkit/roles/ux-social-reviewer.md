@@ -4,9 +4,9 @@ description: 当产品要从「自己用」变成「给身边人用」时加载�
 name: ux-social-reviewer
 version: 1
 created: 2026-09-13
-updated: 2026-09-13
+updated: 2026-10-06
 status: active
-lines: 67
+lines: 69
 depends-on:
   - ../../frontmatter-spec.md
   - ../checklists/ux-social-reviewer.md
@@ -59,6 +59,8 @@ tags: [review, external, skill]
 分两张表：
 1. **必须拍板的决策**（给出去之前不定就会出事）——每条含：场景 / 暴露或付出什么 / 选项 A/B 与代价
 2. **应当修的问题**（P0/P1/P2 常规格式）
+
+**交付判据（C1）**：被派进审核主链时，产出**必须落盘**在 `workspace/<分支名>/` + **登记 `workspace/_index.md`** + **两道守卫 PASS**——只回报结论不算交付。
 
 ## 参考资料
 

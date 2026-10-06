@@ -4,9 +4,9 @@ description: 当需要以对抗视角挑刺改动时加载——假设改动一�
 name: ai-adversarial-reviewer
 version: 1
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-10-06
 status: active
-lines: 53
+lines: 55
 depends-on:
   - ../../frontmatter-spec.md
   - ../../rules/assets/pitfalls.md
@@ -45,6 +45,8 @@ tags: [review, adversarial, skill]
 ## 输出要求
 
 P0 → P1 → P2 中文问题清单，每条含：位置 / 问题（攻击视角一句）/ 后果或攻击路径。附「建议下一步验证动作」（如何证伪这条问题）。
+
+**交付判据（C1）**：被派进审核主链时，产出**必须落盘**在 `workspace/<分支名>/` + **登记 `workspace/_index.md`** + **两道守卫 PASS**——只回报结论不算交付。
 
 ## 参考资料
 
