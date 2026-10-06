@@ -243,7 +243,9 @@ class ConflictDto {
       );
 }
 
-/// `POST /api/v1/trading/reviews/{date}/promote` 响应：`{status, path}`。
+/// `POST /api/v1/trading/reviews/{date}/promote` 响应：`{status, path, message}`
+/// （message = 后端人话回执——「已写入…不会自动进入 AI 上下文：需人工审核…」；P2-admin1 修复前
+/// 此注释仍写 `{status, path}`，与字段不符）。
 class PromoteResultDto {
   const PromoteResultDto({this.status = '', this.path = '', this.message = ''});
 

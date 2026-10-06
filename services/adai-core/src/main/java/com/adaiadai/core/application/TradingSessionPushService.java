@@ -130,7 +130,7 @@ public class TradingSessionPushService {
     /** v3.41（2026-09-04）：活跃市值区间（用户手动判定）——择时状态三级读取第 1 级，权威于 current.md。 */
     private final TradingMarketStageRepository marketStageRepository;
     /** RFC 20260905 B①：建议留痕——时段推送的确定性逐票建议也落 AdviceEntry（💥1 对抗审 2026-09-05：
-     *  尾盘建议不留痕 → 遵守率分母空、复盘对照段永不出现）。 */
+     *  尾盘卖点不留痕 → 遵守率分母空、复盘对照段永不出现）。 */
     private final AdviceHistoryRepository adviceHistoryRepository;
     /** RFC 20260922 B 批：四要素铁证渲染（① 历史统计 / ② 数字 / ③ 规则原文 / ④ 位置）。 */
     private final TradingDecisionNarrator narrator;
@@ -142,6 +142,8 @@ public class TradingSessionPushService {
     private final TradingEvidenceService evidenceService;
     /** RFC 20261003-trading-plan-and-review-loop §三（2026-10-03）：次日操作计划——早盘念计划 / 晚间提醒写。 */
     private final TradingPlanService tradingPlanService;
+    /** design-final §9#16：推送日上限守卫（★V1：全局 ≤8/日、超限合并）。 */
+    private final TradingPushGovernor pushGovernor;
     /** 择时状态来源：knowledge/context/current.md（G-4 后路径，配置驱动——生产 /opt/adaios/os/... 由 .env 注入）。 */
     private final Path currentMd;
 
@@ -164,6 +166,7 @@ public class TradingSessionPushService {
                                      SoldTradeRepository soldTradeRepository,
                                      TradingEvidenceService evidenceService,
                                      TradingPlanService tradingPlanService,
+                                     TradingPushGovernor pushGovernor,
                                      @Value("${adai.knowledge.trading-engine-path:../../os/trading-engine/knowledge/context}") String knowledgeDir) {
         this.positionRepository = positionRepository;
         this.marketDataSource = marketDataSource;
@@ -184,6 +187,7 @@ public class TradingSessionPushService {
         this.soldTradeRepository = soldTradeRepository;
         this.evidenceService = evidenceService;
         this.tradingPlanService = tradingPlanService;
+        this.pushGovernor = pushGovernor;
         this.currentMd = Paths.get(knowledgeDir, "current.md").toAbsolutePath().normalize();
         log.info("时段推送：择时状态来源 current.md = {}", currentMd);
     }
@@ -665,13 +669,14 @@ public class TradingSessionPushService {
             String reason;
             List<String> refs;
             if (sl.verdict() == StopLossVerdict.BREACHED) {
-                action = "清仓参考（R66）";
+                // design-final §11.6 B1：action = 陈述式事实（止损/清仓分开说），不得是「清仓参考」类动作词
+                action = "已跌破你设的止损位 " + fmt(p.effectiveStopLoss()) + "（R66）";
                 suggestionKey = "clear";
                 reason = sl.message();
                 refs = List.of("R66");
             } else if (pv.verdict() == PositionVerdict.OVER_WEIGHT && r81Applicable(data)) {
                 // B3-2（2026-08-23）：R81 减仓判定须过「总资产 <100 万」前提，与建议服务输出侧同口径
-                action = "减仓参考（占比 " + fmt(percent) + "% 超 R81）";
+                action = "占比 " + fmt(percent) + "% 超你的仓位上限（R81）";
                 suggestionKey = "reduce";
                 reason = pv.message();
                 refs = List.of("R81");
@@ -1223,7 +1228,7 @@ public class TradingSessionPushService {
                     reason, List.of(), false, percent, "session-push",
                     LocalDateTime.now(), basisOf(p, md, suggestion, percent)));
         } catch (Exception e) {
-            log.error("时段建议留痕失败（不影响推送）| userId={} | symbol={} | {}", userId, p.symbol(), e.getMessage());
+            log.error("时段留痕失败（不影响推送）| userId={} | symbol={} | {}", userId, p.symbol(), e.getMessage());
         }
     }
 
@@ -1331,9 +1336,16 @@ public class TradingSessionPushService {
         }
         PushChannel.PushMessage message = new PushChannel.PushMessage(
                 title, content, type, symbol, name, LocalTime.now(), lockScreenContent, lockScreenTitle);
+        // design-final §9#16（★V1）：日上限守卫——单条调用 used<8 时恒放行，仅 used≥8 时整条不推
+        //（批量折叠在异动侧，见 TradingPushGovernor；本处单条永不折叠）
+        List<PushChannel.PushMessage> admitted = pushGovernor.admit(userId, List.of(message));
+        if (admitted.isEmpty()) {
+            log.info("时段推送跳过（当日推送已达上限）| userId={} | title={}", userId, title);
+            return;
+        }
         for (PushChannel channel : pushChannels) {
             if (channel.enabled()) {
-                channel.push(userId, message);
+                channel.push(userId, admitted.get(0));
             }
         }
         log.info("时段推送完成 | userId={} | title={}", userId, title);

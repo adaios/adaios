@@ -23,7 +23,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -80,6 +82,9 @@ public class TradingAppService {
     private final ClearanceDetector clearanceDetector;
     /** RFC 20261003 C4（2026-10-03）：对账调整落账（可空=未接线，落账判空跳过）。 */
     private final CashAdjustmentRepository cashAdjustmentRepository;
+    /** 设计 §4.3（2026-10-06）：系统侧**不可见修改日志**（纠错/重导快照/迁移留痕，fail-visible）——
+     *  可空=未接线（兼容构造），判空跳过；只记系统侧，不进任何用户可见面。 */
+    private final TradingAuditRepository auditRepository;
 
     /** Spring 主构造（含锚定仓储——P2-交易34 防重；清仓推导——RFC 20260909 批 1）。 */
     @org.springframework.beans.factory.annotation.Autowired
@@ -95,7 +100,8 @@ public class TradingAppService {
                              TradingRuleSettingsRepository tradingRuleSettingsRepository,
                              TradingAnchorRepository anchorRepository,
                              ClearanceDetector clearanceDetector,
-                             CashAdjustmentRepository cashAdjustmentRepository) {
+                             CashAdjustmentRepository cashAdjustmentRepository,
+                             TradingAuditRepository auditRepository) {
         this.positionRepository = positionRepository;
         this.recordRepository = recordRepository;
         this.tradingHistoryRepository = tradingHistoryRepository;
@@ -109,6 +115,7 @@ public class TradingAppService {
         this.tradingRuleSettingsRepository = tradingRuleSettingsRepository;
         this.clearanceDetector = clearanceDetector;
         this.cashAdjustmentRepository = cashAdjustmentRepository;
+        this.auditRepository = auditRepository;
     }
 
     /** 兼容构造（11 参，无清仓推导——测试/旧调用兼容，行为等同历史版本）。 */
@@ -147,6 +154,29 @@ public class TradingAppService {
         this(positionRepository, recordRepository, tradingHistoryRepository, watchlistRepository,
                 soldTradeRepository, accountSnapshotRepository, transferRepository, marketDataSource,
                 tradingLotService, tradingRuleSettingsRepository, anchorRepository, clearanceDetector, null);
+    }
+
+    /**
+     * 无修改日志仓储构造（测试/旧调用兼容，2026-10-06）：纠错照常执行（审计判空跳过），
+     * 加它是为了让既有 13 参调用点零改动。
+     */
+    public TradingAppService(PositionRepository positionRepository,
+                             RecordRepository recordRepository,
+                             TradingHistoryRepository tradingHistoryRepository,
+                             WatchlistRepository watchlistRepository,
+                             SoldTradeRepository soldTradeRepository,
+                             AccountSnapshotRepository accountSnapshotRepository,
+                             TransferRepository transferRepository,
+                             MarketDataSource marketDataSource,
+                             TradingLotService tradingLotService,
+                             TradingRuleSettingsRepository tradingRuleSettingsRepository,
+                             TradingAnchorRepository anchorRepository,
+                             ClearanceDetector clearanceDetector,
+                             CashAdjustmentRepository cashAdjustmentRepository) {
+        this(positionRepository, recordRepository, tradingHistoryRepository, watchlistRepository,
+                soldTradeRepository, accountSnapshotRepository, transferRepository, marketDataSource,
+                tradingLotService, tradingRuleSettingsRepository, anchorRepository, clearanceDetector,
+                cashAdjustmentRepository, null);
     }
 
     /** 无锚定仓储/清仓推导构造（测试/旧调用兼容：不做 P2-交易34 防重，行为等同历史版本）。 */
@@ -1184,6 +1214,21 @@ public class TradingAppService {
      */
     public int updateTradeMeta(String userId, String tradeId, String orderId, BigDecimal fee) {
         synchronized (tradeLock(userId)) { // #147：与流水写路径同 per-user 锁
+            // §4.3 审计（2026-10-06）：补填也是账面改动——先留痕（fail-visible，失败则整个补填中止）、后改账
+            if (auditRepository != null && tradeId != null && !tradeId.isBlank()) {
+                TradeRecord old = tradingHistoryRepository.findAll(userId).stream()
+                        .filter(t -> tradeId.equals(t.id())).findFirst().orElse(null);
+                if (old != null) {
+                    // P2-交易96：多条留痕收集后一次 appendAll（原逐条 append 各自读改写，中途失败留半截）
+                    List<TradingAuditRepository.AuditEntry> entries = new ArrayList<>();
+                    collectAudit(entries, tradeId, "orderId", old.orderId(),
+                            orderId != null && !orderId.isBlank() ? orderId : old.orderId(), "补成交元信息");
+                    if (fee != null) {
+                        collectAudit(entries, tradeId, "fee", old.fee(), fee, "补成交元信息");
+                    }
+                    if (!entries.isEmpty()) auditRepository.appendAll(userId, entries);
+                }
+            }
             int updated = tradingHistoryRepository.updateTradeMeta(userId, tradeId, orderId, fee);
             log.info("交易流水补成交元信息 | userId={} | tradeId={} | orderId={} fee={} | {}",
                     userId, tradeId,
@@ -1192,6 +1237,403 @@ public class TradingAppService {
                     updated > 0 ? "已更新" : "未命中");
             return updated;
         }
+    }
+
+    // ── 纠错链（R-08 · 设计 §3④ §4.3 §9#24，2026-10-06）：流水就地改/删 + 派生重算 + 系统侧留痕 ──
+
+    /**
+     * 就地改一笔流水（纠错 · R-08）：**用户面不留痕**（无版本），系统侧写 §4.3 不可见修改日志
+     * （字段级前后值，fail-visible），持仓/现金等派生自动重算。
+     * <p>
+     * 派生重算口径（与 recordTrade 同一加权平均）：先**撤销旧影响**、再**应用新影响**；
+     * entryDate ≤ 券商快照锚定日的版本其效果已在快照里，不参与派生（只改流水）；只记账未动现金
+     * （{@code cashApplied=false}）的流水同样不动派生。撤销买入需持仓足量、撤销卖出需成本底账仍在
+     * ——否则拒绝并指路「重导持仓/资金快照」（快照即真相，重导后派生自动对齐）。
+     *
+     * @param patch 要改的字段（price / volume / direction / entryDate / tradeTime / fee / orderId /
+     *              stopLossPrice / buyPoint / targetPrice / reason）；未给的字段原样保留；
+     *              不改 symbol（改标的 = 删了重记）。
+     */
+    public Map<String, Object> editTradeRecord(String userId, String tradeId, Map<String, Object> patch) {
+        if (patch == null || patch.isEmpty()) {
+            throw new TradingException("没有要改的内容——请给出要修改的字段");
+        }
+        Map<String, Object> result;
+        synchronized (tradeLock(userId)) {
+            requireAnchorKnownForLedgerChange(userId, "纠正流水");
+            TradeRecord old = tradingHistoryRepository.findAll(userId).stream()
+                    .filter(t -> tradeId != null && tradeId.equals(t.id())).findFirst().orElse(null);
+            if (old == null) {
+                throw new TradingException("没找到这笔流水（可能已被删除）——请刷新后重试");
+            }
+            TradeRecord updated = applyTradePatch(old, patch);
+            if (updated.equals(old)) {
+                Map<String, Object> r = new LinkedHashMap<>();
+                r.put("updated", false);
+                r.put("tradeId", tradeId);
+                r.put("note", "没有变化");
+                return r;
+            }
+            // 先把「能不能撤销/应用」算清——任何一项不满足都在动笔之前拒绝（不写一半）
+            CorrectionPlan plan = planCorrection(userId, old, updated);
+            // §4.3 审计（fail-visible）：先留痕、后改账——审计写不进则整个纠错中止
+            appendCorrectionAudit(userId, old, updated);
+            int replaced = tradingHistoryRepository.replaceTrade(userId, tradeId, updated);
+            if (replaced <= 0) {
+                throw new TradingException("这笔流水没改成（文件里没找到）——请刷新后重试");
+            }
+            applyCorrectionPlan(userId, old.symbol(), plan);
+            runClearanceSync(userId, List.of(old.symbol()));   // 清仓/取消清仓场景 best-effort 重扫
+            log.info("流水已纠正 | userId={} | id={} | {} {} {}股@{} → {} {} {}股@{} | 派生{}",
+                    userId, tradeId, old.direction(), old.symbol(), old.volume(), old.price(),
+                    updated.direction(), updated.symbol(), updated.volume(), updated.price(),
+                    plan.touchPosition() ? "已重算" : "未动（快照覆盖区/只记账）");
+            Map<String, Object> r = new LinkedHashMap<>();
+            r.put("updated", true);
+            r.put("tradeId", tradeId);
+            r.put("record", updated);
+            r.put("derivationRecomputed", plan.touchPosition());
+            result = r;
+        }
+        refreshTodayPnl(userId);   // 当日盈亏 best-effort 重算（锁外：避免持锁拉行情）
+        return result;
+    }
+
+    /**
+     * 就地删一笔流水（纠错 · R-08）：只撤销旧影响（不应用新影响），其余语义与
+     * {@link #editTradeRecord} 完全一致（审计 fail-visible / 派生重算 / 不可精确撤销则拒绝）。
+     */
+    public Map<String, Object> deleteTradeRecord(String userId, String tradeId) {
+        Map<String, Object> result;
+        synchronized (tradeLock(userId)) {
+            requireAnchorKnownForLedgerChange(userId, "删除流水");
+            TradeRecord old = tradingHistoryRepository.findAll(userId).stream()
+                    .filter(t -> tradeId != null && tradeId.equals(t.id())).findFirst().orElse(null);
+            if (old == null) {
+                throw new TradingException("没找到这笔流水（可能已被删除）——请刷新后重试");
+            }
+            CorrectionPlan plan = planCorrection(userId, old, null);
+            // §4.3 审计（fail-visible）：删除也留痕（记录原文摘要）
+            if (auditRepository != null) {
+                auditRepository.append(userId, TradingAuditRepository.AuditEntry.of(
+                        tradeId, "record", describeTrade(old), "（已删除）", "纠错·就地删"));
+            }
+            int deleted = tradingHistoryRepository.deleteTrade(userId, tradeId);
+            if (deleted <= 0) {
+                throw new TradingException("这笔流水没删掉（文件里没找到）——请刷新后重试");
+            }
+            applyCorrectionPlan(userId, old.symbol(), plan);
+            runClearanceSync(userId, List.of(old.symbol()));
+            log.info("流水已删除 | userId={} | id={} | {} {} {}股@{} | 派生{}",
+                    userId, tradeId, old.direction(), old.symbol(), old.volume(), old.price(),
+                    plan.touchPosition() ? "已重算" : "未动（快照覆盖区/只记账）");
+            Map<String, Object> r = new LinkedHashMap<>();
+            r.put("deleted", true);
+            r.put("tradeId", tradeId);
+            r.put("derivationRecomputed", plan.touchPosition());
+            result = r;
+        }
+        refreshTodayPnl(userId);   // 当日盈亏 best-effort 重算（锁外：避免持锁拉行情）
+        return result;
+    }
+
+    /** 纠错重算计划：在写任何文件之前算清全部增量；任何不可精确撤销的场景直接拒绝（不动笔）。 */
+    private record CorrectionPlan(boolean touchPosition, Position upsert, boolean removePosition,
+                                  BigDecimal cashDelta, BigDecimal mvDelta,
+                                  BigDecimal availableDelta, BigDecimal withdrawableDelta) {
+        static final CorrectionPlan NONE = new CorrectionPlan(false, null, false,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+    }
+
+    /**
+     * 纠错派生重算计划（先校验 + 全部增量在手，纯内存不落盘）。
+     *
+     * @param updated null = 删除（只撤销、不应用）
+     */
+    private CorrectionPlan planCorrection(String userId, TradeRecord old, TradeRecord updated) {
+        // 覆盖区：entryDate ≤ 锚定日的版本，其效果已在券商快照里 → 不参与派生
+        //（cashApplied=null 与 reconcileCash 同口径：只有显式 false 才算「只记账未动现金」）
+        boolean oldApplied = !Boolean.FALSE.equals(old.cashApplied()) && !coveredByAnchor(userId, old.entryDate());
+        boolean newApplied = updated != null && !Boolean.FALSE.equals(updated.cashApplied())
+                && !coveredByAnchor(userId, updated.entryDate());
+        if (!oldApplied && !newApplied) {
+            return CorrectionPlan.NONE;
+        }
+        Position cur = positionRepository.findAll(userId).stream()
+                .filter(p -> p.symbol().equals(old.symbol())).findFirst().orElse(null);
+        int qty = cur != null ? cur.quantity() : 0;
+        BigDecimal cost = cur != null ? cur.avgCost() : BigDecimal.ZERO;
+        // ① 撤销旧影响
+        if (oldApplied) {
+            if (old.direction() == TradeDirection.BUY) {
+                if (cur == null || qty < old.volume()) {
+                    throw new TradingException(String.format(
+                            "这笔买入（%s %d股）之后的持仓已被卖出或调整过——撤销它会把持仓算成负数，"
+                                    + "无法精确回推成本。请重导「持仓股」或「资金股份查询」快照，按券商口径重新对齐后再纠错",
+                            old.symbol(), old.volume()));
+                }
+                int next = qty - old.volume();
+                if (next == 0) {
+                    qty = 0;
+                    cost = BigDecimal.ZERO;
+                } else {
+                    BigDecimal costValue = cost.multiply(BigDecimal.valueOf(qty))
+                            .subtract(CommissionCalculator.buyCost(old.symbol(), old.price(), old.volume()));
+                    qty = next;
+                    cost = costValue.divide(BigDecimal.valueOf(next), 4, java.math.RoundingMode.HALF_UP);
+                }
+            } else {
+                if (cur == null) {
+                    throw new TradingException(old.symbol() + " 的这笔卖出曾把它清仓（成本底账已不在），"
+                            + "撤销后无法知道持仓成本——请重导「持仓股」或「资金股份查询」快照后再纠错");
+                }
+                qty = qty + old.volume();   // 撤销卖出：数量加回，成本不变（与 recordTrade SELL 口径对称）
+            }
+        }
+        // ② 应用新影响
+        if (newApplied) {
+            if (updated.direction() == TradeDirection.BUY) {
+                BigDecimal costValue = cost.multiply(BigDecimal.valueOf(qty))
+                        .add(CommissionCalculator.buyCost(updated.symbol(), updated.price(), updated.volume()));
+                qty = qty + updated.volume();
+                cost = costValue.divide(BigDecimal.valueOf(qty), 4, java.math.RoundingMode.HALF_UP);
+            } else {
+                if (qty < updated.volume()) {
+                    throw new TradingException(String.format(
+                            "改成卖出 %s %d股后，彼时起的持仓不够卖（重算后仅 %d 股）——"
+                                    + "如确要修正真实账目，请重导「持仓股」或「资金股份查询」快照对齐",
+                            updated.symbol(), updated.volume(), qty));
+                }
+                qty = qty - updated.volume();
+            }
+        }
+        // ③ 账户增量（现金/市值/可用/可取——与 recordTrade 落账方向完全对称）
+        BigDecimal cashDelta = BigDecimal.ZERO;
+        BigDecimal mvDelta = BigDecimal.ZERO;
+        BigDecimal availableDelta = BigDecimal.ZERO;
+        BigDecimal withdrawableDelta = BigDecimal.ZERO;
+        if (oldApplied) {
+            BigDecimal impact = cashImpact(old);   // recordTrade 时落账的现金增量
+            cashDelta = cashDelta.subtract(impact);
+            mvDelta = mvDelta.subtract(old.price().multiply(BigDecimal.valueOf(old.volume())));
+            availableDelta = availableDelta.subtract(impact);
+            if (old.direction() == TradeDirection.BUY) {
+                withdrawableDelta = withdrawableDelta.subtract(impact);
+            }
+        }
+        if (newApplied) {
+            BigDecimal impact = cashImpact(updated);
+            cashDelta = cashDelta.add(impact);
+            mvDelta = mvDelta.add(updated.price().multiply(BigDecimal.valueOf(updated.volume())));
+            availableDelta = availableDelta.add(impact);
+            if (updated.direction() == TradeDirection.BUY) {
+                withdrawableDelta = withdrawableDelta.add(impact);
+            }
+        }
+        // ④ 结果持仓（touch 时才动；qty≤0 → 删行；元信息沿用现有行/新流水兜底）
+        boolean touch = oldApplied || newApplied;
+        Position upsert = null;
+        if (touch && qty > 0) {
+            upsert = cur != null
+                    ? new Position(cur.symbol(), cur.name(), qty, cost, cur.currentPrice(),
+                            LocalDateTime.now(), cur.entryDate(), cur.stopLossPrice(), cur.buyPoint(), cur.role())
+                    : new Position(old.symbol(), old.name() != null ? old.name() : old.symbol(), qty, cost,
+                            updated != null ? updated.price() : old.price(), LocalDateTime.now(),
+                            updated != null ? updated.entryDate() : old.entryDate(),
+                            updated != null ? updated.stopLossPrice() : old.stopLossPrice(),
+                            updated != null ? updated.buyPoint() : old.buyPoint(), null);
+        }
+        return new CorrectionPlan(touch, upsert, touch && qty <= 0,
+                cashDelta, mvDelta, availableDelta, withdrawableDelta);
+    }
+
+    /** 执行纠错重算计划（持仓 + 账户；账户写失败与 recordTrade 同口径：告警不中断）。 */
+    private void applyCorrectionPlan(String userId, String symbol, CorrectionPlan plan) {
+        if (plan.touchPosition()) {
+            List<Position> positions = new ArrayList<>(positionRepository.findAll(userId));
+            if (plan.removePosition()) {
+                positions.removeIf(p -> p.symbol().equals(symbol));
+            } else if (plan.upsert() != null) {
+                boolean found = false;
+                for (int i = 0; i < positions.size(); i++) {
+                    if (positions.get(i).symbol().equals(symbol)) {
+                        positions.set(i, plan.upsert());
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    positions.add(plan.upsert());
+                }
+            }
+            positionRepository.saveAll(userId, positions);
+        }
+        if (plan.cashDelta().signum() != 0 || plan.mvDelta().signum() != 0
+                || plan.availableDelta().signum() != 0 || plan.withdrawableDelta().signum() != 0) {
+            try {
+                accountSnapshotRepository.update(userId, cur -> cur.map(c -> {
+                    BigDecimal newCash = c.cash().add(plan.cashDelta());
+                    BigDecimal newMv = c.marketValue().add(plan.mvDelta());
+                    return new AccountSnapshot(
+                            newCash.add(newMv), newCash,
+                            c.available().add(plan.availableDelta()),
+                            c.withdrawable().add(plan.withdrawableDelta()),
+                            newMv, c.pnl(), c.todayPnl(), c.principal(), c.snapshotDate(), c.todayPnlSource());
+                }).orElse(null));
+            } catch (RuntimeException e) {
+                // 与 recordTrade 同口径（B6-4）：流水已改、账户没跟上 → ERROR 可见，下次对账/重导校准
+                log.error("纠错已落库但账户快照更新失败——账目未落盘 | userId={} | {} | {}",
+                        userId, symbol, e.getMessage());
+            }
+        }
+    }
+
+    /** 一笔流水对现金的落账方向（与 recordTrade 完全一致）：BUY = −含费总成本；SELL = +扣费回款。 */
+    private static BigDecimal cashImpact(TradeRecord t) {
+        return t.direction() == TradeDirection.BUY
+                ? CommissionCalculator.buyCost(t.symbol(), t.price(), t.volume()).negate()
+                : CommissionCalculator.sellProceeds(t.symbol(), t.price(), t.volume());
+    }
+
+    /** §4.3：把「旧 → 新」的字段级差异逐条留痕（fail-visible：仓储写失败直接抛，业务中止）。
+     *  <p>P2-交易96（2026-10-06）：先收集完再**一次 appendAll**——原逐条 append 各自读改写，
+     *  多字段纠错中途失败会留下「部分字段有留痕、账未改」的半截孤儿。 */
+    private void appendCorrectionAudit(String userId, TradeRecord old, TradeRecord updated) {
+        if (auditRepository == null) return;
+        List<TradingAuditRepository.AuditEntry> entries = new ArrayList<>();
+        collectAudit(entries, old.id(), "direction", old.direction(), updated.direction(), "纠错·就地改");
+        collectAudit(entries, old.id(), "price", old.price(), updated.price(), "纠错·就地改");
+        collectAudit(entries, old.id(), "volume", old.volume(), updated.volume(), "纠错·就地改");
+        collectAudit(entries, old.id(), "entryDate", old.entryDate(), updated.entryDate(), "纠错·就地改");
+        collectAudit(entries, old.id(), "tradeTime", old.tradeTime(), updated.tradeTime(), "纠错·就地改");
+        collectAudit(entries, old.id(), "fee", old.fee(), updated.fee(), "纠错·就地改");
+        collectAudit(entries, old.id(), "orderId", old.orderId(), updated.orderId(), "纠错·就地改");
+        collectAudit(entries, old.id(), "stopLossPrice", old.stopLossPrice(), updated.stopLossPrice(), "纠错·就地改");
+        collectAudit(entries, old.id(), "buyPoint", old.buyPoint(), updated.buyPoint(), "纠错·就地改");
+        collectAudit(entries, old.id(), "targetPrice", old.targetPrice(), updated.targetPrice(), "纠错·就地改");
+        collectAudit(entries, old.id(), "reason", old.reason(), updated.reason(), "纠错·就地改");
+        if (!entries.isEmpty()) auditRepository.appendAll(userId, entries);
+    }
+
+    /** 字段有差异才收集一条（无差异不记——审计只记「修改」）；收集完由调用方一次 appendAll（P2-交易96）。 */
+    private static void collectAudit(List<TradingAuditRepository.AuditEntry> out, String recordId,
+                                     String field, Object before, Object after, String source) {
+        if (java.util.Objects.equals(before, after)) return;
+        if (before instanceof BigDecimal b && after instanceof BigDecimal a && b.compareTo(a) == 0) {
+            return;   // scale 不同但数值相等（5.20 vs 5.2）不算修改
+        }
+        out.add(TradingAuditRepository.AuditEntry.of(recordId, field, str(before), str(after), source));
+    }
+
+    /** 值的可读化：BigDecimal 去尾零（避免「5.20 → 5.200」的伪差异）。 */
+    private static String str(Object v) {
+        if (v == null) return "";
+        if (v instanceof BigDecimal bd) return bd.stripTrailingZeros().toPlainString();
+        return String.valueOf(v);
+    }
+
+    /** 流水的一句话摘要（审计用：删除留痕/日志）。 */
+    private static String describeTrade(TradeRecord t) {
+        return "%s %s %s %d股@%s".formatted(
+                t.direction() == TradeDirection.BUY ? "买入" : "卖出", t.symbol(),
+                t.name() != null ? t.name() : "", t.volume(),
+                t.price() != null ? t.price().stripTrailingZeros().toPlainString() : "?");
+    }
+
+    /**
+     * 把 patch 字段套到旧流水上（未给的字段原样保留）；格式不合法抛 {@link TradingException}
+     * （400 人话）。不接受改 symbol——「改标的」不是纠错，应删了重记。
+     */
+    private static TradeRecord applyTradePatch(TradeRecord old, Map<String, Object> patch) {
+        if (patch.containsKey("symbol") && patch.get("symbol") != null
+                && !String.valueOf(patch.get("symbol")).equals(old.symbol())) {
+            throw new TradingException("不支持改股票代码（改标的 = 删了重记）——请用删除 + 新记录");
+        }
+        TradeDirection direction = old.direction();
+        if (patch.containsKey("direction") && patch.get("direction") != null) {
+            String d = String.valueOf(patch.get("direction")).trim().toUpperCase(Locale.ROOT);
+            direction = switch (d) {
+                case "BUY", "买入" -> TradeDirection.BUY;
+                case "SELL", "卖出" -> TradeDirection.SELL;
+                default -> throw new TradingException("direction 只能是 BUY 或 SELL");
+            };
+        }
+        BigDecimal price = parseDecimalField(patch, "price", old.price());
+        if (price == null || price.signum() <= 0) {
+            throw new TradingException("price 必须是正数");
+        }
+        int volume = old.volume();
+        if (patch.containsKey("volume") && patch.get("volume") != null) {
+            volume = parseIntField(patch, "volume");
+            if (volume <= 0) {
+                throw new TradingException("volume 必须是正整数");
+            }
+        }
+        LocalDate entryDate = parseDateField(patch, "entryDate", old.entryDate());
+        LocalTime tradeTime = parseTimeField(patch, "tradeTime", old.tradeTime());
+        BigDecimal fee = parseDecimalField(patch, "fee", old.fee());
+        BigDecimal stopLossPrice = parseDecimalField(patch, "stopLossPrice", old.stopLossPrice());
+        BigDecimal targetPrice = parseDecimalField(patch, "targetPrice", old.targetPrice());
+        String orderId = parseStrField(patch, "orderId", old.orderId());
+        String buyPoint = parseStrField(patch, "buyPoint", old.buyPoint());
+        String reason = parseStrField(patch, "reason", old.reason());
+        BigDecimal amount = price.multiply(BigDecimal.valueOf(volume));
+        return new TradeRecord(old.id(), old.symbol(), old.name(), direction, price, volume, amount,
+                entryDate, tradeTime, stopLossPrice, buyPoint, targetPrice, reason, fee,
+                old.timestamp(), old.sourceRecordId(), orderId, old.cashApplied(), old.ledgerOnlyReason());
+    }
+
+    // patch 字段解析（格式错误 → 400 人话；未给 → 旧值）
+
+    private static BigDecimal parseDecimalField(Map<String, Object> patch, String key, BigDecimal fallback) {
+        if (!patch.containsKey(key)) return fallback;
+        Object v = patch.get(key);
+        if (v == null || String.valueOf(v).isBlank()) return null;
+        try {
+            return new BigDecimal(String.valueOf(v).trim());
+        } catch (NumberFormatException e) {
+            throw new TradingException(key + " 不是有效数字（收到「" + v + "」）");
+        }
+    }
+
+    private static int parseIntField(Map<String, Object> patch, String key) {
+        try {
+            return new BigDecimal(String.valueOf(patch.get(key)).trim()).intValueExact();
+        } catch (ArithmeticException | NumberFormatException e) {
+            throw new TradingException(key + " 不是整数（收到「" + patch.get(key) + "」）");
+        }
+    }
+
+    private static LocalDate parseDateField(Map<String, Object> patch, String key, LocalDate fallback) {
+        if (!patch.containsKey(key)) return fallback;
+        Object v = patch.get(key);
+        if (v == null || String.valueOf(v).isBlank()) return null;
+        try {
+            String s = String.valueOf(v).trim().replace("-", "");
+            return LocalDate.parse(s, java.time.format.DateTimeFormatter.BASIC_ISO_DATE);
+        } catch (Exception e) {
+            throw new TradingException(key + " 不是日期（需 yyyy-MM-dd 或 yyyyMMdd，收到「" + v + "」）");
+        }
+    }
+
+    private static LocalTime parseTimeField(Map<String, Object> patch, String key, LocalTime fallback) {
+        if (!patch.containsKey(key)) return fallback;
+        Object v = patch.get(key);
+        if (v == null || String.valueOf(v).isBlank()) return null;
+        try {
+            String s = String.valueOf(v).trim();
+            return s.length() == 5 ? LocalTime.parse(s + ":00") : LocalTime.parse(s);
+        } catch (Exception e) {
+            throw new TradingException(key + " 不是时间（需 HH:mm 或 HH:mm:ss，收到「" + v + "」）");
+        }
+    }
+
+    private static String parseStrField(Map<String, Object> patch, String key, String fallback) {
+        if (!patch.containsKey(key)) return fallback;
+        Object v = patch.get(key);
+        if (v == null) return null;
+        String s = String.valueOf(v).trim();
+        return s.isEmpty() ? null : s;
     }
 
     /**
@@ -1605,13 +2047,23 @@ public class TradingAppService {
      */
     public ImportFileResult saveImportFile(String userId, String filename, byte[] bytes) {
         String safeName = filename != null ? filename.replaceAll("[^a-zA-Z0-9._\\-\\u4e00-\\u9fa5]", "_") : "import.txt";
-        String content = decodeText(bytes);
+        // U6 脱敏（设计 §4.1#4，2026-10-06）：备注列银行账号**入库前**抹除——留存文件、返回给前端的
+        // 解析文本都取脱敏后的内容（单点收口，同源同存）；存量文件原样保留、不回溯改写。
+        String content = desensitizeImportText(decodeText(bytes));
         String monthDir = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM"));
         String ts = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
         String path = "trading/imports/" + monthDir + "/" + ts + "_" + safeName;
         positionRepository.saveImportFile(userId, path, content);
         log.info("导入文件已留存 | userId={} | path={} | {} 字节", userId, path, bytes.length);
         return new ImportFileResult(path, content);
+    }
+
+    /**
+     * 备注列银行账号脱敏（U6，设计 §3①「备注列银行账号入库前抹除」）：16–19 位连续数字视为银行账号
+     * → 整段抹除为占位符。只匹配纯数字长串（价格带小数点、股东代码带字母、委托/成交编号 ≤ 10 位均不受影响）。
+     */
+    static String desensitizeImportText(String content) {
+        return content == null ? null : content.replaceAll("\\d{16,19}", "【银行账号已脱敏】");
     }
 
     /** 编码识别 + 转码：UTF-8 严格解码优先，失败按 GBK（通达信导出默认编码）。 */
@@ -1631,6 +2083,462 @@ public class TradingAppService {
     /** 导入文件留存结果。 */
     public record ImportFileResult(String path, String content) {}
 
+    // ── 统一入口（R-12「一次把导出的文件交给它就行」· 2026-10-06 ingest 批）──
+
+    /** 统一入口的一份输入文件（filename = 原始文件名，bytes = 原始字节——转码在识别前完成）。 */
+    public record BundleFileInput(String filename, byte[] bytes) {}
+
+    /** 统一入口的单份回执：ok=false 时 error 为人话原因；detail = 该份的具体结果（字段与既有端点回执同口径）。 */
+    public record BundleFileResult(String filename, String savedPath, String kind, String kindLabel,
+                                   boolean ok, String error, Map<String, Object> detail) {
+        public BundleFileResult {
+            if (detail == null) detail = Map.of();
+        }
+    }
+
+    /** 统一入口总回执：逐份结果 + 成功/失败计数（一份失败不影响其他份）。 */
+    public record BundleImportResult(List<BundleFileResult> files, int okCount, int failedCount,
+                                     boolean dryRun) {}
+
+    /** 预处理后的待处理文件（kind == null = 转码/留存阶段失败，仅用于如实报告）。 */
+    private record PreparedBundleFile(String filename, String savedPath, String content,
+                                      TradingImportParser.ImportKind kind) {}
+
+    /**
+     * 统一入口（R-12「一次把导出的文件交给它就行」· 设计 §3① §5）：一次收到多份导出文件，
+     * 逐份识别（表头 fail-closed）→ 内部排序 → 逐份处理 → 逐份回执，**一份失败不影响其他份**。
+     * <p>
+     * <b>排序 = 快照在前、流水在后</b>（{@link TradingImportParser.ImportKind#order()}，依据与偏离
+     * 设计稿 §3① 字面的原因见该 enum javadoc）：资金(10) → 持仓(20) → 成交(30) → 清仓(40) →
+     * 自选(50) → 未知(90)。快照先落有硬依赖：持仓导入的「当日盈亏」写入要求账户快照已存在；
+     * 且锚定日推进后本批流水 ≤ 锚定日一律走补录（不重放、批内不双计）。
+     * <p>
+     * {@code dryRun=true}：只识别 + 只报「会做什么」（各链对账/预检），**不落盘、不留存**。
+     * <p>
+     * 认不出的文件（{@link TradingImportParser.ImportKind#UNKNOWN}）**先留存、后如实拒绝**——
+     * 原始文件不丢（U6 长期留存），但绝不当成任何一类静默入库。
+     * <p><b>已知边界（登记）</b>：TRADES 的 dryRun 用**导入前**的锚定拆分补录/回放；正式导入时
+     * 快照（本批若含）已先落、锚定日已推进——正式结果只会比预检**更温和**（少回放、多补录），
+     * 偏差方向安全（不会出现「预检说不动账、正式却动账」），故 dryRun 不模拟排序后的锚定状态。
+     */
+    public BundleImportResult importBundle(String userId, List<BundleFileInput> files,
+                                           ImportMode mode, boolean dryRun) {
+        List<BundleFileInput> inputs = files != null
+                ? files.stream().filter(f -> f != null).toList()
+                : List.of();
+        if (inputs.isEmpty()) {
+            throw new TradingException("没有收到文件——请把通达信导出的文件选进来（可一次多选）");
+        }
+        // ① 逐份转码 +（非 dryRun）留存 + 识别——单份失败（转码/写入异常）不拖累其他份
+        List<PreparedBundleFile> prepared = new ArrayList<>(inputs.size());
+        for (BundleFileInput f : inputs) {
+            String filename = f.filename() != null && !f.filename().isBlank() ? f.filename() : "未命名文件";
+            // 空文件 / 读取失败的字节（controller 读失败会以 null bytes 进来）→ 如实失败，不静默消失
+            if (f.bytes() == null || f.bytes().length == 0) {
+                prepared.add(new PreparedBundleFile(filename, null, null, null));
+                continue;
+            }
+            String content;
+            String savedPath = null;
+            try {
+                // U6 脱敏：解析链与留存同源（saveImportFile 内部再解一次并脱敏，两处共用同一静态规则）
+                content = desensitizeImportText(decodeText(f.bytes()));
+                if (!dryRun) savedPath = saveImportFile(userId, filename, f.bytes()).path();
+            } catch (RuntimeException e) {
+                log.error("统一入口：文件转码/留存失败 | userId={} | {} | {}", userId, filename, e.getMessage());
+                prepared.add(new PreparedBundleFile(filename, null, null, null));
+                continue;
+            }
+            prepared.add(new PreparedBundleFile(filename, savedPath, content,
+                    TradingImportParser.detectKind(content)));
+        }
+        // ② 内部排序：快照在前、流水在后（同 kind 保持用户选择顺序——稳定排序）
+        List<PreparedBundleFile> ordered = new ArrayList<>(prepared);
+        ordered.sort(java.util.Comparator.comparingInt(
+                (PreparedBundleFile p) -> p.kind() != null ? p.kind().order() : Integer.MAX_VALUE));
+        // ③ 逐份处理
+        List<BundleFileResult> results = new ArrayList<>(ordered.size());
+        for (PreparedBundleFile p : ordered) {
+            results.add(processBundleFile(userId, p, mode, dryRun));
+        }
+        int okCount = (int) results.stream().filter(BundleFileResult::ok).count();
+        log.info("统一入口{} | userId={} | {} 份：成功 {} / 失败 {} | 处理顺序 {}",
+                dryRun ? "预检（不落盘）" : "导入", userId, results.size(), okCount,
+                results.size() - okCount,
+                ordered.stream().map(p -> p.filename() + ":"
+                        + (p.kind() != null ? p.kind().name() : "PREP_FAIL")).toList());
+        return new BundleImportResult(results, okCount, results.size() - okCount, dryRun);
+    }
+
+    /** 处理一份已识别文件：按 kind 分派；业务异常（TradingException）人话直出，未预期异常记日志 + 人话兜底。 */
+    private BundleFileResult processBundleFile(String userId, PreparedBundleFile p,
+                                               ImportMode mode, boolean dryRun) {
+        if (p.kind() == null) {
+            return fail(p, "这份文件是空的（或没能读取/留存）——为避免无痕导入，本份已跳过");
+        }
+        try {
+            return switch (p.kind()) {
+                case CASH -> cashBundleFile(userId, p, dryRun);
+                case POSITIONS -> positionsBundleFile(userId, p, dryRun);
+                case TRADES -> ok(p, historicalImportReceipt(
+                        importHistoricalTrades(userId, p.content(), mode, dryRun), dryRun));
+                case SOLD -> soldBundleFile(userId, p, dryRun);
+                case WATCHLIST -> watchlistBundleFile(userId, p, dryRun);
+                case UNKNOWN -> fail(p, "没认出这份文件是哪类导出——支持：历史成交 / 资金股份 / 持仓股 / 清仓股 / 自选股"
+                        + "（「资金流水」银行流水暂无解析器，已登记待样本）。本份未做任何改动"
+                        + (dryRun ? "" : "，原始文件已留存"));
+            };
+        } catch (TradingException e) {
+            return fail(p, e.getMessage() != null ? e.getMessage() : "这份文件没能通过校验（未做任何改动）");
+        } catch (RuntimeException e) {
+            log.error("统一入口：处理失败 | userId={} | {} | {}", userId, p.filename(), e.toString());
+            return fail(p, "处理失败：" + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()));
+        }
+    }
+
+    /** 资金股份（快照类）：dryRun → 只对账（券商 vs 系统）；否则落到现金/成本 + 锚定。 */
+    private BundleFileResult cashBundleFile(String userId, PreparedBundleFile p, boolean dryRun) {
+        LocalDate fileDate = TradingImportParser.parseDateFromFilename(p.filename());
+        if (dryRun) {
+            return ok(p, cashReconcileReceipt(reconcileCash(userId, p.content(), fileDate, null)));
+        }
+        return ok(p, cashImportReceipt(importCashQuery(userId, p.content(), fileDate, null)));
+    }
+
+    /**
+     * 持仓股（快照类 · 全量覆盖）：表头 / 丢行 fail-closed → 品种门（账只接主板）→
+     * 非主板存量保留 → dryRun 对账 / 正式以文件为准 replace。
+     * <p>
+     * <b>为什么非主板存量要「保留」</b>：本导入是 replace=true 全量覆盖——文件里出现的非主板行
+     * （科创/创业/北交所/ETF/可转债/港美股）按 §11.2 品种门不入账，但若系统已持有同标的，
+     * 直接用系统现值加回 items，避免「账不收新，把已有存量也静默删掉」。
+     * 文件里没有的非主板系统持仓仍按「以文件为准」移除（与主板同一语义）。
+     */
+    private BundleFileResult positionsBundleFile(String userId, PreparedBundleFile p, boolean dryRun) {
+        LocalDate fileDate = TradingImportParser.parseDateFromFilename(p.filename());
+        TradingImportParser.PositionParse parsed = TradingImportParser.parsePositions(p.content());
+        if (!parsed.headerMatched()) {
+            throw new TradingException("持仓股文件表头认不出（需要「代码 / 证券数量 / 成本价」列）——是否选错了文件？");
+        }
+        if (!parsed.unparsedRows().isEmpty()) {
+            throw new TradingException("持仓股文件有 " + parsed.unparsedRows().size()
+                    + " 行没能识别，为避免覆盖时丢掉持仓，本份已取消：" + previewDropped(parsed.unparsedRows())
+                    + "——请确认文件完整（导出未截断）后重试");
+        }
+        List<PositionImportItem> rows = new ArrayList<>();
+        for (TradingImportParser.PositionRow r : parsed.rows()) {
+            rows.add(new PositionImportItem(r.symbol(), r.name(), r.quantity(), r.avgCost(),
+                    null, null, null, null, r.currentPrice()));
+        }
+        // P1-交易90（2026-10-06）：品种门收口到 gatePositions——与老端点 POST /positions/import
+        // 共用同一份判据（原为两处手写，老端点漏了这道门）
+        MainboardGate gate = gatePositions(userId, rows);
+        Map<String, Object> extra = new LinkedHashMap<>();
+        if (!parsed.skipped().isEmpty()) extra.put("skipped", parsed.skipped());
+        extra.putAll(mainboardGateExtra(gate));
+        if (gate.mainboardItems().isEmpty()) {
+            extra.put("imported", 0);
+            extra.put("note", "这份持仓文件里没有可入账的主板持仓——持仓不会有任何改动");
+            return ok(p, extra);
+        }
+        if (dryRun) {
+            return ok(p, mergeExtra(positionsReconcileReceipt(
+                    reconcilePositions(userId, gate.mainboardItems())), extra));
+        }
+        return ok(p, mergeExtra(positionImportReceipt(
+                importPositions(userId, gate.mainboardItems(), true, fileDate, parsed.todayPnl(), null)), extra));
+    }
+
+    /** 清仓股：dryRun 跑与正式导入**完全相同**的校验（清仓链无对账端点），只报到「会导入几笔」。 */
+    private BundleFileResult soldBundleFile(String userId, PreparedBundleFile p, boolean dryRun) {
+        if (dryRun) {
+            TradingImportParser.SoldParse parsed = validateSoldImport(p.content());
+            Map<String, Object> detail = new LinkedHashMap<>();
+            detail.put("dryRun", true);
+            detail.put("wouldImport", parsed.trades().size());
+            if (!parsed.unparsedRows().isEmpty()) {
+                detail.put("unparsed", parsed.unparsedRows());
+                detail.put("unparsedCount", parsed.unparsedRows().size());
+            }
+            return ok(p, detail);
+        }
+        SoldImportResult r = soldImport(userId, p.content());
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("imported", r.imported());
+        if (!r.unparsedRows().isEmpty()) {
+            detail.put("unparsed", r.unparsedRows());
+            detail.put("unparsedCount", r.unparsedRows().size());
+        }
+        return ok(p, detail);
+    }
+
+    /** 自选股：dryRun 跑与正式导入**完全相同**的校验（自选链无对账端点），只报到「会导入几只」。 */
+    private BundleFileResult watchlistBundleFile(String userId, PreparedBundleFile p, boolean dryRun) {
+        if (dryRun) {
+            TradingImportParser.WatchlistParse parsed = validateWatchlistImport(p.content());
+            return ok(p, Map.of("dryRun", true, "wouldImport", parsed.items().size()));
+        }
+        return ok(p, Map.of("imported", watchlistImport(userId, p.content()).imported()));
+    }
+
+    /** 自选股文件的校验（统一入口 dryRun 与正式导入共用——保证「预检过的 = 正式会发生的」）。
+     *  <p>2026-09-13（P2-交易41 同型风险封堵）：本导入是**全量覆盖**（saveAll 以文件为准）——
+     *  有一行没看懂就拒绝，绝不「丢一行 = 静默删一只自选」。与持仓导入前端 fail-closed 同一判据
+     *  （一行没解析成功就拒绝覆盖），把「静默丢行」变成用户可见的拒绝。 */
+    private static TradingImportParser.WatchlistParse validateWatchlistImport(String content) {
+        TradingImportParser.WatchlistParse parsed = TradingImportParser.parseWatchlistDetailed(content);
+        if (parsed.items().isEmpty()) {
+            throw new TradingException("无法识别为自选股导出：缺少形态列（长期/中期/短期形态）——是否选错了文件（如清仓股/资金股份/历史成交导出）？");
+        }
+        if (!parsed.unparsed().isEmpty()) {
+            throw new TradingException("自选股文件有 " + parsed.unparsed().size()
+                    + " 行没能识别，为避免覆盖时丢掉自选，本次导入已取消：" + previewRows(parsed.unparsed())
+                    + "——请确认文件完整（如粘贴时被截断）或删掉这些行后重试");
+        }
+        return parsed;
+    }
+
+    /** 清仓股文件的校验（统一入口 dryRun 与正式导入共用）。表头未识别（选错文件 / 空文件）→ fail-closed 人话。
+     *  <p>2026-10-04 对抗审查 P1（追加 A）：选错文件（表头核心列「代码/介入日期/清仓日期」一个没命中）
+     *  原来把每行 continue 掉 → 回 {"imported":0}、连 WARN 都没有，用户以为「导了 0 笔」。
+     *  与资金链 headerMatched 同一口径（含**空文件**：资金链也是这一条判据直接拒绝，不另做静默 no-op）：
+     *  fail-closed 人话，未识别就不落笔（参数行都没有，也不会写任何档案）。 */
+    private static TradingImportParser.SoldParse validateSoldImport(String content) {
+        TradingImportParser.SoldParse parsed = TradingImportParser.parseSoldWithReport(content);
+        if (!parsed.headerMatched()) {
+            throw new TradingException("无法识别清仓股导出格式——请确认表头含「代码、介入日期、清仓日期」，"
+                    + "且是通达信清仓股（已了结交易）导出——是否选错了文件（如自选股/资金股份/历史成交导出）？");
+        }
+        return parsed;
+    }
+
+    /** 成功回执（kind 小写名 + 人话标签；savedPath 仅非 dryRun 有值）。 */
+    private static BundleFileResult ok(PreparedBundleFile p, Map<String, Object> detail) {
+        return new BundleFileResult(p.filename(), p.savedPath(),
+                p.kind() != null ? p.kind().name().toLowerCase(Locale.ROOT) : "unknown",
+                p.kind() != null ? p.kind().label() : "无法识别", true, null, detail);
+    }
+
+    /** 失败回执（人话原因；「未做任何改动」也要如实说）。 */
+    private static BundleFileResult fail(PreparedBundleFile p, String error) {
+        return new BundleFileResult(p.filename(), p.savedPath(),
+                p.kind() != null ? p.kind().name().toLowerCase(Locale.ROOT) : "unknown",
+                p.kind() != null ? p.kind().label() : "无法识别", false, error, Map.of());
+    }
+
+    /** 回执合并：base（该链固有字段）+ extra（品种门/保留等补充字段）。 */
+    public static Map<String, Object> mergeExtra(Map<String, Object> base, Map<String, Object> extra) {
+        if (extra.isEmpty()) return base;
+        Map<String, Object> out = new LinkedHashMap<>(base);
+        out.putAll(extra);
+        return out;
+    }
+
+    // ── 品种门（§11.2 账只接主板；2026-10-06 P1-交易90 收口到一处）──
+
+    /** 品种门结果：可入账主板行 + 未入账（系统没持有的非主板）+ 按系统现值保留的（非主板存量）。 */
+    public record MainboardGate(List<PositionImportItem> mainboardItems,
+                                List<String> unsupported, List<String> preserved) {}
+
+    /**
+     * 品种门（§11.2 账只接主板：600/601/603/605/000/001/002/003）：统一入口与老端点
+     * POST /positions/import 共用同一份判据。
+     * <p>
+     * 非主板（科创/创业/北交所/ETF/可转债/港美股）不入账；文件里出现的非主板品种若系统已持有
+     * →**按系统现值加回**（replace 全量覆盖时不删存量、也不新增）；系统没有的 → 进 unsupported 如实拒绝。
+     * null/blank symbol 放行（交给 importPositions 原 fail-closed 校验报 400 人话，不在此处越俎代庖）。
+     */
+    public MainboardGate gatePositions(String userId, List<PositionImportItem> items) {
+        List<PositionImportItem> mainboard = new ArrayList<>();
+        Set<String> unsupportedSymbols = new LinkedHashSet<>();
+        for (PositionImportItem it : items) {
+            String symbol = it.symbol();
+            if (symbol == null || symbol.isBlank() || TradingImportParser.isMainboardCode(symbol)) {
+                mainboard.add(it);
+            } else {
+                unsupportedSymbols.add(symbol);
+            }
+        }
+        // 非主板存量保留（文件里出现的那些）：用系统现值加回——replace 不删、也不新增
+        List<String> preserved = new ArrayList<>();
+        Set<String> preservedSymbols = new HashSet<>();
+        for (Position sys : positionRepository.findAll(userId)) {
+            if (sys.symbol() != null && !TradingImportParser.isMainboardCode(sys.symbol())
+                    && unsupportedSymbols.contains(sys.symbol())) {
+                mainboard.add(new PositionImportItem(sys.symbol(), sys.name(), sys.quantity(), sys.avgCost(),
+                        sys.stopLossPrice(), sys.buyPoint(), sys.role(), sys.entryDate(), sys.currentPrice()));
+                preservedSymbols.add(sys.symbol());
+                preserved.add(sys.symbol() + " " + sys.name() + "（" + sys.quantity() + " 股，按系统现值保留）");
+            }
+        }
+        // 「未入账」只报系统没持有的那些（已持有的并进 preserved，不重复说）
+        List<String> unsupported = new ArrayList<>();
+        for (PositionImportItem it : items) {
+            String symbol = it.symbol();
+            if (symbol != null && unsupportedSymbols.contains(symbol) && !preservedSymbols.contains(symbol)) {
+                unsupported.add(symbol + " " + it.name() + "（" + it.quantity() + " 股）");
+            }
+        }
+        return new MainboardGate(mainboard, unsupported, preserved);
+    }
+
+    /** 品种门回执字段（unsupported + preserved，含口径 note；与统一入口逐字同款）。 */
+    public static Map<String, Object> mainboardGateExtra(MainboardGate gate) {
+        Map<String, Object> extra = new LinkedHashMap<>();
+        if (!gate.unsupported().isEmpty()) {
+            extra.put("unsupported", gate.unsupported());
+            extra.put("unsupportedNote", "账只接主板（600/601/603/605/000/001/002/003）——"
+                    + "这些品种本份里没有入账（如实拒绝、不静默）");
+        }
+        if (!gate.preserved().isEmpty()) {
+            extra.put("preserved", gate.preserved());
+            extra.put("preservedNote", "系统里已有的非主板持仓按现值保留（账不收新，但不会因这次的 replace 被删掉）");
+        }
+        return extra;
+    }
+
+    // ── 回执组装（统一入口与既有端点共用一份字段口径；2026-10-06 自 controller 迁入）──
+
+    /**
+     * 锚定决策 → 回执（2026-10-05，P2-交易84）。字段 additive：旧客户端忽略即可。
+     * <p>{@code basis} = EXPLICIT/FILE_DATE/CLOSED_DAY（有据）或 CLOCK（无据）；
+     * {@code note} = 人话说明（含「你指定的基准日在未来，已忽略」这类如实交代）。
+     */
+    public static Map<String, Object> anchorReceipt(AnchorDecision d) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("anchorDate", d.anchorDate() != null ? d.anchorDate().toString() : null);
+        m.put("fileDate", d.fileDate() != null ? d.fileDate().toString() : null);
+        m.put("basis", d.basis() != null ? d.basis().name() : null);
+        m.put("withEvidence", d.withEvidence());
+        if (d.explicitRejected()) {
+            m.put("explicitDate", d.explicitDate() != null ? d.explicitDate().toString() : null);
+            m.put("explicitRejected", true);
+        }
+        m.put("note", d.describe());
+        return m;
+    }
+
+    /** 持仓导入回执 {imported, missingStopLoss, anchor?}（字段与 POST /positions/import 逐字一致）。 */
+    public static Map<String, Object> positionImportReceipt(PositionImportResult result) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("imported", result.imported());
+        body.put("missingStopLoss", result.missingStopLoss());
+        if (result.anchor() != null) body.put("anchor", anchorReceipt(result.anchor()));
+        return body;
+    }
+
+    /** 持仓对账回执（dryRun）{dryRun, fileCount, systemCount, diffs[], note}（与 POST /positions/import?dryRun=true 逐字一致）。 */
+    public static Map<String, Object> positionsReconcileReceipt(PositionsReconcile rec) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("dryRun", true);
+        out.put("fileCount", rec.fileCount());
+        out.put("systemCount", rec.systemCount());
+        out.put("diffs", rec.diffs().stream().map(d -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("symbol", d.symbol());
+            m.put("name", d.name());
+            m.put("fileQty", d.fileQty());
+            m.put("systemQty", d.systemQty());
+            m.put("diff", d.diff());
+            m.put("why", d.why());
+            return m;
+        }).toList());
+        out.put("note", rec.note());
+        return out;
+    }
+
+    /** 资金对账回执（dryRun）（与 POST /imports/cash dryRun 逐字一致；cashAnchorDate 空值 = ""）。 */
+    public static Map<String, Object> cashReconcileReceipt(CashReconcile rec) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("dryRun", true);
+        out.put("brokerCash", rec.brokerCash());
+        out.put("systemCash", rec.systemCash());
+        out.put("diff", rec.diff());
+        out.put("cashAnchorDate", rec.cashAnchorDate() != null ? rec.cashAnchorDate().toString() : "");
+        out.put("ledgerOnlyCount", rec.ledgerOnlyCount());
+        out.put("ledgerOnlyAmount", rec.ledgerOnlyAmount());
+        out.put("adjustmentTotal", rec.adjustmentTotal());
+        out.put("adjustmentCount", rec.adjustmentCount());
+        out.put("since", rec.since().stream().map(k -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("kind", k.kind());
+            m.put("count", k.count());
+            m.put("amount", k.amount());
+            return m;
+        }).toList());
+        out.put("note", rec.note());
+        return out;
+    }
+
+    /** 资金导入回执 {cash, assets, updatedCost, unparsedRows(int), unparsed+unparsedCount(非空), anchor?}
+     *  （与 POST /imports/cash 逐字一致）。 */
+    public static Map<String, Object> cashImportReceipt(CashImportResult r) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("cash", r.cash());
+        out.put("assets", r.assets());
+        out.put("updatedCost", r.updatedCost());
+        // P2-交易45：保持 int 类型不变——旧客户端按数字解析，改类型会把导入直接打挂
+        out.put("unparsedRows", r.unparsedRows());
+        if (!r.unparsed().isEmpty()) {
+            out.put("unparsed", r.unparsed());
+            out.put("unparsedCount", r.unparsed().size());
+        }
+        if (r.anchor() != null) out.put("anchor", anchorReceipt(r.anchor()));
+        return out;
+    }
+
+    /** 历史成交导入回执（与 POST /trades/import 逐字一致；anchor 为**裸 AnchorStatus**，dryRun 时附 plan）。 */
+    public static Map<String, Object> historicalImportReceipt(HistoricalTradeImportResult result, boolean dryRun) {
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("imported", result.imported());
+        resp.put("updated", result.updated());
+        resp.put("skipped", result.skipped());
+        resp.put("nonTrades", result.nonTrades());
+        resp.put("lines", result.lines());
+        resp.put("syncMode", result.syncMode() != null ? result.syncMode() : "append");
+        if (result.summary() != null) resp.put("summary", result.summary());
+        resp.put("rejected", result.rejected() != null ? result.rejected() : List.of());
+        if (result.unparsed() != null && !result.unparsed().isEmpty()) {
+            resp.put("unparsed", result.unparsed().stream()
+                    .map(TradingImportParser.UnparsedLine::describe).toList());
+            resp.put("unparsedCount", result.unparsed().size());
+        }
+        if (result.anchor() != null) resp.put("anchor", result.anchor());
+        resp.put("dryRun", dryRun);
+        if (dryRun) {
+            Map<String, Object> plan = new LinkedHashMap<>();
+            plan.put("new", result.imported());
+            plan.put("merged", result.updated());
+            plan.put("skipped", result.skipped());
+            plan.put("nonTrades", result.nonTrades());
+            plan.put("wouldReject", result.rejected() != null ? result.rejected().size() : 0);
+            plan.put("anchorKnown", result.anchor() != null && result.anchor().known());
+            plan.put("syncMode", result.syncMode() != null ? result.syncMode() : "append");
+            resp.put("plan", plan);
+        }
+        return resp;
+    }
+
+    /** 统一入口总回执 {dryRun, okCount, failedCount, files[]}（逐份 filename/kind/ok/error/detail）。 */
+    public static Map<String, Object> bundleReceipt(BundleImportResult bundle) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("dryRun", bundle.dryRun());
+        out.put("okCount", bundle.okCount());
+        out.put("failedCount", bundle.failedCount());
+        out.put("files", bundle.files().stream().map(f -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("filename", f.filename());
+            if (f.savedPath() != null) m.put("savedPath", f.savedPath());
+            m.put("kind", f.kind());
+            m.put("kindLabel", f.kindLabel());
+            m.put("ok", f.ok());
+            if (!f.ok()) m.put("error", f.error());
+            if (!f.detail().isEmpty()) m.put("detail", f.detail());
+            return m;
+        }).toList());
+        return out;
+    }
+
     // ── 自选股（RFC 20260816：盯盘买点原料）──
 
     /** 读取自选股列表。 */
@@ -1647,18 +2555,8 @@ public class TradingAppService {
      *  不再静默 no-op（REVIEW #147 风格；前端导入对话框 toast 透出）。</p>
      */
     public WatchlistImportResult watchlistImport(String userId, String content) {
-        TradingImportParser.WatchlistParse parsed = TradingImportParser.parseWatchlistDetailed(content);
-        if (parsed.items().isEmpty()) {
-            throw new TradingException("无法识别为自选股导出：缺少形态列（长期/中期/短期形态）——是否选错了文件（如清仓股/资金股份/历史成交导出）？");
-        }
-        // 2026-09-13（P2-交易41 同型风险封堵）：本导入是**全量覆盖**（saveAll 以文件为准）——
-        // 有一行没看懂就拒绝，绝不「丢一行 = 静默删一只自选」。与持仓导入前端 fail-closed 同一判据
-        // （一行没解析成功就拒绝覆盖），把「静默丢行」变成用户可见的拒绝。
-        if (!parsed.unparsed().isEmpty()) {
-            throw new TradingException("自选股文件有 " + parsed.unparsed().size()
-                    + " 行没能识别，为避免覆盖时丢掉自选，本次导入已取消：" + previewRows(parsed.unparsed())
-                    + "——请确认文件完整（如粘贴时被截断）或删掉这些行后重试");
-        }
+        // 校验（表头/丢行 fail-closed）与统一入口 dryRun 共用 validateWatchlistImport——预检过的 = 正式会发生的
+        TradingImportParser.WatchlistParse parsed = validateWatchlistImport(content);
         synchronized (tradeLock(userId)) {
             List<WatchlistItem> current = new ArrayList<>(watchlistRepository.findAll(userId));
             // 覆盖前归档旧列表（撤销保险；失败不阻塞导入）
@@ -1724,16 +2622,9 @@ public class TradingAppService {
      *  与自选/资金/历史成交三条链同口径 fail-closed 400 + 人话，不再静默回 {@code imported=0}。</p>
      */
     public SoldImportResult soldImport(String userId, String content) {
-        TradingImportParser.SoldParse parsed = TradingImportParser.parseSoldWithReport(content);
+        // 校验（表头 fail-closed）与统一入口 dryRun 共用 validateSoldImport——预检过的 = 正式会发生的
+        TradingImportParser.SoldParse parsed = validateSoldImport(content);
         List<SoldTrade> trades = parsed.trades();
-        // 2026-10-04 对抗审查 P1（追加 A）：选错文件（表头核心列「代码/介入日期/清仓日期」一个没命中）
-        // 原来把每行 continue 掉 → 回 {"imported":0}、连 WARN 都没有，用户以为「导了 0 笔」。
-        // 与资金链 headerMatched 同一口径（含**空文件**：资金链也是这一条判据直接拒绝，不另做静默 no-op）：
-        // fail-closed 400 人话，未识别就不落笔（参数行都没有，也不会写任何档案）。
-        if (!parsed.headerMatched()) {
-            throw new TradingException("无法识别清仓股导出格式——请确认表头含「代码、介入日期、清仓日期」，"
-                    + "且是通达信清仓股（已了结交易）导出——是否选错了文件（如自选股/资金股份/历史成交导出）？");
-        }
         if (trades.isEmpty()) {
             // 一行都没解析出来时同样带回丢行明细（原来直接 `new SoldImportResult(0)`，连丢的行都没出口）
             if (!parsed.unparsedRows().isEmpty()) {
@@ -1873,20 +2764,38 @@ public class TradingAppService {
         // 覆盖之后把「券商 − 系统」这条差额写成一条调整，使
         //   系统现金 = 上次快照值 + Σ(已计入的流水与转账) + Σ(调整)
         // 恒成立且可查（原实现静默覆盖：差额被抹掉、不留痕 → 只能反复导全量）。
-        accountSnapshotRepository.update(userId, cur -> new AccountSnapshot(
-                q.assets(), q.cash(), q.available(), q.withdrawable(),
-                q.marketValue(), q.pnl(),
-                todayPnlFromFile ? BigDecimal.valueOf(todayPnl)
-                        : cur.map(AccountSnapshot::todayPnl).orElse(BigDecimal.ZERO),
-                cur.map(AccountSnapshot::principal).orElse(BigDecimal.ZERO), effectiveDate,
-                // P2-交易48：来源随值一起落盘——文件带「当日盈亏」列且明细非空 → broker（券商权威）；
-                // 否则该字段没被本次导入改动，来源原样继承（不得把券商来源错记成系统计算）
-                todayPnlFromFile ? AccountSnapshot.SOURCE_BROKER
-                        : cur.map(AccountSnapshot::todayPnlSource).orElse(null)));
         synchronized (tradeLock(userId)) {
-            // ⚠️ P2-9（2026-10-03 增量深审）：差额基准必须在**同一把流水锁内**读取——原先在锁外读
-            // cashBeforeImport，两端同时导同一份文件会各记一条虚增调整，恒等式被破坏（pitfalls「检查-再动作」同型）。
-            BigDecimal cashBeforeImport = accountSnapshot(userId).cash();
+            // P2-9 归正（2026-10-06 设计 §4.3 §9#24）：差额基准与审计前值必须在**覆盖之前**读取，
+            // 而覆盖/落账/审计三段同锁串行——原实现先覆盖后读（读到的是新值：差额恒 0、
+            // 「重导快照」审计的前值也会失真）。两端同时导同一份文件时各读各的真实旧值，不再虚增调整。
+            AccountSnapshot beforeImport = accountSnapshot(userId);
+            BigDecimal cashBeforeImport = beforeImport.cash();
+            // §4.3 审计（fail-visible）：重导快照=覆盖式改账——先留痕、后覆盖（失败则整个导入中止）
+            // P2-交易96：cash/assets 两条收集后一次 appendAll（原各自独立读改写）
+            if (auditRepository != null) {
+                List<TradingAuditRepository.AuditEntry> entries = new ArrayList<>();
+                if (cashBeforeImport != null && q.cash() != null
+                        && cashBeforeImport.compareTo(q.cash()) != 0) {
+                    entries.add(TradingAuditRepository.AuditEntry.of(
+                            "account:cash", "cash", str(cashBeforeImport), str(q.cash()), "重导快照·资金股份"));
+                }
+                if (beforeImport.assets() != null && q.assets() != null
+                        && beforeImport.assets().compareTo(q.assets()) != 0) {
+                    entries.add(TradingAuditRepository.AuditEntry.of(
+                            "account:cash", "assets", str(beforeImport.assets()), str(q.assets()), "重导快照·资金股份"));
+                }
+                if (!entries.isEmpty()) auditRepository.appendAll(userId, entries);
+            }
+            accountSnapshotRepository.update(userId, cur -> new AccountSnapshot(
+                    q.assets(), q.cash(), q.available(), q.withdrawable(),
+                    q.marketValue(), q.pnl(),
+                    todayPnlFromFile ? BigDecimal.valueOf(todayPnl)
+                            : cur.map(AccountSnapshot::todayPnl).orElse(BigDecimal.ZERO),
+                    cur.map(AccountSnapshot::principal).orElse(BigDecimal.ZERO), effectiveDate,
+                    // P2-交易48：来源随值一起落盘——文件带「当日盈亏」列且明细非空 → broker（券商权威）；
+                    // 否则该字段没被本次导入改动，来源原样继承（不得把券商来源错记成系统计算）
+                    todayPnlFromFile ? AccountSnapshot.SOURCE_BROKER
+                            : cur.map(AccountSnapshot::todayPnlSource).orElse(null)));
             // 1. cashBalance 更新
             java.math.BigDecimal cash = q.cash();
             List<Position> positions = new ArrayList<>(positionRepository.findAll(userId));
@@ -2045,8 +2954,11 @@ public class TradingAppService {
         if (cashAdjustmentRepository != null) {
             try {
                 var all = cashAdjustmentRepository.findAll(userId);
-                adjCount = all.size();
                 for (CashAdjustment a : all) {
+                    // §9#4（2026-10-06）：存量本金迁移事件不是现金差额（那笔钱早已含在快照里）——
+                    // 单列统计会让「累计 N 次」混入非现金事件，这里排除。
+                    if (a.id() != null && a.id().startsWith(PRINCIPAL_MIGRATION_PREFIX)) continue;
+                    adjCount++;
                     if (a.amount() != null) adjTotal = adjTotal.add(a.amount());
                 }
             } catch (RuntimeException e) {
@@ -2544,6 +3456,12 @@ public class TradingAppService {
      * 总盈亏少报 2.37 万，而用户侧**看不到任何提示**（REVIEW P2-交易64/69）。
      */
     public Map<String, Object> accountView(String userId) {
+        // §9#4（2026-10-06）：读账户时懒触发一次存量本金迁移（幂等；失败不阻塞读，见该方法 javadoc）
+        try {
+            migrateLegacyPrincipal(userId);
+        } catch (RuntimeException e) {
+            log.warn("账户视图：本金迁移触发失败（按未迁移处理）| userId={} | {}", userId, e.getMessage());
+        }
         AccountSnapshot s = accountSnapshot(userId);
         LocalDate cashDate = null;
         try {
@@ -2671,31 +3589,63 @@ public class TradingAppService {
     }
 
     /**
-     * 设置本金（累计净投入，2026-08-18 确认批次）。
-     * <p>
-     * 背景：总盈亏 = 资产 − 本金；资金股份查询导入/转账推导都不覆盖本金，新建账号 principal=0
-     * → 总盈亏失真。本金是「累计净投入」的历史事实，不是当前资金变动——
-     * <b>只改 principal 字段，不动现金/资产/市值</b>（转账会动现金，不能用来初始化本金）。
+     * 存量本金迁移的幂等标记前缀（2026-10-06，设计 §9#4 U2）：本金改由事件推出前，
+     * 手填值里「转账净额解释不了」的差额一次性补记为出入金调整事件（cash-adjustments.json）。
      */
-    public AccountSnapshot setPrincipal(String userId, BigDecimal amount) {
-        if (amount == null || amount.signum() <= 0) {
-            throw new TradingException("本金必须是大于 0 的金额");
-        }
+    static final String PRINCIPAL_MIGRATION_PREFIX = "adjmig_";
+
+    /**
+     * 存量本金迁移（2026-10-06，设计 §9#4）：写侧「设置本金」退役后，本金 = 转账净额 + 一次性迁移调整。
+     * <p>
+     * 口径：{@code residual = principal − Σ(转入 − 转出)}——历史手填值里转账事件解释不了的部分。
+     * <ul>
+     *   <li>{@code residual == 0} → 不变量已成立（本金 = 转账净额），无需迁移；</li>
+     *   <li>{@code residual ≠ 0} 且尚无 {@code adjmig_} 前缀记录 → 补记一条调整事件（<b>不动账户快照</b>:
+     *       那笔钱早含在券商快照里，这里只是把「基准来自何处」变成可审计的事实）；</li>
+     *   <li>已有迁移记录 → 幂等跳过（永不复迁）。</li>
+     * </ul>
+     * <p>
+     * <b>失败不阻塞读</b>：迁移失败只告警，账户读路径照常返回（下次读再试）；
+     * 仓储未注入（兼容构造）时整体 no-op。触发点：{@link #accountView}（懒迁移，读时自查一次）。
+     */
+    void migrateLegacyPrincipal(String userId) {
+        if (cashAdjustmentRepository == null) return;
+        AccountSnapshot s = accountSnapshot(userId);
+        BigDecimal principal = s.principal() != null ? s.principal() : BigDecimal.ZERO;
         synchronized (tradeLock(userId)) {
-            // P0-2（2026-08-23）：account.json 写统一走 update（per-user 锁原子 RMW）
-            AccountSnapshot updated = accountSnapshotRepository.update(userId, cur -> {
-                AccountSnapshot current = cur.orElse(new AccountSnapshot(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                        BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                        BigDecimal.ZERO, LocalDate.now()));
-                return new AccountSnapshot(
-                        current.assets(), current.cash(), current.available(), current.withdrawable(),
-                        current.marketValue(), current.pnl(), current.todayPnl(),
-                        amount, current.snapshotDate(), current.todayPnlSource());
-            });
-            log.info("本金设置 | userId={} | principal → {}（总盈亏 = 资产 {} - 本金 = {}）",
-                    userId, amount, updated != null ? updated.assets() : BigDecimal.ZERO,
-                    updated != null ? updated.assets().subtract(amount) : BigDecimal.ZERO);
-            return updated;
+            BigDecimal transferNet = BigDecimal.ZERO;
+            for (TransferRecord tr : transferRepository.findAll(userId)) {
+                if (tr.amount() == null) continue;
+                transferNet = transferNet.add(tr.isIn() ? tr.amount() : tr.amount().negate());
+            }
+            BigDecimal residual = principal.subtract(transferNet);
+            if (residual.signum() == 0) return;
+            try {
+                boolean migrated = cashAdjustmentRepository.findAll(userId).stream()
+                        .anyMatch(a -> a.id() != null && a.id().startsWith(PRINCIPAL_MIGRATION_PREFIX));
+                if (migrated) return;
+                String migrationId = IdGenerator.monotonic(PRINCIPAL_MIGRATION_PREFIX);
+                // §4.3 审计（fail-visible）：先留痕、后落账——迁移是账面事实的永久证据
+                if (auditRepository != null) {
+                    auditRepository.append(userId, TradingAuditRepository.AuditEntry.of(
+                            migrationId, "principal.migrate",
+                            principal.stripTrailingZeros().toPlainString(),
+                            transferNet.stripTrailingZeros().toPlainString(),
+                            "存量本金迁移"));
+                }
+                cashAdjustmentRepository.append(userId, new CashAdjustment(
+                        migrationId, LocalDate.now(), residual,
+                        "存量本金迁移（历史出入金未逐笔记账）——本金改由转入/转出推出前的一次性差额补记，不计入现金差额",
+                        "迁移时本金 " + principal.stripTrailingZeros().toPlainString()
+                                + "，已记转账净额 " + transferNet.stripTrailingZeros().toPlainString(),
+                        LocalDateTime.now()));
+                log.info("存量本金迁移已落账 | userId={} | 差额 {} = 本金 {} − 转账净额 {}", userId,
+                        residual.stripTrailingZeros().toPlainString(),
+                        principal.stripTrailingZeros().toPlainString(),
+                        transferNet.stripTrailingZeros().toPlainString());
+            } catch (RuntimeException e) {
+                log.warn("存量本金迁移失败（不阻塞读，下次读账户时会重试）| userId={} | {}", userId, e.getMessage());
+            }
         }
     }
 

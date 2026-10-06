@@ -19,6 +19,10 @@ import java.util.stream.Collectors;
  * <p>
  * 为 trading 场景注入实时大盘指数和持仓行情。
  * 持仓使用实时价格替换 {@code positions.md} 中的静态值。
+ *
+ * <p><b>2026-10-06 §8.2 白名单②（design-final）</b>：大盘（指数点位 · 涨跌幅，公共行情）可出；
+ * 持仓表只出「代码 · 名称 · 现价 · 盈亏%」；<b>数量列 · 成本价列 · 市值列 · 盈亏金额列一律不出</b>，
+ * 汇总行（总市值 / 浮动盈亏 / 现金余额）删除；标题「## 大盘与持仓行情」。
  */
 @Component
 public class MarketContextContributor implements ContextContributor {
@@ -27,7 +31,8 @@ public class MarketContextContributor implements ContextContributor {
 
     private final MarketDataSource marketDataSource;
     private final PositionRepository positionRepository;
-    /** P2-交易35 治本（2026-09-09）：现金唯一真源 = account.json（S5），不再读 positions.md cashBalance 展示行。 */
+    /** 2026-10-06 §8.2 白名单②：现金余额属「规模」不再注入文本；
+     *  依赖保留（构造调用方兼容），无读取动作。 */
     private final AccountSnapshotRepository accountSnapshotRepository;
 
     public MarketContextContributor(MarketDataSource marketDataSource, PositionRepository positionRepository,
@@ -46,12 +51,12 @@ public class MarketContextContributor implements ContextContributor {
     @Override
     public String enrich(String userId, String identityRef, ContentRecord record) {
         StringBuilder sb = new StringBuilder();
-        sb.append("## 当前行情\n\n");
+        sb.append("## 大盘与持仓行情\n\n");
 
         // 1. 大盘指数
         appendIndices(sb);
 
-        // 2. 持仓行情（实时价格）
+        // 2. 持仓行情（实时价格；§8.2 白名单②：只出代码/名称/现价/盈亏%）
         appendPortfolio(userId, sb);
 
         return sb.toString();
@@ -61,7 +66,7 @@ public class MarketContextContributor implements ContextContributor {
     public String globalContext(String userId) {
         // 所有场景都注入交易系统状态（短版）：大盘指数始终注入，持仓按需
         StringBuilder sb = new StringBuilder();
-        sb.append("## 交易系统状态\n\n");
+        sb.append("## 大盘与持仓行情\n\n");
 
         List<Position> positions = positionRepository.findAll(userId);
         if (positions.isEmpty()) {
@@ -141,47 +146,26 @@ public class MarketContextContributor implements ContextContributor {
         Map<String, MarketData> quotes = marketDataSource.quote(codes);
 
         sb.append("**当前持仓：**\n\n");
-        sb.append("| 代码 | 名称 | 数量 | 成本价 | 现价 | 市值 | 盈亏 | 盈亏% |\n");
-        sb.append("|------|------|------|--------|------|------|------|-------|\n");
-
-        BigDecimal totalValue = BigDecimal.ZERO;
-        BigDecimal totalPnl = BigDecimal.ZERO;
+        // §8.2 白名单②：只出代码/名称/现价/盈亏%——数量列 · 成本价列 · 市值列 · 盈亏金额列不出
+        sb.append("| 代码 | 名称 | 现价 | 盈亏% |\n");
+        sb.append("|------|------|------|-------|\n");
 
         for (Position p : positions) {
             MarketData md = quotes.get(p.symbol());
             BigDecimal price = md != null ? md.price() : p.currentPrice();
-            BigDecimal value = price.multiply(BigDecimal.valueOf(p.quantity()));
-            BigDecimal cost = p.avgCost().multiply(BigDecimal.valueOf(p.quantity()));
-            BigDecimal pnl = value.subtract(cost);
             BigDecimal pnlPct = p.avgCost().compareTo(BigDecimal.ZERO) > 0
                     ? price.subtract(p.avgCost()).divide(p.avgCost(), 4, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100))
                     : null;
 
-            totalValue = totalValue.add(value);
-            totalPnl = totalPnl.add(pnl);
-
             sb.append("| ").append(p.symbol())
                     .append(" | ").append(p.name())
-                    .append(" | ").append(p.quantity())
-                    .append(" | ").append(p.avgCost().stripTrailingZeros().toPlainString())
                     .append(" | ").append(price.stripTrailingZeros().toPlainString());
             if (md != null) {
                 sb.append(" (").append(formatPct(md.changePercent())).append(")");
             }
-            sb.append(" | ").append(value.setScale(2).toPlainString())
-                    .append(" | ").append(pnl.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "")
-                    .append(pnl.setScale(2, RoundingMode.HALF_UP).toPlainString())
-                    .append(" | ").append(formatPct(pnlPct))
+            sb.append(" | ").append(formatPct(pnlPct))
                     .append(" |\n");
         }
-
-        BigDecimal cash = accountSnapshotRepository.findLatest(userId)
-                .map(AccountSnapshot::cash).orElse(BigDecimal.ZERO);
-        sb.append("\n**汇总：** 总市值=").append(totalValue.setScale(2).toPlainString())
-                .append("，浮动盈亏=").append(totalPnl.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "")
-                .append(totalPnl.setScale(2, RoundingMode.HALF_UP).toPlainString())
-                .append("，现金余额=").append(cash.setScale(2).toPlainString())
-                .append("\n");
     }
 
     private String formatPct(BigDecimal pct) {

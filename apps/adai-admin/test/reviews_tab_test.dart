@@ -33,4 +33,25 @@ void main() {
     expect(store.lastPromoteDate, '2026-07-31');
     expect(store.lastPromoteDate!.contains(' '), isFalse);
   });
+
+  testWidgets('反哺回执透传后端 message（P2-admin1：原实现只显示 status/path）',
+      (WidgetTester tester) async {
+    final store = FakeSystemStore();
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: ReviewsTab(store: store, userId: 'adai'))));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('反哺'));
+    await tester.tap(find.text('反哺'));
+    await tester.pumpAndSettle();
+
+    // 弹窗用第三人称写明对象（admin 代操作——不借用面向用户的第一人称「你的」）
+    expect(find.textContaining('用户「adai」的候选区'), findsOneWidget);
+
+    await tester.tap(find.text('确认提升'));
+    await tester.pumpAndSettle();
+
+    // 回执含后端 message 的关键信息（原来被丢弃）
+    expect(find.textContaining('不会自动进入 AI 上下文'), findsOneWidget);
+  });
 }

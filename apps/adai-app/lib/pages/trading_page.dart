@@ -1531,7 +1531,7 @@ class _TradingPageState extends State<TradingPage> {
             Text('详细管理去电脑端', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
           ]),
           const SizedBox(height: 10),
-          Text('批量导入、持仓编辑、历史明细、K线等详细管理请在电脑端打开交易页。手机端负责日常记录和阿呆建议。',
+          Text('批量导入、持仓编辑、历史明细、K线等详细管理请在电脑端打开交易页。手机端负责日常记录和阿呆提醒。',
               style: TextStyle(fontSize: 12, height: 1.6, color: AppColors.darkGrey3)),
           const SizedBox(height: 18),
           SizedBox(
@@ -3728,7 +3728,7 @@ class _AdviceSheetState extends State<_AdviceSheet> {
     );
   }
 
-  /// 建议动作徽标：买入=红（A股红涨），减仓/清仓/卖出=绿，持有=蓝。
+  /// 动作徽标（阿呆当时说的动作）：买入=红（A股红涨），减仓/清仓/卖出=绿，持有=蓝。
   Widget _actionBadge(String action) {
     final Color color;
     switch (action) {
@@ -3752,7 +3752,8 @@ class _AdviceSheetState extends State<_AdviceSheet> {
         color: color.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(4),
       ),
-      child: Text(action.isEmpty ? '建议' : action,
+      // 2026-10-06 B1 修复：空动作占位去「建议」——与 app 空值展示「—」全局口径一致
+      child: Text(action.isEmpty ? '—' : action,
           style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
     );
   }

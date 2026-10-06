@@ -131,7 +131,7 @@ void main() {
 
   // ── B9-3/4 + B9-5（2026-08-23，P1-推送1 根因修复后回归）：push 卡标题/徽章/确认按钮 ──
 
-  testWidgets('push 卡「今日操作确认」渲染确认按钮 + 尾盘橙徽章', (tester) async {
+  testWidgets('push 卡「今日操作确认」渲染确认按钮 + 独立操作确认徽章', (tester) async {
     bool confirmed = false;
     await pumpCard(tester, FeedCardData(
       id: 'p1', type: FeedCardType.push, time: '15:15', date: '08-23',
@@ -141,10 +141,39 @@ void main() {
     ));
     // B9-3：确认按钮渲染（原后端丢标题 → 判定落空永不渲染）
     expect(find.text('确认并入账'), findsOneWidget);
-    // B9-5：今日操作确认 → 尾盘建议橙徽章（不再落 default 灰）
-    expect(find.text('尾盘建议'), findsOneWidget);
+    // P1-交易92③：今日操作确认 → 独立「操作确认」蓝徽章（不再借「尾盘卖点」橙徽章）
+    expect(find.text('操作确认'), findsOneWidget);
+    expect(find.text('尾盘卖点'), findsNothing);
     await tester.tap(find.text('确认并入账'));
     expect(confirmed, true);
+  });
+
+  testWidgets('P1-交易92：带标的前缀的行情推送标题归一后命中徽章', (tester) async {
+    // 后端 MarketAlertService 落库标题 = 标的名 + " " + 类型词；旧实现精确匹配全落 default 灰。
+    await pumpCard(tester, FeedCardData(
+      id: 'p6', type: FeedCardType.push, time: '10:05', date: '08-23',
+      content: '📈 贵州茅台 现价 1800.00（+1.20%）',
+      pushTitle: '贵州茅台 行情提醒',
+    ));
+    expect(find.text('跌破成本'), findsOneWidget);
+    expect(find.text('行情'), findsNothing);
+
+    await pumpCard(tester, FeedCardData(
+      id: 'p7', type: FeedCardType.push, time: '10:06', date: '08-23',
+      content: '📉 宁德时代 现价 180.00 已跌破该批止损',
+      pushTitle: '宁德时代 批次止损预警',
+    ));
+    expect(find.text('预警'), findsOneWidget);
+    expect(find.text('行情'), findsNothing);
+
+    // 「午间知会」是后端真实标题（原 '午间跟踪' 死分支 → 12:00 推送徽章落灰）
+    await pumpCard(tester, FeedCardData(
+      id: 'p8', type: FeedCardType.push, time: '12:00', date: '08-23',
+      content: '· 持仓无变化',
+      pushTitle: '午间知会',
+    ));
+    expect(find.text('午间知会'), findsOneWidget);
+    expect(find.text('行情'), findsNothing);
   });
 
   testWidgets('push 卡「放飞提示」（gain）专属徽章不落灰', (tester) async {

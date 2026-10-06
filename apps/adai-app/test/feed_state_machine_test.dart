@@ -610,7 +610,7 @@ void main() {
         ..feedPage0 = [
           _record('r1', '今日核心记录'),
           _attached('market', 'm1', '上证指数 3456.78 +0.12%'),
-          _attached('push', 'p1', '尾盘建议'),
+          _attached('push', 'p1', '尾盘卖点'),
         ]
         ..feedPage1 = [_record('o2', '昨日2'), _record('o1', '昨日1')]
         ..feedTotalToday = 3;
@@ -630,7 +630,7 @@ void main() {
         ..feedPage0 = [
           {
             'type': 'push', 'id': 'p1',
-            'title': '尾盘建议', 'content': '· 京东方A 现价 6.08（+0.63%） → 持有',
+            'title': '尾盘卖点', 'content': '· 京东方A 现价 6.08（+0.63%） → 持有',
             'tags': <String>[], 'time': '14:50', 'date': '08-17',
             'intent': null, 'summary': null, 'turns': null,
             'domain': 'trading', 'mediaPath': null,
@@ -639,7 +639,7 @@ void main() {
         ..feedTotalToday = 1;
       await _pump(tester, b);
 
-      expect(find.text('尾盘建议'), findsOneWidget); // 类型徽章
+      expect(find.text('尾盘卖点'), findsOneWidget); // 类型徽章（后端真实标题，2026-10-06 对齐）
       expect(find.textContaining('京东方A'), findsOneWidget); // 内容
       expect(find.text('左滑删除 · 右滑设置推送'), findsOneWidget);
     });
@@ -659,10 +659,49 @@ void main() {
         ..feedTotalToday = 1;
       await _pump(tester, b);
 
-      // 徽章映射：今日操作确认 → 尾盘建议色/文案
-      expect(find.text('尾盘建议'), findsOneWidget);
+      // 徽章映射：今日操作确认 → 独立「操作确认」蓝徽章（P1-交易92③：不再借「尾盘卖点」）
+      expect(find.text('操作确认'), findsOneWidget);
       expect(find.textContaining('卖出 5300 股'), findsOneWidget);
       expect(find.text('确认并入账'), findsOneWidget);
+    });
+
+    testWidgets('P1-交易92：带标的前缀的行情推送标题归一后命中徽章', (tester) async {
+      // 后端 MarketAlertService 落库标题 = 标的名 + " " + 类型词（如「贵州茅台 行情提醒」），
+      // TradingSessionPushService 真实标题「午间知会」——旧实现精确匹配全落 default 灰。
+      tester.view.physicalSize = const Size(800, 2000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final b = _Backend()
+        ..feedPage0 = [
+          {
+            'type': 'push', 'id': 'p3',
+            'title': '贵州茅台 行情提醒', 'content': '📈 贵州茅台 现价 1800.00（+1.20%）',
+            'tags': <String>[], 'time': '10:05', 'date': '08-17',
+            'intent': null, 'summary': null, 'turns': null,
+            'domain': 'trading', 'mediaPath': null,
+          },
+          {
+            'type': 'push', 'id': 'p4',
+            'title': '宁德时代 批次止损预警', 'content': '📉 宁德时代 现价 180.00 已跌破该批止损',
+            'tags': <String>[], 'time': '10:06', 'date': '08-17',
+            'intent': null, 'summary': null, 'turns': null,
+            'domain': 'trading', 'mediaPath': null,
+          },
+          {
+            'type': 'push', 'id': 'p5',
+            'title': '午间知会', 'content': '· 持仓无变化',
+            'tags': <String>[], 'time': '12:00', 'date': '08-17',
+            'intent': null, 'summary': null, 'turns': null,
+            'domain': 'trading', 'mediaPath': null,
+          },
+        ]
+        ..feedTotalToday = 3;
+      await _pump(tester, b);
+
+      expect(find.text('跌破成本'), findsOneWidget); // 「贵州茅台 行情提醒」→ 行情橙（剥标的前缀）
+      expect(find.text('预警'), findsOneWidget); // 「宁德时代 批次止损预警」→ 预警红（非「行情」）
+      expect(find.text('午间知会'), findsOneWidget); // 后端真实标题（原 '午间跟踪' 死分支修复）
+      expect(find.text('行情'), findsNothing); // 旧实现三条全落 default 灰——归一后不得再出现
     });
 
     testWidgets('竞态 #100：追加挂起时结束对话，回复不丢不崩', (tester) async {

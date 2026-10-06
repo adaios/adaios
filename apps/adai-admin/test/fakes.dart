@@ -343,7 +343,10 @@ class FakeSystemStore implements SystemStore {
     lastPromoteDate = date;
     lastPromoteNote = note;
     return const PromoteResultDto(
-        status: 'ok', path: 'os/trading-engine/99-inbox/review-2026-07-31.md');
+        // 2026-10-06 对齐新契约：promote 落点 data/{userId}/trading/reviews/promote/（§10.2 改版）
+        status: 'ok', path: 'trading/reviews/promote/2026-07-31_交易复盘.md',
+        // P2-admin1（2026-10-06）：带后端 message——回执应透传（原实现丢弃）
+        message: '已写入你的入库候选区，不会自动进入 AI 上下文：需人工审核后归入交易知识库正式目录。');
   }
 }
 

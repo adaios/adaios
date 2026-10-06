@@ -45,7 +45,8 @@ import java.util.stream.Collectors;
  *       部分，即批次 INIT）作为期初恒持注入——已清仓又复购/已清仓股的历史持有期都能还原</li>
  *   <li><b>收盘价</b>：K 线（tdx 本地优先 → 网络兜底）按日取；当日缺 K（停牌/新股）沿用前收盘，
  *       仍缺 → 用成本价近似（不低估在持资产）；纯现金日无 close 也可成点</li>
- *   <li><b>净值</b> netValue = totalAssets / invested(t)（invested = 期初投入缺口 + 逐笔转账累计净投入）；
+ *   <li><b>净值</b> netValue = totalAssets / invested(t)（invested = 期初投入缺口 + 逐笔转账累计净投入；
+ *       缺口起点 = 快照本金 − 全程转账净额——<b>基准来自快照</b>，非全由流水推出，P1-交易94）；
  *       invested ≤0 时净值 null（本金未设不给误导数值，P2-交易31 同口径）</li>
  *   <li><b>回撤</b> drawdown = 历史峰值到当日的回落比例（0 = 新高）</li>
  * </ul>

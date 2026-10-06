@@ -51,7 +51,7 @@ class _SystemPageState extends State<SystemPage> {
                 children: [
                   FeedTab(store: _store),
                   MarketTab(store: _store),
-                  ReviewsTab(store: _store),
+                  ReviewsTab(store: _store, userId: widget.userId),
                   FeedbackTab(store: _store),
                   MaintenanceTab(store: _store, userId: widget.userId),
                 ],

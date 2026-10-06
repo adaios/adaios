@@ -1,5 +1,7 @@
 package com.adaiadai.core.kernel.search;
 
+import com.adaiadai.core.kernel.plugin.PluginRegistry;
+import com.adaiadai.core.kernel.plugin.PluginService;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.ImageQaFormatter;
 import com.adaiadai.core.kernel.record.RecordRepository;
@@ -21,9 +23,19 @@ public class SearchService {
     private static final Logger log = LoggerFactory.getLogger(SearchService.class);
 
     private final RecordRepository recordRepository;
+    /** §11.3 六面闸门（2026-10-06）：关插件时交易记录不进搜索结果（读侧过滤；数据保留不删）。可空=兼容构造。 */
+    private final PluginService pluginService;
 
-    public SearchService(RecordRepository recordRepository) {
+    /** 主构造（Spring 注入）：带插件门控——无 trading 插件用户搜不到交易记录。 */
+    @org.springframework.beans.factory.annotation.Autowired
+    public SearchService(RecordRepository recordRepository, PluginService pluginService) {
         this.recordRepository = recordRepository;
+        this.pluginService = pluginService;
+    }
+
+    /** 兼容构造（测试/旧调用）：不接插件门控——行为与历史版本逐字一致。 */
+    public SearchService(RecordRepository recordRepository) {
+        this(recordRepository, null);
     }
 
     /**
@@ -46,6 +58,7 @@ public class SearchService {
 
         return all.stream()
                 .filter(r -> !attachmentIds.contains(r.id()))
+                .filter(r -> !hiddenTrading(userId, r))
                 .filter(r -> matches(r, q))
                 .map(r -> new SearchResult(
                         r.id(),
@@ -56,6 +69,12 @@ public class SearchService {
                         r.createdAt()
                 ))
                 .toList();
+    }
+
+    /** §11.3：关插件时交易记录过滤（读侧；存量与新增一致地被隐藏，可逆——重开即恢复）。 */
+    private boolean hiddenTrading(String userId, ContentRecord r) {
+        return pluginService != null && "trading".equals(r.domain())
+                && !pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING);
     }
 
     private boolean matches(ContentRecord record, String query) {

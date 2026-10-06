@@ -161,6 +161,59 @@ public class TradingHistoryFileRepository implements TradingHistoryRepository {
     // ── 内部方法 ──
 
     /**
+     * 就地替换一笔流水（纠错 · R-08，2026-10-06）：跨月全扫按 id 命中（与 updateTradeMeta 同定位策略），
+     * 替换整条记录（保留 id/落盘时间戳由调用方传入的版本自持）。未命中返回 0（调用方须如实报错）。
+     */
+    @Override
+    public int replaceTrade(String userId, String tradeId, TradeRecord updated) {
+        if (tradeId == null || tradeId.isBlank() || updated == null) return 0;
+        for (String path : fileStorage.listFiles(userId, TRADES_DIR)) {
+            if (path == null || !path.endsWith(".json")) continue;
+            List<TradeRecord> trades = readFile(userId, path);
+            boolean hit = false;
+            for (int i = 0; i < trades.size(); i++) {
+                if (tradeId.equals(trades.get(i).id())) {
+                    trades.set(i, updated);
+                    hit = true;
+                    break;
+                }
+            }
+            if (!hit) continue;
+            try {
+                fileStorage.write(userId, path, objectMapper.writeValueAsString(trades));
+                log.info("流水就地改 | userId={} | path={} | id={} | {} {} {}股@{}",
+                        userId, path, tradeId, updated.direction(), updated.symbol(),
+                        updated.volume(), updated.price());
+                return 1;
+            } catch (JsonProcessingException e) {
+                throw new StorageException("流水就地改序列化失败: " + path, e);
+            }
+        }
+        return 0;
+    }
+
+    /** 就地删除一笔流水（纠错 · R-08，2026-10-06）：跨月全扫按 id 命中；未命中返回 0。 */
+    @Override
+    public int deleteTrade(String userId, String tradeId) {
+        if (tradeId == null || tradeId.isBlank()) return 0;
+        for (String path : fileStorage.listFiles(userId, TRADES_DIR)) {
+            if (path == null || !path.endsWith(".json")) continue;
+            List<TradeRecord> trades = readFile(userId, path);
+            int before = trades.size();
+            trades.removeIf(t -> tradeId.equals(t.id()));
+            if (trades.size() == before) continue;
+            try {
+                fileStorage.write(userId, path, objectMapper.writeValueAsString(trades));
+                log.info("流水就地删 | userId={} | path={} | id={}", userId, path, tradeId);
+                return 1;
+            } catch (JsonProcessingException e) {
+                throw new StorageException("流水就地删序列化失败: " + path, e);
+            }
+        }
+        return 0;
+    }
+
+    /**
      * 跨来源同笔合并回填（2026-09-12 账实一致性批）：只补缺失的 orderId/fee/tradeTime，
      * 不覆盖已有非空值、不动其它字段与落盘时间戳（持仓/现金由调用方决定，不在此处动）。
      * 定位策略与 updateTradeMeta 一致：跨月全扫按 tradeId 精确命中（历史导入的 entryDate 月份

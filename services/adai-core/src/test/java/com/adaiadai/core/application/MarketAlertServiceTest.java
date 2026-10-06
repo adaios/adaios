@@ -92,7 +92,7 @@ class MarketAlertServiceTest {
         when(pushSettings.findByUser(anyString())).thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
         return new MarketAlertService(market, positions, accounts, snapshot, java.util.List.of(push),
                 mock(PluginService.class), new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(defaultRuleRepo()),
-                pushSettings, mock(TradingLotService.class),
+                pushSettings, mock(TradingLotService.class), governor(),
                 3.0, 5.0, breakCostEnabled, 2.0);
     }
 
@@ -115,7 +115,7 @@ class MarketAlertServiceTest {
         when(pushSettings.findByUser(anyString())).thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
         return new MarketAlertService(market, positions, accounts, snapshot, java.util.List.of(push),
                 mock(PluginService.class), new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(defaultRuleRepo()),
-                pushSettings, lotService,
+                pushSettings, lotService, governor(),
                 3.0, 5.0, breakCostEnabled, 2.0);
     }
 
@@ -130,6 +130,23 @@ class MarketAlertServiceTest {
         TradingRuleSettingsRepository r = mock(TradingRuleSettingsRepository.class);
         when(r.findByUser(any())).thenReturn(TradingRuleSettings.defaults());
         return r;
+    }
+
+    /** design-final §9#16：日上限守卫——计数源为空（未达上限，恒放行）。 */
+    private static TradingPushGovernor governor() {
+        return new TradingPushGovernor(mock(MarketPushRepository.class));
+    }
+
+    /** 计数源带 {@code used} 条当日推送的守卫（测上限/折叠路径）。 */
+    private static TradingPushGovernor governorUsed(int used) {
+        MarketPushRepository repo = mock(MarketPushRepository.class);
+        List<com.adaiadai.core.domain.trading.MarketPushEvent> events = new java.util.ArrayList<>();
+        for (int i = 0; i < used; i++) {
+            events.add(new com.adaiadai.core.domain.trading.MarketPushEvent(
+                    "push_" + i, "600519", "贵州茅台", "msg", "loss", "10:00"));
+        }
+        when(repo.findByDate(anyString(), any())).thenReturn(events);
+        return new TradingPushGovernor(repo);
     }
 
     @Test
@@ -326,7 +343,7 @@ class MarketAlertServiceTest {
         when(pluginService.hasPlugin(eq("adai"), eq(PluginRegistry.PLUGIN_TRADING))).thenReturn(true);
 
         MarketAlertService svc = spy(new MarketAlertService(market, positions, accounts, snapshot, java.util.List.of(push),
-                pluginService, new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(defaultRuleRepo()), defaultPushSettings(), mock(TradingLotService.class), 3.0, 5.0, true, 2.0));
+                pluginService, new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(defaultRuleRepo()), defaultPushSettings(), mock(TradingLotService.class), governor(), 3.0, 5.0, true, 2.0));
         // P2-工程11（2026-10-01）：固定为交易日，与真实日历解耦（否则**法定节假日**全量必红；
         // 周末不会——闸门走 isTradingDay，只查节假日表、不判周末）
         doReturn(true).when(svc).isTradingDayToday();
@@ -366,7 +383,7 @@ class MarketAlertServiceTest {
         when(pluginService.hasPlugin(eq("alice"), eq(PluginRegistry.PLUGIN_TRADING))).thenReturn(false);
 
         MarketAlertService svc = spy(new MarketAlertService(market, positions, accounts, snapshot, java.util.List.of(push),
-                pluginService, new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(defaultRuleRepo()), defaultPushSettings(), mock(TradingLotService.class), 3.0, 5.0, true, 2.0));
+                pluginService, new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(defaultRuleRepo()), defaultPushSettings(), mock(TradingLotService.class), governor(), 3.0, 5.0, true, 2.0));
         // P2-工程11（2026-10-01）：固定为交易日，与真实日历解耦（否则**法定节假日**全量必红；
         // 周末不会——闸门走 isTradingDay，只查节假日表、不判周末）
         doReturn(true).when(svc).isTradingDayToday();
@@ -518,7 +535,7 @@ class MarketAlertServiceTest {
         ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
         verify(push, times(1)).push(eq("default"), captor.capture());
         assertEquals("near-stop-loss", captor.getValue().type());
-        assertTrue(captor.getValue().content().contains("距止损位"));
+        assertTrue(captor.getValue().content().contains("距你的止损位"));
     }
 
     @org.junit.jupiter.api.Test
@@ -604,7 +621,7 @@ class MarketAlertServiceTest {
         MarketAlertService svc = new MarketAlertService(market, positions, accounts, snapshot,
                 java.util.List.of(push), mock(PluginService.class),
                 new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(defaultRuleRepo()),
-                pushSettings, lots, 3.0, 5.0, true, 2.0);
+                pushSettings, lots, governor(), 3.0, 5.0, true, 2.0);
 
         svc.poll("default");
 
@@ -613,6 +630,76 @@ class MarketAlertServiceTest {
         verify(push, atLeastOnce()).push(eq("default"), cap.capture());
         assertTrue(cap.getAllValues().stream().noneMatch(m -> m.title().contains("批次止损预警")),
                 "stop-loss 开关关闭 → 批次级止损不推送");
+    }
+
+    // ── design-final §9#16（★V1）：推送日上限——全局 ≤8/日、超限合并 ──
+
+    /** 当日已满 8 条 → 本批不推，且**不记签名**（用户删掉旧推送腾出额度后，下轮 poll 还能补推）。 */
+    @Test
+    void dailyCapReached_suppressed_andSignaturesNotSaved() {
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of("000725", quoteAt("000725", "4.80", "0.00")));
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll(anyString())).thenReturn(List.of(posWithStopLoss("000725", "京东方A", "5.20", "4.90")));
+        PushChannel push = mock(PushChannel.class);
+        when(push.enabled()).thenReturn(true);
+
+        MarketSnapshotRepository snapshot = mock(MarketSnapshotRepository.class);
+        when(snapshot.alertedSignatures(anyString(), any())).thenReturn(new HashSet<>());
+        AccountRepository accounts = mock(AccountRepository.class);
+        when(accounts.findAll()).thenReturn(List.of(new Account("default", "user", true, null)));
+
+        MarketAlertService svc = new MarketAlertService(market, positions, accounts, snapshot,
+                List.of(push), mock(PluginService.class),
+                new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(defaultRuleRepo()),
+                defaultPushSettings(), mock(TradingLotService.class), governorUsed(8), 3.0, 5.0, true, 2.0);
+
+        svc.poll("default");
+
+        verify(push, never()).push(anyString(), any());
+        // 不记签名：记录了就永久丢这轮异动——与「超限合并、不丢弃」相悖
+        verify(snapshot, never()).saveSignatures(anyString(), any(), any());
+    }
+
+    /** used+batch 超 8 → 整批折叠为一条汇总（不丢弃：正文保留各条原文，锁屏中性）。 */
+    @Test
+    void overDailyCap_foldsBatchIntoOneDigest() {
+        MarketDataSource market = mock(MarketDataSource.class);
+        // 两只票各触发 loss + break-cost → 合并后 2 条；7+2=9>8 → 折叠
+        when(market.quote(any())).thenReturn(Map.of(
+                "600519", quoteAt("600519", "9.50", "-3.50"),
+                "600000", quoteAt("600000", "9.50", "-3.50")));
+        PositionRepository positions = mock(PositionRepository.class);
+        Position a = new Position("600519", "贵州茅台", 200, new BigDecimal("10.00"),
+                new BigDecimal("9.50"), LocalDateTime.of(2026, 8, 6, 9, 30),
+                java.time.LocalDate.of(2026, 8, 1), new BigDecimal("9.00"), "B1", null);
+        Position b = new Position("600000", "浦发银行", 200, new BigDecimal("10.00"),
+                new BigDecimal("9.50"), LocalDateTime.of(2026, 8, 6, 9, 30),
+                java.time.LocalDate.of(2026, 8, 1), new BigDecimal("9.00"), "B1", null);
+        when(positions.findAll(anyString())).thenReturn(List.of(a, b));
+        PushChannel push = mock(PushChannel.class);
+        when(push.enabled()).thenReturn(true);
+
+        MarketSnapshotRepository snapshot = mock(MarketSnapshotRepository.class);
+        when(snapshot.alertedSignatures(anyString(), any())).thenReturn(new HashSet<>());
+        AccountRepository accounts = mock(AccountRepository.class);
+        when(accounts.findAll()).thenReturn(List.of(new Account("default", "user", true, null)));
+
+        MarketAlertService svc = new MarketAlertService(market, positions, accounts, snapshot,
+                List.of(push), mock(PluginService.class),
+                new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(defaultRuleRepo()),
+                defaultPushSettings(), mock(TradingLotService.class), governorUsed(7), 3.0, 5.0, true, 2.0);
+
+        svc.poll("default");
+
+        ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
+        verify(push, times(1)).push(eq("default"), captor.capture());
+        PushChannel.PushMessage m = captor.getValue();
+        assertEquals(TradingPushGovernor.MERGED_TYPE, m.type());
+        assertTrue(m.content().contains("今天还有 2 条提醒"), m.content());
+        assertTrue(m.content().contains("贵州茅台") && m.content().contains("浦发银行"),
+                "折叠不丢弃：正文保留各条原文，实际: " + m.content());
+        assertFalse(m.notificationContent().contains("贵州茅台"), "折叠条锁屏不得点名带价");
     }
 
     // ── 2026-08-30 用户反馈批：节假日守卫（A）+ 轮询首轮口径（C）──
@@ -637,7 +724,7 @@ class MarketAlertServiceTest {
             new MarketAlertService(market, positions, accounts, mock(MarketSnapshotRepository.class),
                     List.of(push), pluginService,
                     new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(defaultRuleRepo()),
-                    defaultPushSettings(), mock(TradingLotService.class), 3.0, 5.0, true, 2.0).poll();
+                    defaultPushSettings(), mock(TradingLotService.class), governor(), 3.0, 5.0, true, 2.0).poll();
         }
 
         verify(market, never()).quote(any());

@@ -11,8 +11,12 @@ import com.adaiadai.core.domain.trading.TradingHistoryRepository;
 import com.adaiadai.core.domain.trading.SoldTrade;
 import com.adaiadai.core.domain.trading.AccountSnapshot;
 import com.adaiadai.core.domain.trading.AccountSnapshotRepository;
+import com.adaiadai.core.domain.trading.CashAdjustment;
+import com.adaiadai.core.domain.trading.CashAdjustmentRepository;
+import com.adaiadai.core.domain.trading.TradingAuditRepository;
 import com.adaiadai.core.domain.trading.SoldTradeRepository;
 import com.adaiadai.core.domain.trading.TradingRuleSettings;
+import com.adaiadai.core.domain.trading.TransferRecord;
 import com.adaiadai.core.domain.trading.TransferRepository;
 import com.adaiadai.core.domain.trading.WatchlistItem;
 import com.adaiadai.core.domain.trading.WatchlistRepository;
@@ -21,6 +25,7 @@ import com.adaiadai.core.domain.trading.market.MarketDataSource;
 import com.adaiadai.core.infrastructure.storage.PositionFileRepository;
 import com.adaiadai.core.infrastructure.storage.TradingHistoryFileRepository;
 import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
+import com.adaiadai.core.infrastructure.storage.StorageException;
 import com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
@@ -1512,37 +1517,281 @@ void soldUpdatePsychology_marksTrade() {
         verify(history, never()).backfillTradeTime(any(), any(), any(), any());
     }
 
-    // ── 本金设置（2026-08-18）：只改 principal，不动现金/资产/市值 ──
+    // ── 存量本金迁移（2026-10-06，设计 §9#4：写侧「设置本金」退役 → 一次性出入金调整事件）──
 
+    /**
+     * 迁移口径：{@code residual = principal − Σ(转入−转出)}——手填值里转账事件解释不了的部分
+     * 一次性补记（adjmig_ 前缀做幂等标记）；只落事件、不动账户快照。
+     */
     @org.junit.jupiter.api.Test
-    void setPrincipal_onlyChangesPrincipal_field() {
+    void migrateLegacyPrincipal_residualNotZero_appendsOnceAndIsIdempotent() {
         AtomicReference<AccountSnapshot> saved = new AtomicReference<>();
         AccountSnapshotRepository acc = capturingAccountRepo(saved);
         when(acc.findLatest(any())).thenReturn(java.util.Optional.of(
                 new AccountSnapshot(new BigDecimal("112566.91"), new BigDecimal("657.91"),
                         new BigDecimal("657.91"), new BigDecimal("657.91"),
                         new BigDecimal("111909.00"), new BigDecimal("18688.28"), BigDecimal.ZERO,
-                        BigDecimal.ZERO, LocalDate.of(2026, 8, 18))));
+                        new BigDecimal("150000"), LocalDate.of(2026, 8, 18))));
+        TransferRepository transfers = mock(TransferRepository.class);
+        when(transfers.findAll(any())).thenReturn(List.of(
+                new TransferRecord("transfer_1", "IN", new BigDecimal("15000"), LocalDate.of(2026, 9, 1), null)));
+        CashAdjustmentRepository adjustments = mock(CashAdjustmentRepository.class);
+        when(adjustments.findAll(any())).thenReturn(new java.util.ArrayList<>());
         TradingAppService service = new TradingAppService(mock(PositionRepository.class),
                 mock(RecordRepository.class), mock(TradingHistoryRepository.class),
-                mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
-                acc, mock(TransferRepository.class), mock(MarketDataSource.class), mock(TradingLotService.class), mock(TradingRuleSettingsRepository.class));
+                mock(WatchlistRepository.class), mock(SoldTradeRepository.class), acc, transfers,
+                mock(MarketDataSource.class), mock(TradingLotService.class), defaultRuleRepo(),
+                knownAnchorRepo(), null, adjustments);
 
-        AccountSnapshot updated = service.setPrincipal("default", new BigDecimal("150000"));
+        service.migrateLegacyPrincipal("default");
 
-        assertEquals(0, updated.principal().compareTo(new BigDecimal("150000")), "本金 = 累计净投入");
-        assertEquals(0, updated.cash().compareTo(new BigDecimal("657.91")), "现金不动");
-        assertEquals(0, updated.assets().compareTo(new BigDecimal("112566.91")), "资产不动");
-        assertEquals(0, updated.marketValue().compareTo(new BigDecimal("111909.00")), "市值不动");
-        assertEquals(0, saved.get().principal().compareTo(new BigDecimal("150000")));
+        ArgumentCaptor<CashAdjustment> cap = ArgumentCaptor.forClass(CashAdjustment.class);
+        verify(adjustments, times(1)).append(eq("default"), cap.capture());
+        assertEquals(0, cap.getValue().amount().compareTo(new BigDecimal("135000")),
+                "迁移差额 = 本金 150000 − 转账净额 15000");
+        assertTrue(cap.getValue().id().startsWith("adjmig_"), "用 adjmig_ 前缀做幂等标记");
+        assertNull(saved.get(), "迁移只落事件，不动账户快照（那笔钱早含在快照里）");
+
+        // 幂等：已有 adjmig_ 记录 → 再迁移不再追加
+        when(adjustments.findAll(any())).thenReturn(List.of(cap.getValue()));
+        service.migrateLegacyPrincipal("default");
+        verify(adjustments, times(1)).append(any(), any());
     }
 
     @org.junit.jupiter.api.Test
-    void setPrincipal_zeroOrNull_throws() {
-        TradingAppService service = service(mock(PositionRepository.class), mock(RecordRepository.class));
-        assertThrows(TradingException.class, () -> service.setPrincipal("default", null));
-        assertThrows(TradingException.class, () -> service.setPrincipal("default", BigDecimal.ZERO));
-        assertThrows(TradingException.class, () -> service.setPrincipal("default", new BigDecimal("-1")));
+    void migrateLegacyPrincipal_residualZero_noAdjustment() {
+        AtomicReference<AccountSnapshot> saved = new AtomicReference<>();
+        AccountSnapshotRepository acc = capturingAccountRepo(saved);
+        when(acc.findLatest(any())).thenReturn(java.util.Optional.of(
+                new AccountSnapshot(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        new BigDecimal("15000"), LocalDate.of(2026, 10, 1))));
+        TransferRepository transfers = mock(TransferRepository.class);
+        when(transfers.findAll(any())).thenReturn(List.of(
+                new TransferRecord("transfer_1", "IN", new BigDecimal("15000"), LocalDate.of(2026, 9, 1), null)));
+        CashAdjustmentRepository adjustments = mock(CashAdjustmentRepository.class);
+        TradingAppService service = new TradingAppService(mock(PositionRepository.class),
+                mock(RecordRepository.class), mock(TradingHistoryRepository.class),
+                mock(WatchlistRepository.class), mock(SoldTradeRepository.class), acc, transfers,
+                mock(MarketDataSource.class), mock(TradingLotService.class), defaultRuleRepo(),
+                knownAnchorRepo(), null, adjustments);
+
+        service.migrateLegacyPrincipal("default");
+
+        verify(adjustments, never()).append(any(), any());
+        assertNull(saved.get(), "无需迁移时不动任何数据");
+    }
+
+    // ── U6 脱敏（2026-10-06，设计 §4.1#4）：备注列银行账号入库前抹除 ──
+
+    @Test
+    void saveImportFile_desensitizesBankAccountInNote() {
+        PositionRepository repo = mock(PositionRepository.class);
+        TradingAppService service = service(repo, mock(RecordRepository.class));
+        String raw = "银证转账 6222021234567890123 备注：工资转入 成交价格 12.34 委托编号 151117";
+        TradingAppService.ImportFileResult result = service.saveImportFile("default", "flow.txt",
+                raw.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        ArgumentCaptor<String> cap = ArgumentCaptor.forClass(String.class);
+        verify(repo).saveImportFile(eq("default"), any(), cap.capture());
+        assertFalse(cap.getValue().contains("6222021234567890123"),
+                "留存文件不得含银行账号: " + cap.getValue());
+        assertTrue(cap.getValue().contains("【银行账号已脱敏】"), cap.getValue());
+        assertTrue(cap.getValue().contains("12.34"), "价格不受影响: " + cap.getValue());
+        assertTrue(cap.getValue().contains("151117"), "委托编号（≤10 位）不受影响: " + cap.getValue());
+        assertFalse(result.content().contains("6222021234567890123"),
+                "返回给前端的解析文本同样脱敏: " + result.content());
+    }
+
+    // ── §4.3 / §9#24 纠错链（2026-10-06）：就地改/删 + 派生重算 + 系统侧留痕 ──
+
+    /** 纠错链测试组装：真实文件仓储 + 动态账户 mock（原子 RMW，多次 update 依次累积）。 */
+    private TradingAppService correctionService(PositionFileRepository repo,
+                                                TradingHistoryFileRepository history,
+                                                AccountSnapshotRepository acc,
+                                                TradingAuditRepository audit) {
+        return new TradingAppService(repo, mock(RecordRepository.class), history,
+                mock(WatchlistRepository.class), mock(SoldTradeRepository.class), acc,
+                mock(TransferRepository.class), mock(MarketDataSource.class), mock(TradingLotService.class),
+                defaultRuleRepo(), knownAnchorRepo(), null, null, audit);
+    }
+
+    /** 有初始快照的账户仓储 mock：findLatest 返回「当前值」，update 在上一状态上累积（真实 RMW 语义）。 */
+    private AccountSnapshotRepository rollingAccountRepo(AtomicReference<AccountSnapshot> saved,
+                                                         AccountSnapshot initial) {
+        saved.set(initial);
+        AccountSnapshotRepository acc = mock(AccountSnapshotRepository.class);
+        when(acc.findLatest(any())).thenAnswer(inv -> Optional.ofNullable(saved.get()));
+        when(acc.update(any(), any())).thenAnswer(inv -> {
+            @SuppressWarnings("unchecked")
+            Function<Optional<AccountSnapshot>, AccountSnapshot> fn = inv.getArgument(1);
+            AccountSnapshot next = fn.apply(Optional.ofNullable(saved.get()));
+            saved.set(next);
+            return next;
+        });
+        return acc;
+    }
+
+    private static AccountSnapshot snap(String cash, String assets) {
+        return new AccountSnapshot(new BigDecimal(assets), new BigDecimal(cash), new BigDecimal(cash),
+                new BigDecimal(cash), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                new BigDecimal("150000"), LocalDate.now());
+    }
+
+    @Test
+    void editTradeRecord_volumeChange_recomputesDerivationAndLeavesAudit() {
+        // 用户场景：记错股数（1000 记成 800）→ 就地改，持仓/现金自动重算，用户面不留痕。
+        InMemoryFileStorage fs = new InMemoryFileStorage();
+        PositionFileRepository repo = new PositionFileRepository(fs);
+        TradingHistoryFileRepository history = new TradingHistoryFileRepository(fs);
+        AtomicReference<AccountSnapshot> saved = new AtomicReference<>();
+        AccountSnapshotRepository acc = rollingAccountRepo(saved, snap("50000", "50000"));
+        TradingAuditRepository audit = mock(TradingAuditRepository.class);
+        TradingAppService service = correctionService(repo, history, acc, audit);
+
+        service.recordTrade("default", "600000", "浦发银行", TradeDirection.BUY,
+                new BigDecimal("5.00"), 1000, null, null, new BigDecimal("4.50"), "突破", null, null);
+        // 含费成本 5000.48（佣金 0.43 + 过户费 0.05）→ 平均成本 5.00048 → 4 位 5.0005
+        assertEquals(1000, repo.findAll("default").get(0).quantity());
+        assertEquals(0, repo.findAll("default").get(0).avgCost().compareTo(new BigDecimal("5.0005")));
+        assertEquals(0, saved.get().cash().compareTo(new BigDecimal("44999.52")));
+        String tradeId = history.findAll("default").get(0).id();
+
+        Map<String, Object> result = service.editTradeRecord("default", tradeId, Map.of("volume", 800));
+
+        assertEquals(Boolean.TRUE, result.get("updated"));
+        assertEquals(Boolean.TRUE, result.get("derivationRecomputed"));
+        assertEquals(800, repo.findAll("default").get(0).quantity(), "持仓按新量重算");
+        assertEquals(0, repo.findAll("default").get(0).avgCost().compareTo(new BigDecimal("5.0005")),
+                "成本 = 4000.38/800 = 5.0005（4 位）");
+        // 现金：撤销 −5000.48 + 应用 −4000.38 → +1000.10
+        assertEquals(0, saved.get().cash().compareTo(new BigDecimal("45999.62")), "差额如实回补");
+        // §4.3：改动字段逐条留痕（只记真实差异）——本笔只有 volume 变了；P2-交易96：收集后一次 appendAll
+        ArgumentCaptor<List<TradingAuditRepository.AuditEntry>> cap = ArgumentCaptor.forClass(List.class);
+        verify(audit, times(1)).appendAll(eq("default"), cap.capture());
+        assertEquals(1, cap.getValue().size());
+        assertEquals("volume", cap.getValue().get(0).field());
+        assertEquals("1000", cap.getValue().get(0).before());
+        assertEquals("800", cap.getValue().get(0).after());
+        assertEquals("纠错·就地改", cap.getValue().get(0).source());
+    }
+
+    @Test
+    void deleteTradeRecord_buyAlreadyPartiallySold_rejectedWithGuidance() {
+        // 撤销一笔「之后又被卖出过」的买入 → 会把持仓算成负数 → 拒绝并指路重导快照（绝不写一半）
+        InMemoryFileStorage fs = new InMemoryFileStorage();
+        PositionFileRepository repo = new PositionFileRepository(fs);
+        TradingHistoryFileRepository history = new TradingHistoryFileRepository(fs);
+        AtomicReference<AccountSnapshot> saved = new AtomicReference<>();
+        AccountSnapshotRepository acc = rollingAccountRepo(saved, snap("50000", "50000"));
+        TradingAuditRepository audit = mock(TradingAuditRepository.class);
+        TradingAppService service = correctionService(repo, history, acc, audit);
+
+        service.recordTrade("default", "600000", "浦发银行", TradeDirection.BUY,
+                new BigDecimal("5.00"), 1000, null, null, new BigDecimal("4.50"), "突破", null, null);
+        service.recordTrade("default", "600000", "浦发银行", TradeDirection.SELL,
+                new BigDecimal("6.00"), 600, null, null, null, null, null, null);
+        String buyId = history.findAll("default").stream()
+                .filter(t -> t.direction() == TradeDirection.BUY).findFirst().orElseThrow().id();
+
+        TradingException e = assertThrows(TradingException.class,
+                () -> service.deleteTradeRecord("default", buyId));
+
+        assertTrue(e.getMessage().contains("重导"), "拒绝要点明出路：" + e.getMessage());
+        assertEquals(2, history.findAll("default").size(), "拒绝时不删流水（不写一半）");
+        assertEquals(400, repo.findAll("default").get(0).quantity(), "持仓原样");
+        verify(audit, never()).append(any(), any());
+        verify(audit, never()).appendAll(any(), any());
+    }
+
+    @Test
+    void deleteTradeRecord_removesPositionAndRestoresCash() {
+        // 唯一持仓的买入被删 → 持仓行移除、现金回到记录前、审计留「record 已删除」一条
+        InMemoryFileStorage fs = new InMemoryFileStorage();
+        PositionFileRepository repo = new PositionFileRepository(fs);
+        TradingHistoryFileRepository history = new TradingHistoryFileRepository(fs);
+        AtomicReference<AccountSnapshot> saved = new AtomicReference<>();
+        AccountSnapshotRepository acc = rollingAccountRepo(saved, snap("50000", "50000"));
+        TradingAuditRepository audit = mock(TradingAuditRepository.class);
+        TradingAppService service = correctionService(repo, history, acc, audit);
+
+        service.recordTrade("default", "600000", "浦发银行", TradeDirection.BUY,
+                new BigDecimal("5.00"), 1000, null, null, new BigDecimal("4.50"), "突破", null, null);
+        String tradeId = history.findAll("default").get(0).id();
+
+        Map<String, Object> result = service.deleteTradeRecord("default", tradeId);
+
+        assertEquals(Boolean.TRUE, result.get("deleted"));
+        assertTrue(repo.findAll("default").isEmpty(), "撤销唯一买入 → 持仓行移除");
+        assertEquals(0, saved.get().cash().compareTo(new BigDecimal("50000")), "现金回到记录前");
+        assertTrue(history.findAll("default").isEmpty(), "流水已删（用户面不留痕）");
+        ArgumentCaptor<TradingAuditRepository.AuditEntry> cap =
+                ArgumentCaptor.forClass(TradingAuditRepository.AuditEntry.class);
+        verify(audit, times(1)).append(eq("default"), cap.capture());
+        assertEquals("record", cap.getValue().field());
+        assertEquals("（已删除）", cap.getValue().after());
+        assertTrue(cap.getValue().before().contains("买入 600000"), cap.getValue().before());
+    }
+
+    @Test
+    void importCashQuery_reimport_landsAdjustmentAndAuditBeforeOverwrite() {
+        // P2-9 归正（2026-10-06）：差额基准必须在覆盖前读——旧实现「先覆盖后读」使 adj 恒 0、
+        // 审计前值失真。本用例锁死：cash 100 → 券商 150 时，adj = +50 一条 + 审计 cash/assets 各一条。
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(new java.util.ArrayList<>());
+        AtomicReference<AccountSnapshot> saved = new AtomicReference<>();
+        AccountSnapshotRepository acc = rollingAccountRepo(saved, snap("100", "100"));
+        CashAdjustmentRepository adjustments = mock(CashAdjustmentRepository.class);
+        TradingAuditRepository audit = mock(TradingAuditRepository.class);
+        TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
+                mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
+                mock(SoldTradeRepository.class), acc, mock(TransferRepository.class),
+                mock(MarketDataSource.class), mock(TradingLotService.class), defaultRuleRepo(),
+                knownAnchorRepo(), null, adjustments, audit);
+
+        service.importCashQuery("default",
+                "人民币: 余额:150.00  可用:150.00  可取:150.00  参考市值:0.00  资产:150.00  盈亏:0.00");
+
+        assertEquals(0, saved.get().cash().compareTo(new BigDecimal("150")), "现金按券商值覆盖");
+        ArgumentCaptor<CashAdjustment> adjCap = ArgumentCaptor.forClass(CashAdjustment.class);
+        verify(adjustments, times(1)).append(eq("default"), adjCap.capture());
+        assertEquals(0, adjCap.getValue().amount().compareTo(new BigDecimal("50")),
+                "差额 = 券商 150 − 系统 100（覆盖前基准）");
+        assertTrue(adjCap.getValue().id().startsWith("adj_"), adjCap.getValue().id());
+        ArgumentCaptor<List<TradingAuditRepository.AuditEntry>> auditCap = ArgumentCaptor.forClass(List.class);
+        verify(audit, times(1)).appendAll(eq("default"), auditCap.capture());
+        assertEquals(2, auditCap.getValue().size(), "cash/assets 两条一次批量落盘（P2-交易96）");
+        TradingAuditRepository.AuditEntry cashEntry = auditCap.getValue().get(0);
+        assertEquals("cash", cashEntry.field());
+        assertEquals("100", cashEntry.before(), "审计前值 = 覆盖前的真实旧值（P2-9）");
+        assertEquals("150", cashEntry.after());
+        assertEquals("重导快照·资金股份", cashEntry.source());
+        assertEquals("assets", auditCap.getValue().get(1).field());
+    }
+
+    @Test
+    void editTradeRecord_auditWriteFails_abortsBeforeTouchingLedger() {
+        // §4.3 fail-visible：审计写失败 → 整个纠错中止（先留痕后改账，绝不允许「改了账没留痕」）
+        InMemoryFileStorage fs = new InMemoryFileStorage();
+        PositionFileRepository repo = new PositionFileRepository(fs);
+        TradingHistoryFileRepository history = new TradingHistoryFileRepository(fs);
+        AtomicReference<AccountSnapshot> saved = new AtomicReference<>();
+        AccountSnapshotRepository acc = rollingAccountRepo(saved, snap("50000", "50000"));
+        TradingAuditRepository audit = mock(TradingAuditRepository.class);
+        doThrow(new StorageException("磁盘写入失败（模拟）")).when(audit).appendAll(any(), any());
+        TradingAppService service = correctionService(repo, history, acc, audit);
+
+        service.recordTrade("default", "600000", "浦发银行", TradeDirection.BUY,
+                new BigDecimal("5.00"), 1000, null, null, new BigDecimal("4.50"), "突破", null, null);
+        String tradeId = history.findAll("default").get(0).id();
+        BigDecimal cashAfterRecord = saved.get().cash();
+
+        assertThrows(StorageException.class,
+                () -> service.editTradeRecord("default", tradeId, Map.of("volume", 800)));
+
+        assertEquals(1000, history.findAll("default").get(0).volume(), "流水未动");
+        assertEquals(1000, repo.findAll("default").get(0).quantity(), "持仓未动");
+        assertEquals(0, saved.get().cash().compareTo(cashAfterRecord), "现金未动");
     }
 
     // ── 当日交易复盘聚合（RFC 20260822，纯客观数据）──

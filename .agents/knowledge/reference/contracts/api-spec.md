@@ -3,9 +3,9 @@ title: AdaiOS API 文档（接口契约）
 description: 📋 **API 接口契约（唯一真相源）**——全部端点定义与请求/响应结构；`ai-guard-align` A1 与源码 `@Mapping` 逐一对拍
 version: 1
 created: 2026-08-15
-updated: 2026-10-05
+updated: 2026-10-06
 status: active
-lines: 3250
+lines: 3374
 depends-on: []
 related: []
 tags: [fact, reference]
@@ -15,7 +15,7 @@ tags: [fact, reference]
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.98 | 最后更新：2026-10-05**
+**文档版本：v4.00 | 最后更新：2026-10-06**
 
 ---
 
@@ -23,6 +23,7 @@ tags: [fact, reference]
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-10-06 | v4.00 | **交易插件重做（R-05/R-06/R-07/R-08/R-12；需求文稿定稿 → design-final，编码批 2026-10-06）——插件从「你有一套交易系统」改成「人人可用」**：没有交易系统的人也能先用起来——**先如实记录，规则从你自己的数据里照出来**（候选每条带据、由你认下或改写），系统**不再拿别人的规则替你判**。① **统一导入入口**（R-12「一次把导出的文件交给它就行」）：`POST /trading/import`——multipart 一次多选（内部排序 **快照先于流水**：资金股份 → 持仓股 → 历史成交 → 清仓股 → 自选股），逐份识别（表头 fail-closed）+ 逐份回执（**一份失败不拖累其他**）；认不出的文件先留存、后如实拒绝；`dryRun=true` 只报「会做什么」不落盘。② **流水纠错就地改/删**（R-08）：`PUT`/`DELETE /trading/trades/{tradeId}`——**用户面不留痕**（纠错不是新记录）、系统侧写不可见审计（**审计写不进则整个纠错中止**）；改价/量/方向/日期后持仓与现金**自动重算**；撤销会算成负数 / 清仓成本底账已不在等**不可精确回推的场景 → 400 指路重导快照**。③ **规则集三态**（R-06，6 端点）：**候选**（系统从你的数据照出来、每条带据 how/facts/roundIds/dates）→ **已认**（你勾选 / 改写）→ **自定义**（你写）；**弃掉 = 墓碑**（留痕不删、下次生成不复活）；与既有 `GET/PUT /trading/rules`（参数化阈值 rules.yaml）**并存不冲突**——那是「你设的参数」，这是「你的规则条文」。④ **分析总结三粒度**（R-05）：`GET /trading/analysis/{scope}`（global/symbol/round）——缺数据 `value=null` **不出 0** · 每个数字带 `trace` · **只陈述不评价不建议**；无规则用户 `contrast.hasRules=false` 并明说「判不了守没守」。⑤ **三环**（R-07）：`GET /trading/advisory/{ring}`（buy 对照你写的计划〔`?date=` 缺省今天〕/ hold 用你的线说话 / sell 按你的尺子 + 卖飞了没）——**契约层不含建议字段**。⑥ **轮次人工边界**：`POST /trading/rounds/boundaries`（cut/merge/auto，**人工 > 自动**）+ `PUT /trading/rounds/{id}`（加/清备注）。**端点 173 → 186**；后端 2462 → **2597**（+135）。 |
 | 2026-10-05 | v3.99 | **learn 域三条收口（REVIEW P2-learn34 / P2-分享4 / P2-learn33）**——① **新增 2 端点**：`POST /learn/cards/expand`（把索引卡展开成**衍生**全文卡 + 三行要点：原卡不动 · 幂等不重烧模型 · 无素材人话拒绝 · **同步 LLM**）与 `GET /learn/cards/expansions`（「待展开」可见状态清单，`hasSource=false` 时前端不给入口）· ② **新增 2 个任务状态值**：**`expired`**（`needs_confirmation` 的 30 分钟确认窗口过期后，**内存清理与落盘账标记同一时刻成立**——治「决策入口 30 分钟即消失、账上却永久留『待确认』」的僵尸任务；读账路径亦懒清理）与 **`not_queued`**（连续分享时第二条**如实说「没排上」**并**单独入账**，不再假装 `running`；Feed 与 iOS 分享扩展同步按此短路，不再把「另一条读好了」当自己的结果报出来）· ③ 两个状态值出现在 `GET /learn/digest/jobs`、`GET /learn/digest/status` 与 `POST /learn/digest` 的响应与文案里。**端点 170 → 173**（含 v3.98 的 `POST /trading/plans/{date}/status`）。 |
 | 2026-10-05 | v3.98 | **无交易日缺「今天没动」的落点（REVIEW P2-交易72）——把用户「没有地方填的状态」补上**。用户原话（2026-09-23）：「**那我今天没有买卖 怎么告诉你呢 你还在等我的数据**」——阿呆方向是对的（「没买卖本身是完整信息」，并给了三种回法：今日无操作 / 今天买了卖了 XXXX / 今天想动没动），但这三种**只能靠聊天框手打**，双端没有界面落点；定性＝**状态回填的交互缺口**（不是数据缺失）。① **新端点 `POST /trading/plans/{date}/status`**：body `{"status":"NO_TRADE"\|"WANTED_NOT_ACTED"}`，认不出的值 → 400 人话（不猜、不替他记）。② **落点复用同一天的既有记录**（`trading/plans/{date}.json` 新增 `dayStatus` 字段）——「明天不动」是事前写、「今天没动」是事后填，**同一份记录、同一语义的两个时间方向**；**不另立存储**（另立即孤岛），也**不塞进流水**（`TradeRecord` 是成交，「没动」写成 volume=0 的假流水会污染持仓重建/现金/盈亏/复盘的所有下游）。③ **两条写路径互不吞字段**：回填状态不动既有 `items`/`note`；`POST /plans/{date}`（覆盖写计划）保留已填的 `dayStatus`；同日「读-改-写」进 service 层 stripe lock（与 P3-18 同族坑）。④ **同日同状态重复提交幂等**：值没变则**不重写盘**，响应 `recorded=false`；改状态是有效更正 → `recorded=true`。`GET /plans/{date}` 与 `GET /plans/{date}/review` 响应新增 `dayStatus`（旧文件缺字段读作 `""`，**additive**，旧客户端零破坏）。⑤ **双端已接**（web 桌面 + App）：交易页首屏一行两个一键盘点（「今天没动」/「想动，没动」），文案遵守第一原则 B1 且**不加「必须汇报」的压力**；前端本地已知同状态时**连请求都不发**，并如实说「已经记着了」。口径对齐 **P2-交易67**（有自算账照常出复盘；「无操作」是完整信息，R119「零仓位也是交易」）。**端点 170 → 171**；后端 **+14**（Service 6 · Controller 8）· web **+4** · app **+4** |
 | 2026-10-05 | v3.97 | **锚定日依据显式化（REVIEW P2-交易84）——不再用「导入时刻」猜「数据基准日」**。先说调研结论：四类导入中只有 `POST /trading/imports/save` 是 multipart（且文件落到服务端的 mtime = **上传时刻**，不是数据基准日 → 「文件 mtime」这条路**不可行**）；`positions/import` / `trades/import` / `imports/cash` / `sold/import` 收到的都是**文本/JSON**，而通达信「持仓股 / 资金股份查询」导出**内容里没有日期行**（实测 2026-09 样本首行即表头）→ 「内容基准日」也**不可行**。故采用 REVIEW 给出的第三条路：**显式让用户选基准日**。①`POST /trading/positions/import` 新增可选 query **`basedOn`**（`yyyy-MM-dd`）、`POST /trading/imports/cash` 新增可选 body **`basedOn`** = **显式数据基准日**：给了它就**优先于导入时刻**（09:26 导出、09:28 导入不再被退到上一交易日→不再与快照双计）；不传 = 既有归一化不变（**时钟推断只作最后兜底**）。②**依据随锚定落盘**：`trading/snapshot-anchor.json` 新增 `positionsBasis`/`cashBasis` ∈ `EXPLICIT`（显式）/`FILE_DATE`（文件日期）/`CLOSED_DAY`（休市日归一化）= **有据**，`CLOCK` = **无据**；老文件无字段 → 不可判定（不诬告）。③**任何归一化都不许静默**：两个导入响应新增 **`anchor`**（`{anchorDate,fileDate,basis,withEvidence,note[,explicitDate,explicitRejected]}`，`note` 可直接展示），`GET /trading/integrity` 的 `anchor` 增 **`positionsBasis`/`cashBasis`/`basisNote`**，且 `degraded[].inferred` 判据 OR 上「有据」——**显式基准日的归一化不再报警**（b90f56a2 的休市日口径一字不改），`CLOCK` 照旧报警。④**未来日期仍不可信**（P2-10 保护不放松）：显式基准日在今天之后 → 忽略 + 落回兜底 + 标 `CLOCK` + 回执说明「已忽略」，绝不把锚定日写进未来。⑤**前端已接**（web）：持仓/资金两个导入框新增「数据基准日（可选）」输入（默认留空 = 行为与今天完全一致，零回归），非法日期在弹窗内人话拒绝；导入回执 toast 带出依据。**端点 170 不变**（仅加可选参数 + 响应扩字段，全部 additive） |
@@ -792,6 +793,23 @@ tags: [fact, reference]
 
 ---
 
+### `PUT /api/v1/trading/trades/{tradeId}` — 流水纠错 · 就地改（R-08，2026-10-06）
+> 需 trading 插件（403）。
+
+截图/导入发现记错时，就地把这笔改对（**用户面不留痕**——纠错不是新记录，系统侧写不可见修改日志）。**body 为要改的字段**（未给的字段原样保留）：`price` / `volume` / `direction` / `entryDate` / `tradeTime` / `fee` / `orderId` / `reason` 等；body 空 → 400「请求体为空——请给出要修改的字段」。
+
+- **审计 fail-visible**：先留痕、后改账——审计写不进则**整个纠错中止**（不让「改了没记」发生）
+- **派生自动重算**：持仓（数量/成本）与现金（含可用/可取）按新值重推 → 响应 `derivationRecomputed` 标记本次是否真动了派生（快照覆盖区 / 只记账的行 = 未动）
+- **不可精确回推的场景直接拒绝（400 人话，动笔之前就拒）**：撤销买入会把持仓算成负数（之后的持仓已被卖出/调整过）· 撤销「曾清仓的卖出」时成本底账已不在 · 改成卖出后彼时持仓不够。指路：**重导「持仓股」或「资金股份查询」快照**重新对齐后再纠错
+- 值没变 → `{"updated":false,"tradeId":"…","note":"没有变化"}`（幂等，不重写盘）；找不到这笔 → 400「没找到这笔流水（可能已被删除）——请刷新后重试」
+
+**响应**：`{"updated":true,"tradeId":"trade_…","record":{…},"derivationRecomputed":true}`
+
+### `DELETE /api/v1/trading/trades/{tradeId}` — 流水纠错 · 就地删（R-08，2026-10-06）
+> 需 trading 插件（403）。
+
+只撤销这笔的旧影响（不应用新影响），其余语义与「就地改」完全一致：审计留痕（记录原值摘要）· 派生重算 · 不可精确回推则 400。找不到这笔 → 400 人话。**响应**：`{"deleted":true,"tradeId":"…","derivationRecomputed":true}`。
+
 ### `POST /api/v1/trading/trades/batch` — 批量记录交易（2026-08-18 补实现）
 > 需 trading 插件（403）。
 
@@ -1266,6 +1284,39 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 - **响应**：`{"updated":true}`
 - **落盘**：`data/{userId}/trading/rules.yaml`（File First，可导出/导入/版本管理）
 
+### `GET /api/v1/trading/rules/user` — 规则集三态全列表（R-06，2026-10-06）
+> 需 trading 插件（403）。
+
+与上面的 `GET/PUT /trading/rules`（**你设的参数**，rules.yaml）**并存不冲突**——这里返回**你的规则条文**（三态分组，前端一次拿全）：**候选** `CANDIDATE`（系统从你的数据里照出来，每条带据）· **已认** `ACCEPTED`（你勾选/改写）· **自定义** `CUSTOM`（你自己写）。`DISMISSED`（弃掉）不再出现在任何分组。
+
+**响应**：`{"total":12,"candidates":[…],"accepted":[…],"custom":[…]}`
+每条 rule 形状：`{"id":"…","state":"CANDIDATE","text":"…","source":"DATA","params":{…},"evidence":{"how":"按你最近的回合照的","facts":["…"],"roundIds":["600206_2026-08-05"],"dates":["2026-08-05"]},"createdAt":"…","updatedAt":"…"}`；`source` ∈ `DATA`（从数据长出来）/ `USER`（自己写）；`evidence` 为 null = 非候选（候选**必带据**）。
+
+### `POST /api/v1/trading/rules/candidates` — 从数据里照一遍候选（R-06，2026-10-06）
+> 需 trading 插件（403）。
+
+**body 可空**；系统按你**自己的**数据（描述性统计）刷新候选——**已有候选跟着数据变，已认/自定义的永远不动**（刷新只作用于候选态）；弃掉的**不复活**（墓碑），样本不足**宁可不出**（不硬凑）。**响应** = 刷新后的全列表（同 `GET /rules/user` 形状）。
+
+### `POST /api/v1/trading/rules/{id}/accept` — 认下一条候选（R-06，2026-10-06）
+> 需 trading 插件（403）。
+
+body 可带 `{"text":"…"}`（**认下时改**——「你勾选 / 改」都算认下；不改不传）。**响应** = 该条 rule（state=ACCEPTED；`evidence` 保留——「这条当时为什么长出来」不丢）。非候选 / 找不到 → 400 人话。
+
+### `PUT /api/v1/trading/rules/{id}` — 改规则文本（R-06，2026-10-06）
+> 需 trading 插件（403）。
+
+body `{"text":"…"}`。**已认 / 自定义**可改；**候选要先认下**（400 人话）。**响应** = 该条 rule。
+
+### `DELETE /api/v1/trading/rules/{id}` — 弃掉一条（R-06，2026-10-06）
+> 需 trading 插件（403）。
+
+**墓碑语义**：留痕不删——不再出现在任何分组，**下次生成候选也不复活**（否则「你划掉的候选下次刷新又出现」= 你的操作被系统无视）。**幂等**（弃不存在的也算成功）。**响应**：`{"status":"ok","id":"…"}`。
+
+### `POST /api/v1/trading/rules/custom` — 自己写一条（R-06，2026-10-06）
+> 需 trading 插件（403）。
+
+body `{"text":"…","params":{…}?}`（params 可空）。三态之**自定义**（来源 = 你）。**响应** = 该条 rule（state=CUSTOM）。
+
 ### `GET /api/v1/trading/market-stage` — 活跃市值区间（用户手动判定开关，v3.41）
 > 需 trading 插件（403）。2026-09-04 新增，来源：2026-09-03 用户对话「指南针活跃市值指标——一切的前提，由我来判定多头/空头」。
 
@@ -1383,6 +1434,19 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 - **转码**：GBK 自动转 UTF-8（UTF-8 严格解码失败按 GBK）
 - **响应**：`{"path":"trading/imports/...","content":"转码后的 UTF-8 文本"}`——前端填充解析导入
 - 需 trading 插件（403）。
+
+### `POST /api/v1/trading/import` — 批量文件导入统一入口（R-12，2026-10-06 ingest 批）
+> 需 trading 插件（403）。
+
+「**一次把导出的文件交给它就行**」——multipart **可一次多选**（字段名 `files`；也接受单份 `file`，兼容只传一个的客户端）。
+
+- **逐份识别**：按表头判文件类型（fail-closed——认不出就如实拒绝，绝不猜着入库）；认不出的文件**先留存、后拒绝**（原始文件不丢）
+- **内部排序**：**快照在前、流水在后**（资金股份 → 持仓股 → 历史成交 → 清仓股 → 自选股）——顺序由系统保证，用户不用记
+- **逐份处理 + 逐份回执**：**一份失败不影响其他份**；`{"dryRun":false,"okCount":2,"failedCount":1,"files":[{"filename":"…","savedPath":"trading/imports/…","kind":"positions","kindLabel":"持仓股","ok":true,"detail":{…}},{"filename":"…","ok":false,"error":"…"}]}`（`detail` 与既有五端点**同一份**回执口径，经回执构建器共用）
+- **query**：`mode`（历史成交的导入模式：`auto` 默认按锚定分派 / `append` 只补流水）· `dryRun=true`（只识别 + 只报「会做什么」，**不落盘、不留存**）
+- **账同步联动**：非 dryRun 且有成功份 → 触发账同步（收盘后可出复盘，同 `afterDataSync` 既有口径）
+- 没有收到文件 → 400 人话（「没有收到文件——请把通达信导出的文件选进来（可一次多选）」）
+- 既有五个导入端点（`positions/import` / `imports/cash` / `trades/import` / `sold/import` / `watchlist/import`）**一个不动**——本端点与它们共用同一 service 链路与回执口径
 
 ### `POST /api/v1/trading/positions/import` — 持仓初始化导入
 > **对账模式（v3.94，2026-10-03，RFC 20261003 C4「持仓同理」）**：query 加 `dryRun=true` → **只对账、不落盘**，
@@ -3181,6 +3245,66 @@ iOS 客户端拿到 APNs deviceToken 后上报；**同 token 幂等**（重复�
 R66 收盘跌破止损位未当日走（基准取 R72 的 3-5% 中值 −4%；**真实止损位从未进系统**——
 1721 笔流水带 `stopLossPrice` 的 0 笔）/ R53 建仓完毕后 3 个交易日仍未脱离成本区。
 `peakPct`/`troughPct`/`d3Pct` 为 null = 数据不足（**不编造 0**）。需 trading 插件（403）。
+
+### `POST /api/v1/trading/rounds/boundaries` — 设 / 改 / 撤销一条人工轮次边界（v4.00，2026-10-06）
+
+body：`{"symbol": "600206", "anchorBuyId": "trade_…", "mode": "cut", "note": "…"}`。
+`mode` 三选一（**人工 > 自动**）：`cut` = 从锚定那笔买入开始算新的一轮 · `merge` = 与上一轮合并 ·
+`auto` = 撤销人工切分（让位回自动口径）。`note` 缺省 = 保留旧备注；传空串 = 清除备注。
+缺 `symbol`/`anchorBuyId` / 认不出 `mode` → 400 人话。需 trading 插件（403）。
+
+```json
+{ "status": "ok", "symbol": "600206", "anchorBuyId": "trade_…", "anchorDate": "2026-08-05",
+  "mode": "cut", "note": "…" }
+```
+
+### `PUT /api/v1/trading/rounds/{id}` — 给某一轮加 / 清备注（v4.00，2026-10-06）
+
+`id = {代码}_{开始日}`（如 `600206_2026-08-05`）。body 必须含 `note`（**清空备注传空串**，
+缺字段 → 400 人话）。备注锚定该轮首笔买入，切分动作保留。需 trading 插件（403）。
+
+```json
+{ "status": "ok", "id": "600206_2026-08-05", "note": "…" }
+```
+
+`note` 清空后为 `null`。
+
+### `GET /api/v1/trading/analysis/{scope}` — 三粒度分析总结（v4.00，2026-10-06，R-05）
+
+`scope` = `global`（全局）/ `symbol`（单标的，需 `?symbol=600206`）/ `round`（单轮，需 `?id=600206_2026-08-05`）。
+**契约三条**：缺数据 `value=null`（**不出 0**）· 每个数字带 `trace`（可回溯到哪几轮 / 哪几天）·
+**只陈述、不评价、不建议**（`contrast` 是与你的规则碰出来的，不是系统给结论）。需 trading 插件（403）。
+
+```json
+{
+  "scope": "global", "label": "全部交易",
+  "description": [ {"key": "rounds", "label": "交易轮数", "value": 232, "unit": "轮",
+                    "trace": {"roundIds": [], "dates": [], "note": "…"}} ],
+  "contrast": {
+    "hasRules": true, "reason": "…",
+    "ruleHits": [ {"rule": "R55", "text": "盈转亏没走", "count": 6, "roundIds": ["600584_2026-07-22"]} ]
+  },
+  "summary": {"fact": "…", "contrast": "…", "question": "…"}
+}
+```
+
+`contrast.hasRules=false` = 你还没有规则（**不是「没有发现问题」**）；`summary.question` 是问回你的问题。
+
+### `GET /api/v1/trading/advisory/{ring}` — 三环（买入 / 持仓 / 卖出）（v4.00，2026-10-06，R-07）
+
+`ring` = `buy`（买入环，可带 `?date=2026-10-07`，缺省 = 今天，格式错 → 400 人话）/ `hold`（持仓环）/
+`sell`（卖出环）。**契约层不含建议字段**（design §5 契约③）：只带 `statement`（陈述）+
+`basis[]`（依据，每条带 `trace`）+ `ruleRef`；缺数据 `value=null` + `missing` 说明（不出 0）。需 trading 插件（403）。
+
+```json
+{
+  "ring": "buy", "label": "买入环", "asOf": "2026-10-07",
+  "items": [ {"symbol": "600206", "name": "有研新材", "statement": "…",
+              "basis": [ {"key": "…", "label": "…", "value": "…", "trace": "…"} ],
+              "ruleRef": "…", "missing": [] } ],
+  "note": "…"
+}
+```
 
 ### `GET /api/v1/trading/plans` — 有操作计划的日期（v3.94，2026-10-03）
 

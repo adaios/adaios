@@ -81,6 +81,8 @@ public class MarketAlertService {
     private final PushSettingsRepository pushSettingsRepository;
     /** RFC 20260825：批次推导——批次级止损判定（每批独立止损，不跟底仓混）。 */
     private final TradingLotService tradingLotService;
+    /** design-final §9#16：推送日上限守卫（★V1：全局 ≤8/日、超限合并）。 */
+    private final TradingPushGovernor pushGovernor;
 
     private final BigDecimal lossThreshold;
     private final BigDecimal gainThreshold;
@@ -97,6 +99,7 @@ public class MarketAlertService {
                               TradingRuleEngine ruleEngine,
                               PushSettingsRepository pushSettingsRepository,
                               TradingLotService tradingLotService,
+                              TradingPushGovernor pushGovernor,
                               @Value("${adai.market.alert.loss-threshold:3.0}") double lossThreshold,
                               @Value("${adai.market.alert.gain-threshold:5.0}") double gainThreshold,
                               @Value("${adai.market.alert.break-cost-enabled:true}") boolean breakCostEnabled,
@@ -110,6 +113,7 @@ public class MarketAlertService {
         this.ruleEngine = ruleEngine;
         this.pushSettingsRepository = pushSettingsRepository;
         this.tradingLotService = tradingLotService;
+        this.pushGovernor = pushGovernor;
         this.lossThreshold = BigDecimal.valueOf(lossThreshold);
         this.gainThreshold = BigDecimal.valueOf(gainThreshold);
         this.breakCostEnabled = breakCostEnabled;
@@ -231,17 +235,23 @@ public class MarketAlertService {
             // 2026-08-20 生产「微信双份」：同股票同轮命中多个异动类型（如 loss + break-cost）
             // 各生成一条 → 微信收到同股票两条内容重叠的消息。合并为一条（保留最严重类型 + 内容拼接）。
             List<PushChannel.PushMessage> merged = mergeBySymbol(alerts);
+            // design-final §9#16（★V1）：日上限守卫——used+batch 超 8 → 整批折叠为一条汇总（不丢弃）
+            List<PushChannel.PushMessage> admitted = pushGovernor.admit(userId, merged);
             // RFC 20260816：推送走渠道插件化——Feed（默认落盘）+ 微信（外部）等所有 enabled 渠道
-            for (PushChannel.PushMessage m : merged) {
+            for (PushChannel.PushMessage m : admitted) {
                 for (PushChannel channel : pushChannels) {
                     if (channel.enabled()) {
                         channel.push(userId, m);
                     }
                 }
             }
-            snapshotRepository.saveSignatures(userId, today, newSignatures);
-            log.info("行情异动推送 | userId={} | {} 条（合并前 {}）| {}", userId, merged.size(), alerts.size(),
-                    merged.stream().map(PushChannel.PushMessage::type).toList());
+            // 全被吞（当日已满 8 条）→ **不记签名**：用户删掉旧推送腾出额度后，下轮 poll 还能补推
+            //（记了签名就永久丢这轮异动——与「超限合并、不丢弃」的拍板口径相悖）
+            if (!admitted.isEmpty()) {
+                snapshotRepository.saveSignatures(userId, today, newSignatures);
+            }
+            log.info("行情异动推送 | userId={} | {} 条（合并前 {}，准入 {}）| {}", userId, admitted.size(), alerts.size(),
+                    merged.size(), admitted.stream().map(PushChannel.PushMessage::type).toList());
         }
     }
 
@@ -339,13 +349,15 @@ public class MarketAlertService {
         newSignatures.add(sig);
         BigDecimal stop = tradingLotService.effectiveStopLoss(lot, userId);
         String lotLabel = lot.initial() ? "底仓" : lot.buyDate() + " 买入批次";
+        // design-final §11.6 B1（第一原则）：提醒只陈述事实、只用你定的线——不得出现「建议 / 该买 / 该卖」，
+        // 也不替用户下「该复盘了 / 该设止损了」的结论（2026-10-06 推送去建议批）
         String msg = lot.stopLossPrice() != null
                 ? "📉 " + lot.name() + "(" + lot.symbol() + ") " + lotLabel + "现价 " + fmt(md.price())
                         + " 已跌破该批止损 " + fmt(stop) + "（该批成本 " + fmt(lot.costPrice()) + "）"
-                        + "——这是这批自己的止损位（R66），底仓不受影响，要我看看这批复盘吗？"
+                        + "——这是这批自己的止损位（R66），底仓不受影响。"
                 : "⚠️ " + lot.name() + "(" + lot.symbol() + ") " + lotLabel + "现价 " + fmt(md.price())
                         + " 已跌破默认 −7% 风控线 " + fmt(stop) + "（该批成本 " + fmt(lot.costPrice())
-                        + "，你还没设止损）——先想好这批复盘怎么走，要不要设个止损位？";
+                        + "，你还没设止损位）。";
         alerts.add(new PushChannel.PushMessage(
                 lot.name() + " 批次止损预警", msg,
                 "stop-loss", lot.symbol(), lot.name(), LocalTime.now(),
@@ -355,22 +367,23 @@ public class MarketAlertService {
 
     private String message(Position p, MarketData md, BigDecimal change, String type) {
         return switch (type) {
+            // design-final §11.6 B1：六类文案统一「只陈述事实」——
+            // 跌破止损位只说「已跌破你的止损位 X（R66）」（止损/清仓分开说，不清仓不越俎代庖）
             case "stop-loss" -> "📉 " + p.name() + "(" + p.symbol() + ") 现价 " + fmt(md.price())
-                    + " 已跌破你的止损位 " + fmt(p.effectiveStopLoss())
-                    + "——按纪律（R66）该清仓了，要我给出建议吗？";
+                    + " 已跌破你的止损位 " + fmt(p.effectiveStopLoss()) + "（R66）。";
             case "near-stop-loss" -> "⚠️ " + p.name() + "(" + p.symbol() + ") 现价 " + fmt(md.price())
-                    + " 距止损位 " + fmt(p.effectiveStopLoss()) + " 不到 "
+                    + " 距你的止损位 " + fmt(p.effectiveStopLoss()) + " 不到 "
                     + nearStopLossPct.stripTrailingZeros().toPlainString()
-                    + "%了——提前想好怎么走，别等插针（R66）";
+                    + "%（R66）。";
             case "loss" -> "📉 " + p.name() + "(" + p.symbol() + ") 今日跌 " + fmt(change) + "%，现价 "
                     + fmt(md.price())
                     + (p.effectiveStopLoss() != null
-                        ? "——单日大跌，盯紧止损位 " + fmt(p.effectiveStopLoss()) + "（R66）"
-                        : "——单日大跌，留意风险（你还没设止损位，想好怎么走）");
+                        ? "——单日大跌，你的止损位 " + fmt(p.effectiveStopLoss()) + "（R66）"
+                        : "——单日大跌（你还没设止损位）");
             case "gain" -> "📈 " + p.name() + "(" + p.symbol() + ") 今日涨 " + fmt(change) + "%，现价 "
-                    + fmt(md.price()) + "，关注放飞条件";
+                    + fmt(md.price()) + "——单日大涨";
             default -> "⚠️ " + p.name() + "(" + p.symbol() + ") 现价 " + fmt(md.price())
-                    + " 已跌破成本线 " + fmt(p.avgCost()) + "，注意持仓风险";
+                    + " 已跌破成本线 " + fmt(p.avgCost()) + "。";
         };
     }
 

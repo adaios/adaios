@@ -183,20 +183,43 @@ class DesktopFeedCard extends StatelessWidget {
     );
   }
 
+  /// P1-交易92（2026-10-06，与 app 端同步）：行情类推送落库标题带「标的名 」前缀
+  /// （后端 `MarketAlertService` `p.name() + " 行情提醒"` / `lot.name() + " 批次止损预警"`），
+  /// 标题精确匹配全落 default 灰（越新的数据越落灰、旧数据反而正常）。按已知标题词表做
+  /// **后缀**归一（空格锚点：「批次止损预警」不会误配「止损预警」）——剥掉标的前缀后与
+  /// switch 精确匹配；未知标题原样返回（仍走 default，行为不变）。
+  static String _normalizePushTitle(String title) {
+    const known = [
+      '早盘计划', '午间知会', '午间跟踪', '尾盘卖点', '今日操作确认',
+      '买点提醒', '放飞提示', '跌破成本线', '行情提醒', '止损预警',
+      '接近止损', '单日大跌提醒', '批次止损预警', '学习复习提醒', '待办到期提醒',
+    ];
+    for (final k in known) {
+      if (title == k || title.endsWith(' $k')) return k;
+    }
+    return title;
+  }
+
   /// RFC 20260817：推送卡——类型徽章（按标题配色）+ 结构化内容 + 今日操作确认按钮。
   Widget _buildPushCard() {
-    final title = data.pushTitle ?? '行情提醒';
+    final title = _normalizePushTitle(data.pushTitle ?? '行情提醒');
     final (badgeText, badgeColor) = switch (title) {
       '早盘计划' => ('早盘计划', AppColors.darkBlue),
-      '午间跟踪' => ('午间跟踪', AppColors.darkPurple),
-      '尾盘建议' || '今日操作确认' => ('尾盘建议', AppColors.darkOrange),
+      // P1-交易92②：后端真实标题是「午间知会」（TradingSessionPushService）——原 '午间跟踪'
+      // 是死分支（12:00 推送徽章落灰）；UI_REFERENCE 约定「午间知会紫」；'午间跟踪' 保留兼容旧数据
+      '午间跟踪' || '午间知会' => ('午间知会', AppColors.darkPurple),
+      // 2026-10-06 修复（B1 + 徽章 bug，与 app 端同步）：后端真实标题是「尾盘卖点」——
+      // 原 '尾盘建议' 是**死分支**（尾盘推送徽章一直落 default 灰「行情」，UI_REFERENCE 约定应为橙色）
+      '尾盘卖点' => ('尾盘卖点', AppColors.darkOrange),
+      // P1-交易92③：「今日操作确认」不再借「尾盘卖点」橙徽章——两个语义不同的推送各归各
+      '今日操作确认' => ('操作确认', AppColors.darkBlue),
       // P2-UI1（2026-09-03 用户拍板 A 方案）：买点徽章 darkGreen→darkRed——「买=该买=涨=红」与红涨绿亏全局一致，
       // 不再与「绿=亏」语义撞色（原 RFC 20260817「买点绿」决策被本次拍板推翻）
       '买点提醒' => ('买点提醒', AppColors.darkRed),
       // B9-5（2026-08-23，P2-推送4）：gain/break-cost 专属徽章——原落 default 灰「行情」
       '放飞提示' => ('放飞提示', AppColors.darkPurple),
       '跌破成本线' || '行情提醒' => ('跌破成本', AppColors.darkOrange),
-      '止损预警' || '接近止损' || '单日大跌提醒' => ('预警', AppColors.darkRed),
+      '止损预警' || '接近止损' || '单日大跌提醒' || '批次止损预警' => ('预警', AppColors.darkRed),
       _ => ('行情', AppColors.darkGrey4),
     };
     return Padding(

@@ -44,19 +44,25 @@ import java.util.Map;
  * TradingAdviceAppService — 持仓解读应用服务（建议引擎机制，已建能力——模块定位见 RFC 20260902 交易记忆）。
  * <p>
  * 编排解读流程：读用户持仓 + 实时行情 + 只读 {@code os/trading-engine/knowledge/context/rules.md} 与
- * {@code strategy.md} → 把止损规则（R66-R80）与仓位规则（R81-R95）作为 LLM 决策硬约束注入
- * prompt → LLM 结构化生成逐票解读（suggestion / reason / rules 必须引用规则号）。
+ * {@code strategy.md} → 把止损规则（R66-R80）与仓位规则（R81-R95）注入 prompt →
+ * LLM 结构化生成逐票**陈述**（statement / rules，必须引用规则号）。
  * <p>
- * 规则匹配是硬约束：解读输出必须引用规则号；本服务不做任何"执行"动作，输出是解读不是指令
+ * <b>批6 收窄（2026-10-06，design-final §9 #14 · 验收 10）</b>：原输出方向词
+ * （suggestion = buy / hold / reduce / clear）违反验收 10——已收窄为「**陈述 + 你的规则对照**」：
+ * 契约层去建议字段，只留 statement（陈述句）+ rules（引用规则号）+ evidence；陈述禁止出现
+ * 「建议 / 该买 / 该卖」等方向词（prompt 约束 + 出口兜底：命中即退回引擎事实句）。
+ * <p>
+ * 规则匹配是硬约束：陈述必须引用规则号；本服务不做任何"执行"动作，输出是陈述不是指令
  * （「照见你」认知层形态属第五层待建，本服务输出现状如实保留）。
  * <p>
  * G-3（2026-08-16）能力抽离：确定性规则判定（止损 R66 / 仓位 R81 / 规则解析）已抽至
  * {@link TradingRuleEngine}——本服务只编排 prompt 注入与 LLM 输出，判定口径归引擎（交易插件 jar 的能力层）。
  * <p>
- * 兜底：LLM 失败/输出不可解析时降级返回基础数据（symbol / name / position_percent 后端计算，
- * 无解读字段），不抛错——解读永远返回 200，诚实优于编造。
+ * 兜底：LLM 失败/输出不可解析时降级返回基础数据（symbol / name / position_percent 后端计算）
+ * + 引擎事实句（确定性、不依赖 LLM），不抛错——解读永远返回 200，诚实优于编造。
  * <p>
- * os/trading-engine 只读：adai-core 对该目录只读（唯一例外是 promote 写 99-inbox/）。
+ * os/trading-engine 只读：adai-core 对该目录只读（promote 候选已改落 data/{userId}/trading/reviews/promote/，
+ * 服务端不再写 os/；§10.2）。
  */
 @Service
 public class TradingAdviceAppService {
@@ -70,10 +76,13 @@ public class TradingAdviceAppService {
     private final Path rulesPath;
     private final Path strategyPath;
 
-    /** 建议 system 指令：角色 + 规则硬约束语义（生成语义，非 understand 的 JSON 摘要语义）。 */
+    /** 建议 system 指令（批6 收窄）：角色 + 只陈述 + 规则对照（生成语义，非 understand 的 JSON 摘要语义）。 */
     private static final String ADVICE_SYSTEM_PROMPT = """
-            你是一个个人交易建议助手。基于用户消息中的真实持仓与实时行情，结合交易系统规则（止损 R66-R80 / 仓位 R81-R95 是决策硬约束）给出逐票建议。
-            规则是决策约束：每条建议必须引用具体规则号；只依据规则与数据给建议，不做荐股、不做主观预测。
+            你是一个个人交易陈述助手。基于用户消息中的真实持仓与实时行情，结合交易规则（止损 R66-R80 / 仓位 R81-R95），为每只持仓写一句【陈述】+【用规则做的对照】。
+            硬性要求：
+            - 只陈述事实与规则对照，绝不给建议、方向词或祈使句——禁止出现「建议」「该买」「该卖」「该加仓」「该减仓」「该清仓」「应该买」「应该卖」等字样；
+            - 每条陈述必须引用具体规则号；不做荐股、不做主观预测；
+            - 允许的句式示例：「现价 14.52 已低于你设的止损位 14.80（R66）」「现价 25.10 高于你的成本 22.00，浮盈 14%；单票占比 31%，超过你设的仓位上限 25%（R81）」。
             输出必须是合法 JSON 对象，不要用 markdown 代码块围栏包裹，不要输出 JSON 以外的任何文字。
             """.strip();
 
@@ -85,19 +94,14 @@ public class TradingAdviceAppService {
               "advice": [
                 {
                   "symbol": "股票代码（6位，必须来自上方持仓列表）",
-                  "suggestion": "buy | hold | reduce | clear 之一",
-                  "reason": "自然语言理由，必须引用具体规则号（如 R81）",
+                  "statement": "一句陈述（事实 + 用规则号做的对照；不得出现方向词/祈使句）",
                   "rules": ["R66", "R81"]
                 }
               ],
-              "summary": "持仓总览一句话（持仓数 + 仓位结构）"
+              "summary": "持仓总览一句话（持仓数 + 仓位结构，陈述式，不含方向词）"
             }
-            suggestion 取值语义：
-            - buy：建议加仓/买入（仅在规则支持且持仓占比明显偏低时）
-            - hold：正常持有
-            - reduce：建议减仓（单票超仓位上限 R81-R95、触发止损信号 R66-R80 等）
-            - clear：建议清仓（已跌破止损位、严重违反仓位纪律）
-            rules 数组列出本建议引用的规则号（应在 R66-R95 范围内）。
+            statement 必须引用具体规则号（R66-R95），只写事实与对照（现价 / 成本 / 占比 / 止损位 + 规则号），不写动作、不得出现「建议」字样。
+            rules 数组列出本陈述引用的规则号（应在 R66-R95 范围内）。
             """.strip();
 
     private final PositionRepository positionRepository;
@@ -138,15 +142,15 @@ public class TradingAdviceAppService {
     }
 
     /**
-     * 生成持仓建议。
+     * 生成持仓解读（批6 收窄：逐票陈述 statement + 规则对照；契约层无建议字段）。
      *
      * @param userId 用户 ID
-     * @return 逐票建议 + 持仓总览；LLM 失败时降级为基础数据（无建议字段），不抛错
+     * @return 逐票陈述 + 持仓总览；LLM 失败时降级为引擎事实句，不抛错
      */
     public TradingAdviceResponse generateAdvice(String userId) {
         List<Position> positions = positionRepository.findAll(userId);
         if (positions == null || positions.isEmpty()) {
-            return new TradingAdviceResponse(List.of(), "当前空仓，无持仓建议。");
+            return new TradingAdviceResponse(List.of(), "当前空仓，无持仓可解读。");
         }
 
         // 1. 实时行情（数据源接口约定"安全"：异常返回空 Map，这里再兜一层防御）
@@ -173,33 +177,35 @@ public class TradingAdviceAppService {
                 .sorted(Comparator.comparingInt(TradingRuleEngine.RuleEntry::number))
                 .toList();
 
-        // 3. LLM 结构化生成（失败/不可解析 → 降级基础数据）
+        // 3. LLM 结构化生成（失败/不可解析 → 降级：引擎事实句顶上，不抛错）
         TradingAdviceResponse response;
+        String source = "manual-advice";
         try {
             String prompt = buildPrompt(userId, views, constraintRules, strategyOverview(strategyText));
             ContextPackage ctx = ContextPackage.simple(
-                    "trading", null, "持仓建议", prompt,
-                    List.of("trading", "建议"), prompt);
+                    "trading", null, "持仓解读", prompt,
+                    List.of("trading", "解读"), prompt);
             AiTraceContext.set(userId, null, null, "trading_advice");
             String raw = aiClient.generate(ctx, ADVICE_SYSTEM_PROMPT);
             response = parseLlmAdvice(raw, views);
-            log.info("持仓建议生成完成 | userId={} | 持仓数={} | 建议数={}",
-                    userId, views.size(), response.advice().size());
+            log.info("持仓陈述生成完成 | userId={} | 持仓数={} | 陈述数={}",
+                    userId, views.size(), response.advice().stream().filter(i -> i.statement() != null).count());
         } catch (Exception e) {
-            log.warn("持仓建议 LLM 生成失败，降级返回基础数据 | userId={} | {}", userId, e.getMessage());
+            log.warn("持仓解读 LLM 生成失败，降级为引擎事实句 | userId={} | {}", userId, e.getMessage());
             response = fallback(views);
+            source = "degraded";
         }
-        // RFC 20260922 A 批（A4）：给每条建议补四要素铁证（只读；补不出留 null）
+        // RFC 20260922 A 批（A4）：给每条解读补四要素铁证（只读；补不出留 null）
         response = withEvidence(userId, response, views);
-        // RFC 20260905 B①：建议留痕——成功与降级都落盘（降级标记 degraded，诚实留史）
-        recordHistory(userId, response, views, response.advice().stream()
-                .noneMatch(i -> i.suggestion() != null) ? "degraded" : "manual-advice");
+        // RFC 20260905 B①：留痕——成功与降级都落盘（降级标记 degraded，诚实留史）
+        recordHistory(userId, response, views, source);
         return response;
     }
 
     /**
-     * RFC 20260905 B①：把本次建议响应逐票落盘为 {@link AdviceEntry}（建议留痕）。
-     * 落盘失败仅 error 日志（建议功能不受阻——留痕是记忆层，失败不破坏建议主链路，
+     * RFC 20260905 B①：把本次解读响应逐票落盘为 {@link AdviceEntry}（解读留痕；
+     * 批6：suggestion 字段退役写 null，陈述进 reason 字段）。
+     * 落盘失败仅 error 日志（解读功能不受阻——留痕是记忆层，失败不破坏解读主链路，
      * 与 MarketPush 写失败同级别口径——持久化数据写失败必须 error）。
      */
     private void recordHistory(String userId, TradingAdviceResponse response,
@@ -207,14 +213,16 @@ public class TradingAdviceAppService {
         try {
             LocalDate today = LocalDate.now();
             for (TradingAdviceItem item : response.advice()) {
-                // LLM 降级补的占位行（suggestion=null）也落——记录「当日建议了这只票但无明确动作」
+                // LLM 降级补的占位行（statement=null）也落——记录「当日解读了这只票但无陈述」
                 PositionView view = findBySymbol(views, item.symbol());
                 boolean hard = view != null
                         && (view.stopLoss().verdict() == StopLossVerdict.BREACHED
                             || (view.position().verdict() == PositionVerdict.OVER_WEIGHT && view.r81Applicable()));
                 adviceHistoryRepository.append(userId, new AdviceEntry(
-                        null, today, item.symbol(), item.name(), item.suggestion(),
-                        item.reason(), item.rules(), hard, item.positionPercent(), source,
+                        null, today, item.symbol(), item.name(),
+                        // 批6 收窄（验收 10）：方向词字段退役——留痕不再写 buy/hold/reduce/clear
+                        null,
+                        item.statement(), item.rules(), hard, item.positionPercent(), source,
                         java.time.LocalDateTime.now(),
                         // A3（RFC 20260922）：把「当时是什么情况」落成依据快照——日后回看用，不做对错判决
                         basisOf(view, item)));
@@ -270,35 +278,28 @@ public class TradingAdviceAppService {
                 PositionView view = findBySymbol(views, node.path("symbol").asText(""));
                 // 只保留持仓中真实存在的标的（防 LLM 幻觉输出不存在的票）
                 if (view == null) continue;
-                // FP-P2a（2026-08-16）：输出侧校验——引擎硬信号优先于 LLM 输出
-                // （BREACHED 是硬约束必须 clear；OVER_WEIGHT 保守：不允许 buy）
-                String suggestion = normalizeSuggestion(node.path("suggestion").asText(""));
-                String reason = node.path("reason").asText("");
-                if (view.stopLoss().verdict() == StopLossVerdict.BREACHED && !"clear".equals(suggestion)) {
-                    suggestion = "clear";
-                    reason = ("【硬判定】" + view.stopLoss().message() + "，suggestion 修正为 clear。"
-                            + (reason != null ? reason : "")).trim();
-                } else if (view.position().verdict() == PositionVerdict.OVER_WEIGHT
-                        && "buy".equals(suggestion) && view.r81Applicable()) {
-                    // P2-交易21（2026-08-17）：输出侧硬判定须过 r81Applicable（总资产 <100 万前提）——
-                    // 超 100 万不强制 25% 上限（R82-R95 配置），与 prompt 段 392 行口径一致
-                    suggestion = "reduce";
-                    reason = ("【硬判定】" + view.position().message() + "，suggestion 由 buy 保守修正为 reduce。"
-                            + (reason != null ? reason : "")).trim();
+                // 批6 收窄（验收 10）：出口校验——陈述缺失 / 出现方向词（建议·该买·该卖…）
+                // → 退回引擎事实句；硬判定（跌破止损位 / 超仓）的事实必须出现在陈述里（引擎口径优先）
+                String statement = node.path("statement").asText("").strip();
+                String hardFact = hardFactPrefix(view);
+                if (statement.isBlank() || hasAdvisoryWords(statement)) {
+                    statement = engineStatement(view);
+                } else if (hardFact != null && !statement.contains(hardFactKeyword(view))) {
+                    statement = hardFact + statement;
                 }
                 items.add(new TradingAdviceItem(
                         view.symbol(), view.name(), view.positionPercent(),
-                        suggestion, reason,
+                        statement,
                         parseRulesArray(node.get("rules"))
                 ));
             }
         }
 
-        // LLM 漏掉的持仓补齐为基础数据（无建议字段）——保证 advice 与持仓一一对应
+        // LLM 漏掉的持仓补引擎事实句（不编、不猜——事实永远可给）——保证 advice 与持仓一一对应
         for (PositionView view : views) {
             if (items.stream().noneMatch(i -> i.symbol().equals(view.symbol()))) {
                 items.add(new TradingAdviceItem(
-                        view.symbol(), view.name(), view.positionPercent(), null, null, List.of()));
+                        view.symbol(), view.name(), view.positionPercent(), engineStatement(view), List.of()));
             }
         }
         return new TradingAdviceResponse(items, summary);
@@ -316,16 +317,53 @@ public class TradingAdviceAppService {
         return null;
     }
 
-    private String normalizeSuggestion(String raw) {
-        if (raw == null) return null;
-        String s = raw.strip().toLowerCase();
-        return switch (s) {
-            case "buy", "加仓", "买入" -> "buy";
-            case "hold", "keep", "持有", "继续持有" -> "hold";
-            case "reduce", "减仓", "减持" -> "reduce";
-            case "clear", "sell", "清仓", "卖出" -> "clear";
-            default -> null;
-        };
+    /**
+     * 批6 收窄（验收 10）违禁方向词：出口兜底——陈述命中任一 → 退回引擎事实句
+     * （prompt 已禁止，这里是最后一道闸：LLM 不听话也不让方向词出网关）。
+     */
+    private static final List<String> ADVISORY_WORDS = List.of(
+            "建议", "该买", "该卖", "该加仓", "该减仓", "该清仓", "该止损", "该止盈", "该走",
+            "应该买", "应该卖", "买入吧", "卖出吧", "清仓吧", "考虑买", "考虑卖", "减仓吧", "加仓吧");
+
+    private static boolean hasAdvisoryWords(String text) {
+        if (text == null || text.isBlank()) return false;
+        for (String word : ADVISORY_WORDS) {
+            if (text.contains(word)) return true;
+        }
+        return false;
+    }
+
+    /** 引擎硬判定的事实前缀（批6：陈述里没提关键事实时补在最前；无硬判定 → null）。 */
+    private String hardFactPrefix(PositionView view) {
+        if (view.stopLoss().verdict() == StopLossVerdict.BREACHED) {
+            return view.stopLoss().message() + "。";
+        }
+        if (view.position().verdict() == PositionVerdict.OVER_WEIGHT && view.r81Applicable()) {
+            return view.position().message() + "。";
+        }
+        return null;
+    }
+
+    /** 硬判定事实的关键词（判断 LLM 陈述是否已提到该事实，避免重复前缀）。 */
+    private static String hardFactKeyword(PositionView view) {
+        if (view.stopLoss().verdict() == StopLossVerdict.BREACHED) return "跌破止损位";
+        if (view.position().verdict() == PositionVerdict.OVER_WEIGHT && view.r81Applicable()) return "仓位上限";
+        return null;
+    }
+
+    /** 引擎事实句（批6 兜底）：LLM 陈述缺失 / 出现方向词时，用确定性事实顶上——只陈述、不编。 */
+    private String engineStatement(PositionView view) {
+        StringBuilder sb = new StringBuilder("现价 ").append(plain(view.currentPrice()))
+                .append("，成本 ").append(plain(view.avgCost()))
+                .append("，持仓占比 ").append(plain(view.positionPercent())).append("%。");
+        if (view.stopLossPrice() != null) {
+            sb.append("你设的止损位 ").append(plain(view.stopLossPrice())).append("——");
+        }
+        sb.append(view.stopLoss().message());
+        if (view.position().verdict() == PositionVerdict.OVER_WEIGHT && view.r81Applicable()) {
+            sb.append("；").append(view.position().message());
+        }
+        return sb.toString();
     }
 
     private List<String> parseRulesArray(JsonNode node) {
@@ -342,17 +380,20 @@ public class TradingAdviceAppService {
     // ── 兜底 ──
 
     private TradingAdviceResponse fallback(List<PositionView> views) {
+        // 批6：LLM 挂了也不空口——用引擎事实句顶上（确定性事实永远可给；留痕 source=degraded）
         List<TradingAdviceItem> items = views.stream()
-                .map(v -> new TradingAdviceItem(v.symbol(), v.name(), v.positionPercent(), null, null, List.of()))
+                .map(v -> new TradingAdviceItem(v.symbol(), v.name(), v.positionPercent(),
+                        engineStatement(v), List.of()))
                 .toList();
-        return new TradingAdviceResponse(items, buildFallbackSummary(views));
+        return new TradingAdviceResponse(items,
+                buildFallbackSummary(views) + "（AI 解读暂不可用，逐票给的是引擎按你的规则算的事实）");
     }
 
     private String buildFallbackSummary(List<PositionView> views) {
         BigDecimal totalValue = views.stream()
                 .map(PositionView::marketValue)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        return "当前持有 %d 只标的，总市值 %s 元（建议暂不可用，请稍后重试）"
+        return "当前持有 %d 只标的，总市值 %s 元"
                 .formatted(views.size(), totalValue.setScale(2, RoundingMode.HALF_UP).toPlainString());
     }
 
@@ -467,12 +508,12 @@ public class TradingAdviceAppService {
     private String buildPrompt(String userId, List<PositionView> views,
                                List<TradingRuleEngine.RuleEntry> constraintRules, String strategyOverview) {
         StringBuilder sb = new StringBuilder();
-        // RFC 20260905 A 层：先注入「你的画像」（客观统计），建议对照你自己的历史说话
+        // RFC 20260905 A 层：先注入「你的画像」（客观统计），陈述对照你自己的历史说话
         try {
             String profile = profileService.profileText(userId);
             if (profile != null && !profile.isBlank()) {
                 sb.append(profile).append("\n\n");
-                sb.append("> 提示：给出建议时可对照上面这位用户的画像——若本次操作与他历史中的老毛病相似（如追高/亏损加仓），在 reason 里温和点出「你上次在…」。只讲「你」，不讲市场推荐。\n\n");
+                sb.append("> 提示：写陈述时可对照上面这位用户的画像——若当前处境与他历史中的老毛病相似（如追高/亏损加仓），在 statement 里温和点出「你上次在…」。只讲「你」，不讲市场推荐。\n\n");
             }
         } catch (Exception e) {
             log.warn("建议引擎画像注入失败（不影响建议）| userId={} | {}", userId, e.getMessage());
@@ -486,22 +527,22 @@ public class TradingAdviceAppService {
             if (rule.number() > 80) appendRule(sb, rule);
         }
         // G-3：引擎确定性判定信号（比让 LLM 自行判读更可靠——数据已在引擎算过）
-        sb.append("\n【硬判定信号（引擎确定性判定，必须遵守）】\n");
+        sb.append("\n【硬判定信号（引擎确定性判定——陈述里必须出现这些事实）】\n");
         int signalCount = 0;
         for (PositionView v : views) {
             if (v.stopLoss().verdict() == StopLossVerdict.BREACHED) {
                 sb.append("- ").append(v.name()).append("(").append(v.symbol()).append(")：")
-                        .append(v.stopLoss().message()).append(" → suggestion 必须 clear（R66）\n");
+                        .append(v.stopLoss().message()).append(" → 陈述里必须写明「已跌破止损位」（R66）\n");
                 signalCount++;
             }
             if (v.position().verdict() == PositionVerdict.OVER_WEIGHT) {
                 if (v.r81Applicable()) {
                     sb.append("- ").append(v.name()).append("(").append(v.symbol()).append(")：")
-                            .append(v.position().message()).append(" → suggestion 参考 reduce（R81）\n");
+                            .append(v.position().message()).append(" → 陈述里须对照你设的仓位上限（R81）\n");
                 } else {
                     sb.append("- ").append(v.name()).append("(").append(v.symbol()).append(")：")
                             .append(v.position().message())
-                            .append("（总资产超 100 万，R81 前提不适用——按 R82-R95 配置评估，不强制 reduce）\n");
+                            .append("（总资产超 100 万，R81 前提不适用——按 R82-R95 配置对照，不套 25% 上限）\n");
                 }
                 signalCount++;
             }
@@ -511,9 +552,9 @@ public class TradingAdviceAppService {
         }
         // RFC 20260816 §3.1：止损位/入场日期/买点已注入下方持仓数据，以下为可执行的硬判定口径
         sb.append("\n【止损硬判定（数据已注入，必须按此判定）】\n");
-        sb.append("- 现价 < stopLossPrice（止损位）→ 判定已跌破止损位，suggestion=clear（R66）\n");
-        sb.append("- 入场后 N 天未涨/持续亏损 → R53 候选（reduce/clear 参考）\n");
-        sb.append("- 买点关联应对：B1→持股/白线持有；B2/B3→S1 就走（R120）；SB1→破位严格止损（R46）\n");
+        sb.append("- 现价 < stopLossPrice（止损位）→ 陈述必须写明「已跌破止损位」（R66），不加动作词\n");
+        sb.append("- 入场后 N 天未涨/持续亏损 → 引用 R53 原文陈述事实（不加动作词）\n");
+        sb.append("- 买点关联对照：B1 / B2 / B3 / SB1 只引条文原文陈述（R120 / R46），不给动作\n");
         if (strategyOverview != null) {
             sb.append("\n【交易体系总纲（strategy.md v87）】\n").append(strategyOverview).append("\n");
         }
@@ -596,7 +637,7 @@ public class TradingAdviceAppService {
                 log.warn("铁证①历史统计取数失败（该条不给统计，不编）| userId={} | {}", userId, e.getMessage());
             }
             return new TradingAdviceItem(item.symbol(), item.name(), item.positionPercent(),
-                    item.suggestion(), item.reason(), item.rules(),
+                    item.statement(), item.rules(),
                     new AdviceEvidence(history, numbers, ruleTexts, null));
         } catch (RuntimeException e) {
             log.warn("铁证补全失败（该条建议不带证据返回）| userId={} | symbol={} | {}",
@@ -619,7 +660,7 @@ public class TradingAdviceAppService {
     }
 
     /**
-     * 依据快照（RFC 20260922 A 批 A3）：建议发出**当时**的价 / 持仓占比 / 止损 / 买点 / 动作，
+     * 依据快照（RFC 20260922 A 批 A3）：解读发出**当时**的价 / 持仓占比 / 止损 / 买点 / 陈述，
      * 落进 advice-history 作为铁证④「可追责」的实体。
      *
      * <p>只记录事实，**不含"对错"判断**（"多久回看、怎么算对"需用户拍板）；序列化失败 → null
@@ -633,7 +674,7 @@ public class TradingAdviceAppService {
             node.put("positionPercent", jsonNum(view.positionPercent()));
             node.put("stopLoss", jsonNum(view.stopLossPrice()));
             node.put("buyPoint", view.buyPoint());
-            node.put("suggestion", item.suggestion());
+            node.put("statement", item.statement());
             return objectMapper.writeValueAsString(node);
         } catch (Exception e) {
             log.warn("依据快照序列化失败（该条留痕无 basis）| symbol={} | {}", item.symbol(), e.getMessage());
@@ -648,21 +689,21 @@ public class TradingAdviceAppService {
 
     // ── DTO ──
 
-    /** 单票建议。position_percent 由后端按持仓市值/总市值计算（确定性），suggestion/reason/rules 来自 LLM。 */
+    /** 单票陈述（批6 收窄：suggestion/reason 两字段退役合一为 statement）。
+     *  position_percent 由后端按持仓市值/总资产计算（确定性），statement/rules 来自 LLM 或引擎事实句。 */
     public record TradingAdviceItem(
             String symbol,
             String name,
             @JsonProperty("position_percent") BigDecimal positionPercent,
-            String suggestion,
-            String reason,
+            String statement,
             List<String> rules,
             /** 四要素铁证（RFC 20260922 A 批 A4）：后端补齐；null = 没有持仓视图（纯降级占位行）。 */
             AdviceEvidence evidence
     ) {
-        /** 兼容构造（6 参，旧调用与既有测试零改动）：无铁证。 */
+        /** 兼容构造（5 参）：无铁证。 */
         public TradingAdviceItem(String symbol, String name, BigDecimal positionPercent,
-                                 String suggestion, String reason, List<String> rules) {
-            this(symbol, name, positionPercent, suggestion, reason, rules, null);
+                                 String statement, List<String> rules) {
+            this(symbol, name, positionPercent, statement, rules, null);
         }
     }
 

@@ -179,7 +179,8 @@ public class TradingDecisionNarrator {
     /**
      * 一条持仓的四要素块（尾盘卖点）。
      *
-     * @param action     引擎判定的动作（如「清仓（R66）」）——确定性判定，不由 LLM 生成
+     * @param action     引擎判定的**陈述式事实**（如「已跌破你设的止损位 4.9（R66）」）——确定性判定，
+     *                   不由 LLM 生成；只陈述、不含动作词（design-final §11.6 B1：不得出现「清仓」类动作）
      * @param ruleRefs   该动作引用的规则号（③ 逐字引用；一个都取不到 → 本条不发）
      */
     public Optional<Block> sellPointBlock(String userId, Position p, MarketData quote,

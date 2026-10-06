@@ -69,6 +69,11 @@ class BriefAppServiceTest {
     }
 
     private BriefAppService buildService(TagIndexService tagIndexService) {
+        return buildService(tagIndexService, pluginService("trading"));
+    }
+
+    private BriefAppService buildService(TagIndexService tagIndexService,
+                                         com.adaiadai.core.kernel.plugin.PluginService plugins) {
         MemoryService memoryService = new MemoryService(fileStorage);
         TradingReviewFileRepository reviewRepo = new TradingReviewFileRepository(fileStorage);
         // 2026-08-26 复盘卡点：hasTradingActivity 依赖 TradingAppService.getDailyTradeSummary——
@@ -82,12 +87,13 @@ class BriefAppServiceTest {
                 aiClient, new TradingReviewAppService(
                         recordRepository, null, mock(AccountSnapshotRepository.class), null, null, reviewRepo, mock(TradingLotService.class),
                         trading, mock(com.adaiadai.core.domain.trading.AdviceHistoryRepository.class)),
-                new DomainActivityService(recordRepository),
+                // §11.3 面5：活动度信号与简报同门控（插件关 → 交易域整条不注入）
+                new DomainActivityService(recordRepository, plugins),
                 new TagRecommendationService(tagIndexService),
                 todoRepository,
                 rhythmRepository,
                 // G-2：PluginService（trading 插件开启——简报交易活动信号测试用）
-                pluginService("trading"),
+                plugins,
                 // REVIEW P2-交易73：真实判据（走 mock 的 TodoRepository）——测「有未完成才提 / 无则沉默」
                 new ActionReviewService(todoRepository, new TodoAppService(todoRepository, memoryService))
         );
@@ -365,10 +371,72 @@ class BriefAppServiceTest {
         assertFalse(prompt.contains("动作一"), "超出 MAX_BRIEF_TODOS 的动作不注入（有界）");
     }
 
-    /** 记录最后一次 prompt 的 AiClient 装饰器（其余行为委托 TestAiClient）。 */
+    // ── §11.3 六面闸门·面5（2026-10-06）：关插件 → 交易记录/记忆不进简报（读侧过滤；可逆）──
+
+    @Test
+    void generateBrief_pluginOff_hidesTradingRecordsAndMemories_reversible() {
+        recordRepository.save("default", new ContentRecord("rec_trade_brief", "record", "user_input",
+                "买入 京东方A", "买入 京东方A 1000 股 @5.20", List.of(), LocalDateTime.now(), "log", null, "trading"));
+        MemoryService memories = new MemoryService(fileStorage);
+        memories.persist("default", new Memory("mem_trade_brief", "rec_trade_brief", null, "insight",
+                "买入了京东方A，成本 5.20", null, null, List.of("交易"), "neutral", false,
+                null, LocalDateTime.now(), null, false, null, null, null));
+
+        TagIndexService tagIndexService = new TagIndexService(fileStorage);
+
+        BriefAppService off = buildService(tagIndexService, pluginService()); // 无插件
+        off.generateBrief("default");
+        String offPrompt = recordingAi.lastPrompt;
+        assertNotNull(offPrompt, "应捕获到简报 prompt");
+        assertFalse(offPrompt.contains("京东方"), "关插件：交易记录不进简报（记录段）");
+        assertFalse(offPrompt.contains("买入了京东方A"), "关插件：交易记忆不进简报（记忆段）");
+
+        BriefAppService on = buildService(tagIndexService, pluginService("trading"));
+        on.generateBrief("default");
+        String onPrompt = recordingAi.lastPrompt;
+        assertTrue(onPrompt.contains("买入 京东方A"), "重开插件即恢复：记录段（可逆）");
+        assertTrue(onPrompt.contains("买入了京东方A，成本 5.20"), "重开插件即恢复：记忆段（可逆）");
+    }
+
+    // ── P1-交易91（2026-10-06）：停插件不得被 5 分钟缓存旁路 ──
+
+    @Test
+    void generateBrief_pluginDisabled_ignoresCacheThatIncludedTrading() {
+        // 5 分钟缓存不得旁路 §11.3 面5 门控：开插件生成（缓存含交易域）→ 关插件后即使缓存未过期，
+        // 也必须作废重生成，且 Feed 的 getCachedBrief 不得吐旧缓存。
+        java.util.concurrent.atomic.AtomicReference<java.util.List<String>> pluginList =
+                new java.util.concurrent.atomic.AtomicReference<>(java.util.List.of("trading"));
+        com.adaiadai.core.kernel.account.AccountRepository accounts =
+                mock(com.adaiadai.core.kernel.account.AccountRepository.class);
+        when(accounts.findById(any())).thenAnswer(inv -> java.util.Optional.of(
+                new com.adaiadai.core.kernel.account.Account(
+                        "default", com.adaiadai.core.kernel.account.Account.ROLE_USER, true,
+                        java.time.LocalDate.of(2026, 8, 2), pluginList.get())));
+        com.adaiadai.core.kernel.plugin.PluginService plugins =
+                new com.adaiadai.core.kernel.plugin.PluginService(accounts,
+                        new com.adaiadai.core.kernel.plugin.PluginRegistry());
+        BriefAppService svc = buildService(new TagIndexService(fileStorage), plugins);
+
+        svc.generateBrief("default");                    // ① 插件开着：生成并缓存（含交易域）
+        assertEquals(1, recordingAi.calls);
+
+        // ② 关插件：缓存未过期但含交易域 → 必须作废。
+        // 注意 invalidate：PluginService 还有自己的 30s TTL 缓存——真实路径（AccountController
+        // 改插件）关完必调 invalidate；本用例走同一条路，否则测的就不是 BriefAppService 的门控。
+        pluginList.set(java.util.List.of());
+        plugins.invalidate("default");
+        assertEquals("", svc.getCachedBrief("default"), "Feed 不得拿到含交易域的旧缓存");
+        svc.generateBrief("default");
+        assertEquals(2, recordingAi.calls, "含交易域的旧缓存不得命中——必须重新生成（不带交易域）");
+        assertFalse(svc.getCachedBrief("default").isEmpty(), "重生成的缓存（不含交易域）可正常命中");
+    }
+
+    /** 记录最后一次 prompt 的 AiClient 装饰器（其余行为委托 TestAiClient）；calls = understand 被调次数（缓存命中时不应增长）。 */
     private static final class RecordingAiClient implements AiClient {
         private final AiClient delegate;
         String lastPrompt;
+        /** P1-交易91：缓存命中时不会调 AI —— 用它证明「作废重生成」而非「命中旧缓存」。 */
+        int calls;
 
         RecordingAiClient(AiClient delegate) {
             this.delegate = delegate;
@@ -376,6 +444,7 @@ class BriefAppServiceTest {
 
         @Override
         public AiUnderstanding understand(ContextPackage contextPackage) {
+            this.calls++;
             this.lastPrompt = contextPackage.prompt();
             return delegate.understand(contextPackage);
         }

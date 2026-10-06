@@ -366,4 +366,30 @@ class ContextEngineTest {
         assertFalse(prompt.contains("待行动事项"), "完成后不再捞回（doneAt 非空）");
         assertFalse(prompt.contains("把云南锗业的白线调出来看看"));
     }
+
+    // ── §11.3 六面闸门·面6（2026-10-06）：关插件 → 「相关历史记录」不含交易记录（可逆）──
+
+    @Test
+    void relatedRecords_pluginOff_hidesTradingRecords_reversible() {
+        when(identity.load(any())).thenReturn(Optional.empty());
+        when(tagIndex.findRelatedIds(any(), any(), anyInt())).thenReturn(List.of());
+        when(memory.recent(any(), anyInt())).thenReturn(List.of());
+        when(search.search(any(), anyString())).thenReturn(List.of());
+        // 存量交易记录（关插件前写下的）——回退分支「最近记录」不得把它拼进上下文
+        ContentRecord trade = new ContentRecord("rec_trade_ctx", "record", "user_input", "买入 京东方A",
+                "买入 京东方A 1000 股 @5.20", List.of(), LocalDateTime.now(), "log", null, "trading");
+        when(records.findAll(any())).thenReturn(List.of(trade));
+
+        grantPlugins("alice"); // 无插件
+        ContextEngine off = new ContextEngine(identity, records, tagIndex, memory, cards,
+                List.of(), List.of(), search, pluginService(), ContextAssemblyPolicy.legacy());
+        String offPrompt = off.compose("alice", "note", record("今天去公园散步了"), null).prompt();
+        assertFalse(offPrompt.contains("京东方"), "关插件：AI 上下文不得读到交易记录（面6）");
+
+        grantPlugins("alice", PluginRegistry.PLUGIN_TRADING);
+        ContextEngine on = new ContextEngine(identity, records, tagIndex, memory, cards,
+                List.of(), List.of(), search, pluginService(), ContextAssemblyPolicy.legacy());
+        String onPrompt = on.compose("alice", "note", record("今天去公园散步了"), null).prompt();
+        assertTrue(onPrompt.contains("京东方"), "重开插件即恢复（可逆）");
+    }
 }

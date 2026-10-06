@@ -1,6 +1,8 @@
 package com.adaiadai.core.kernel.timeline;
 
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
+import com.adaiadai.core.kernel.plugin.PluginRegistry;
+import com.adaiadai.core.kernel.plugin.PluginService;
 import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.ImageQaFormatter;
@@ -45,10 +47,21 @@ public class TimelineProjection {
 
     private final RecordRepository recordRepository;
     private final CardFileRepository cardRepository;
+    /** §11.3 六面闸门（2026-10-06）：关插件时交易条目不进时间线（读侧过滤；数据保留不删）。可空=兼容构造。 */
+    private final PluginService pluginService;
 
-    public TimelineProjection(RecordRepository recordRepository, CardFileRepository cardRepository) {
+    /** 主构造（Spring 注入）：带插件门控。 */
+    @org.springframework.beans.factory.annotation.Autowired
+    public TimelineProjection(RecordRepository recordRepository, CardFileRepository cardRepository,
+                              PluginService pluginService) {
         this.recordRepository = recordRepository;
         this.cardRepository = cardRepository;
+        this.pluginService = pluginService;
+    }
+
+    /** 兼容构造（测试/旧调用）：不接插件门控——行为与历史版本逐字一致。 */
+    public TimelineProjection(RecordRepository recordRepository, CardFileRepository cardRepository) {
+        this(recordRepository, cardRepository, null);
     }
 
     /**
@@ -71,6 +84,7 @@ public class TimelineProjection {
         return all.stream()
                 .filter(r -> !chatDropIds.contains(r.id()))
                 .filter(r -> !mediaReferencedIds.contains(r.id()))
+                .filter(r -> !hiddenTrading(userId, r))
                 .filter(r -> !("image".equals(r.type())
                         && qaReferencedImageDates.containsKey(r.id())
                         && qaReferencedImageDates.get(r.id()).equals(r.createdAt().toLocalDate())))
@@ -174,6 +188,12 @@ public class TimelineProjection {
      */
     private Set<String> collectMediaReferencedIds(List<ContentRecord> records) {
         return com.adaiadai.core.kernel.record.MediaAttachments.referencedIds(records);
+    }
+
+    /** §11.3：关插件时交易记录过滤（读侧；存量与新增一致地被隐藏，可逆——重开即恢复）。 */
+    private boolean hiddenTrading(String userId, ContentRecord r) {
+        return pluginService != null && "trading".equals(r.domain())
+                && !pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING);
     }
 
     // ── 条目构建 ──
