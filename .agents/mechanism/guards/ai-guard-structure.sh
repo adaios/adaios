@@ -211,6 +211,41 @@ for name in SUBS:
         fails.append("S5 %s/: 两件套有 %d 行整行重复（同一知识应只在一处详述）如「%s」"
                      % (name, len(dup), sorted(dup)[0][:44]))
 
+# ── S6：总纲文件里的关键数字 ⇄ 真值 对拍（2026-10-06 加）──
+# 起因：总纲收口批发现 README 写 roles **12**（实际 15）· rfc **68**（实际 67）· 顶层 **6**（实际 7，
+#   漏了 workspace）——「数字漂移」此前**没有任何守卫**（S2 只管 _index.md 的「清单（N 项）」）。
+#
+# ⚠️ 为什么**不**通用化（把"认裸路径 / 认任意数字"加进来）：实测若让 M4 认裸路径会报 **123 处**，
+#   且绝大多数是**上下文缩写**（`process/review-driven.md` 实指 `rules/process/…`、
+#   `trading/positions.md` 实指 `data/` 下的、`records/YYYY/MM/…` 是示意路径）——
+#   守卫一旦被噪音淹没就失去信号。故这里**只对拍有明确真值的少数几类**、且**只扫总纲文件**。
+#   新增数字断言时，在 TRUTH 与 NUM_PAT 各加一处即可。
+def _md_count(sub):
+    """数某目录下的技能包——**两种布局都算**（扁平 `<name>.md` + 官方目录 `<name>/SKILL.md`），
+       与 ai-guard-skills.sh 判据一致（只数一种会漏计）。"""
+    d = AG / sub
+    if not d.is_dir():
+        return 0
+    return len([f for f in list(d.glob('*.md')) + list(d.glob('*/SKILL.md'))
+                if f.name not in ('_index.md', '_directory.md')])
+
+# ⚠️ 「技能包」刻意**不做**数字断言：`（15 个技能包）` 这类措辞里 15 往往指**角色数**而非
+#    技能包总数（19）——语义有歧义 ⇒ 断言只会误报。只对语义无歧义的「顶层」「角色」对拍。
+TRUTH = {
+    '顶层': len([d for d in AG.iterdir() if d.is_dir() and str(d.relative_to(AG)) not in _IGNORED]),
+    '角色': _md_count('toolkit/roles'),
+}
+NUM_PAT = re.compile(r'（\*{0,2}(\d+)\*{0,2}\s*个(顶层|角色)\*{0,2}）')
+for _f in (ROOT / '.agents/README.md', ROOT / 'AGENTS.md',
+           ROOT / '.agents/rules/assets/ai-context-engineering.md'):
+    if not _f.is_file():
+        continue
+    for m in NUM_PAT.finditer(_f.read_text(encoding='utf-8')):
+        n, kind = int(m.group(1)), m.group(2)
+        if kind in TRUTH and n != TRUTH[kind]:
+            fails.append("S6 %s: 「%d 个%s」与实际 %d 不符"
+                         % (_f.relative_to(ROOT), n, kind, TRUTH[kind]))
+
 if FIX and fixed:
     print("STRUCTURE-GUARD: 已重刷 %d 个 _index.md 清单" % len(fixed))
     for x in fixed:

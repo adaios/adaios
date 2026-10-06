@@ -3,9 +3,9 @@ title: 文档契约审查检查清单
 description: docs-contract-reviewer 逐条检查项（人也能用）——契约真相源/RFC 决策漂移/文档资产健康
 version: 1
 created: 2026-08-15
-updated: 2026-10-01
+updated: 2026-10-06
 status: active
-lines: 108
+lines: 109
 depends-on: []
 related: [../roles/docs-contract-reviewer.md]
 tags: [review, checklist, docs]
@@ -46,6 +46,7 @@ tags: [review, checklist, docs]
 | D10 | 文件合并/移动/删除后，grep 全库对旧路径的引用（排除 inbox/历史），确保无断链、无重复 | 2026-08-02 文档精简：inbox 归位 17 文件 + frontend-reference 合并 + data-flow 并入 system-arch；曾现 ai-native 双份/AI_CONTEXT 孤儿 |
 | D11 | 新增子项目 AGENTS.md 的运行参数（端口/构建命令）与 `apps/adai-web/scripts/serve_web.sh` 跨文档对齐 | adai-web AGENTS.md `:8081` vs serve 脚本 `:8082`（P3，待修）|
 | D12 | api-spec Response 示例字段名直接对照后端 record/@JsonGetter 序列化名 + 前端 DTO fromJson 读取 key，三方对拍 | adai-web `positionCount` 后端无此字段 + portfolio 示例 `totalMarketValue` 失真（P1，待修）|
+| D13 | **总纲对拍**（2026-10-06 加）：`.agents/README.md` · `AGENTS.md` · `rules/assets/ai-context-engineering.md` 三份总纲里 —— ① **路径引用逐条可解析**（尤其**缩写写法**：`assets/xxx` 实为 `rules/assets/xxx`、`process/xxx` 实为 `rules/process/xxx`）② **数字与真值一致**（顶层 **7** · 角色 **15** · rfc **67** · guards **15**；其中「顶层/角色」已由 `ai-guard-structure` 的 **S6** 机械对拍，其余靠本官人肉） | 总纲收口批：README **两套结构并存** + `assets/xxx` **5 处断链** + roles 12 / rfc 68 / 顶层 6 **全线漂移**——全部是人肉发现的，守卫当时一个都没抓到（2026-10-06）|
 | D13 | RFC frontmatter 一致性：`.agents/direction/rfc/*.md` 必须有 YAML frontmatter，缺则污染 `/project/status` rfcItems 状态 | 多模态 RFC 无 frontmatter → status=unknown（P1 #143，待修）|
 | D14 | 外部模型名/版本号跨文档对拍：roadmap/VISION/子项目 AGENTS.md 提及的外部模型与 `application.yml` 配置逐一对拍 | roadmap 仍写 GLM-4.6V-Flash（P1 #142，待修）|
 | D15 | README 索引完整性脚本化：`for f in .agents/direction/rfc/*.md; do grep -q "$(basename $f .md)" docs/README.md || echo 未登记` | README 缺 3 篇 RFC（P1 #141，待修）|
