@@ -85,7 +85,7 @@ flowchart TB
 | 原则边界（B1–B9）| `.agents/rules/assets/boundaries.md` | `ai-guard-meta` |
 | 已知坑 + 复发信号（**37 章**）| `.agents/rules/assets/pitfalls.md` | `ai-guard-meta` |
 | 架构决策 ADR（**append-only**：改动写新记录 + superseded 链）| `.agents/rules/assets/adr/*.md` | `ai-guard-meta`（图谱）|
-| 方案决策 RFC（**67 份**，含未采纳的备选与理由；另有 3 份 superseded 在 `docs/archive/`）| `.agents/direction/rfc/*.md` | `ai-guard-feature`（status 枚举）|
+| 方案决策 RFC（**68 份**，含未采纳的备选与理由；另有 3 份 superseded 在 `docs/archive/`）| `.agents/direction/rfc/*.md` | `ai-guard-feature`（status 枚举）|
 | 业务方向（**唯一蓝图**）| `.agents/direction/VISION.md` · `.agents/direction/product-roadmap.md` | `ai-guard-roadmap` |
 
 > ⚠️ **L2 现在分在两家**（`.agents/rules/assets/` 放"约束"，`.agents/direction/rfc/` 放"决策"）——这是**历史形成的**（工程侧 vs 文档侧各自演化）。**2026-10-04 决策：分家不动**——各自 `_index` 写明分工（**RFC 是过程，ADR 是结论**），合并代价（44 处引用）大于收益；本表按层呈现，正是为了让这个分家**可见**而不是被目录结构掩盖。

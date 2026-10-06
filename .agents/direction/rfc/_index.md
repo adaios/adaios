@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-10-06
 status: active
-lines: 100
+lines: 101
 depends-on: []
 related:
   - ../_index.md
@@ -21,7 +21,7 @@ tags: [meta, index, rfc]
 > - **ADR（`.agents/rules/assets/adr/`）＝ 架构决策**：少量、长期、**append-only**（改动写新记录 + `supersededBy` 链），回答「为什么这么定」。
 > - 判据：**RFC 是过程，ADR 是结论**——一个 RFC 被接受后，若构成长期架构约束，就沉淀为一条 ADR。
 
-## 文件清单（67 项）
+## 文件清单（68 项）
 
 | 文件 | 职责 | 状态 |
 |:-----|:-----|:----:|
@@ -92,6 +92,7 @@ tags: [meta, index, rfc]
 | `20260914-ios-share-extension.md` | iOS 分享扩展（Share Extension）——B站/抖音分享面板直达阿呆：新增 Extension target + App Groups 共享 `learn:digest` 限权令牌，扩展自进程内提交 `/learn/digest`、**不拉起主 App**（2026-09-14 拍板：反馈「已交给阿呆，正在读…」约 1 秒自动关 / 令牌签发时自动写入 / 只放「整理」一个动作）| approved |
 | `20260915-share-extension-credentials.md` | 分享扩展凭据方案（待拍板）——把「用户手点一次签发」改为**登录后自动签发 + 自动续期**（保住「扩展只拿限权令牌」的取舍，同时去掉手动步骤），并可选把凭据通道从 App Group **明文容器**升级为**共享 Keychain**；起因是 2026-09-15 TestFlight 首次实装真机复验暴露「别人装完、登录了、分享却用不了，且不知道原因」——业界共识是登录即自动写入、用户零感知 | draft |
 | `20260916-first-meeting.md` | 第一次见面——新用户冷启动批：①admin 账号页补 **learn 插件开关**（后端早已注册，前端硬编码漏项，学习功能此前无处可勾）；②对话流空态改**阿呆先开口 + 3 个可点开场问句**（走问答路径，插件默认全关时唯一零配置能跑通的能力面）并注入**能力边界 prompt**（禁越界承诺）；③档案页「**阿呆对你的了解**」（`GET /memory/insights` 聚合长期沉淀的 patterns/preferences + 确认回流 identity）；含昵称语义修正（「姓名」→「阿呆怎么称呼你」、默认值不再用 AI 自己的名）| implemented |
+| `20261006-knowledge-reflow.md` | 知识回流固定流程（**draft** · 待拍板 ★1–★4）——落地 `ai-context-engineering` §4.5「一次知识回流（对话 → L2）」（该节标「待建」至今）：定义 S1–S6 信号分类与落点、五步流程（AI 记候选区 → 出「待沉淀清单」→ **人确认门** → 落盘 → 守卫验证）、四条防线与不做清单；**核心硬约束 = 禁 AI 自动写入 L2** |
 
 ## 过期判断
 

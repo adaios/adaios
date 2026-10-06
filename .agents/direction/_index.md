@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-04
 updated: 2026-10-06
 status: active
-lines: 102
+lines: 103
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index, direction]
@@ -17,7 +17,7 @@ tags: [meta, index, direction]
 
 **职责**：**① 方向**——回答「**为什么做 · 往哪走**」。本区是 AI 每次会话的**首读**（`AGENTS.md` 规则 1）。
 
-## 文件清单（69 项）
+## 文件清单（70 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -89,6 +89,7 @@ tags: [meta, index, direction]
 | `rfc/20261003-skill-conformance-and-supply-chain.md` | 2026-10-03 行业调研（AGENTS.md / Agent Skills / MCP 现状）结论：技能包… | draft |
 | `rfc/20261003-trading-cash-position-linkage.md` | 用户 2026-10-03「资金和持仓是强关联的——转入后有现金才能买，卖出后才有现金才能转出」的账本契约。把「… | draft |
 | `rfc/20261003-trading-plan-and-review-loop.md` | 用户 2026-10-03「我要整理第二天的操作规则（买和卖），到时候结合起来提醒我；必须像开公司一样认真对待每… | draft |
+| `rfc/20261006-knowledge-reflow.md` | 落地 `ai-context-engineering` §4.5「一次知识回流（对话 → L2）」的设计（该节自… | draft |
 | `rfc/20261006-trading-positioning-expansion.md` | 承接 RFC 20260902「交易记忆」定位的增量提案——把 trading 从 owner 专属扩为「人人可… | approved |
 
 ## 过期判断
