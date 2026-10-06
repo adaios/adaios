@@ -3,9 +3,9 @@ title: 增量深审流程
 description: /review 的通用版——按改动范围派对应审查官，滚动更新 REVIEW.md
 version: 2
 created: 2026-08-15
-updated: 2026-10-01
+updated: 2026-10-06
 status: active
-lines: 146
+lines: 147
 depends-on:
   - ../../frontmatter-spec.md
 related:
@@ -136,6 +136,7 @@ bash .agents/mechanism/guards/ai-guard-meta.sh       # 元治理：frontmatter �
 - 新问题追加对应优先级区；更新头部（日期/基线/模式）
 - 已修复区只留最近 10 条
 - **归口强制（2026-08-23，防游离双轨）**：审查报告落盘（`docs/records/audits/`）**必须**同时——①未修项逐条进 REVIEW.md 对应优先级表（含 `⏸ 已搁置`/`⚠️ 复核` 标注）；②已在 REVIEW 登记的报告在顶部 `<!-- unfixed-gate -->` 补一行 `报告名 → 归口编号`；③跑 `bash .agents/mechanism/guards/ai-guard-unfixed.sh` 验证 ③ 游离 = 0 且 ④ 对账矛盾归零（表状态与已修复区一致，出表项必须回填 `✅`）——未归口不许收工
+- **任务在制品期口径（2026-10-06 编码段首跑实测补）**：审查发生在某任务**在制品期**（产物在 `workspace/<任务名>/`、代码未提交、未收工）时——报告先落 `workspace/<任务名>/`（**不落** `docs/records/audits/`、**不直接改** `REVIEW.md`）；未修项登记该任务账本「待交接」；编号**预分配**（接续现最大号 + 注明「誊写时核对」）。**收工时**再迁归档区 + 誊写 `REVIEW.md` + 补 `<!-- unfixed-gate -->`——归口时点顺延到收工，**不许漏**。
 
 ## 6. 沉淀检查点
 

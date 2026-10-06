@@ -3,9 +3,9 @@ title: feat/trading-plugin · 分支账本
 description: ② 交易线的分支账本——本批目标 + 并行作业纪律 + 待交接；一个分支一个目录（feat/trading-plugin → trading-plugin/）；合并时搬运完即删整目录
 version: 1
 created: 2026-10-05
-updated: 2026-10-05
+updated: 2026-10-06
 status: active
-lines: 67
+lines: 71
 depends-on: []
 related: [../../records/REVIEW.md, ../../rules/guides/git-workflow.md, ../../rules/guides/worktree-workflow.md]
 tags: [workspace, task, trading, ledger]
@@ -41,18 +41,22 @@ tags: [workspace, task, trading, ledger]
 
 ## 待交接给主会话（合并后改外围）
 
-- **`routine.md` 的导入顺序**：改成「**资金股份查询 → 持仓股 → 历史成交查询**」（2026-10-05 用户定：**钱先于货**）。
+- ✅ **已完成（2026-10-06 · `8bb5291b`）**——**`routine.md` 的导入顺序**：改成「**资金股份查询 → 持仓股 → 历史成交查询**」（2026-10-05 用户定：**钱先于货**）。
   机制上两份快照互为锚定、**谁先都行**（锚定日取较晚者）——统一口径即可、非硬约束；硬约束仍是**快照在流水之前**。
-- 顺带：`REVIEW.md` **P2-交易81** 正文里引的旧顺序（「持仓股 → 资金股份 → 历史成交」）需同步。
-- **`REVIEW.md` P2-交易66**（总盈亏依赖手工本金、不可自证）：**现在有解了**——通达信「**资金流水查询**」里有银行转存/转取事件，**净投入可由事件推出**（2026-10-05 实测与已核实真值一致）→ 该条从「**无解**」变成「**待实施**」，请主会话据此更新。
+- ✅ **已完成（2026-10-06 · `8bb5291b`）**——顺带：`REVIEW.md` **P2-交易81** 正文里引的旧顺序（「持仓股 → 资金股份 → 历史成交」）需同步。
+- ✅ **已完成（2026-10-06 · `8bb5291b`）**——**`REVIEW.md` P2-交易66**（总盈亏依赖手工本金、不可自证）：**现在有解了**——通达信「**资金流水查询**」里有银行转存/转取事件，**净投入可由事件推出**（2026-10-05 实测与已核实真值一致）→ 该条从「**无解**」变成「**待实施**」，请主会话据此更新。
 - **需求文稿已定稿**（2026-10-06，`workspace/trading-plugin/requirement.md`）→ 合并后由主会话**归档到 `.agents/direction/rfc/`**（或 `knowledge/features/`）**并删本分支目录**。
 - ~~新角色~~ **已完成**（2026-10-06）：`docs-requirement-reviewer` 已建（`roles/` + `checklists/`）+ 注册 `ai-sync-agents.sh` + `review-driven.md` 入口加环。
 - ~~流程问题 12 条~~ **已完成**（2026-10-06）：12 条改进已在本分支落地（`review-driven.md` · **12 个角色补 C1** · `workspace` 契约 · `_templates/`）——逐条状态见 `_meta/process-issues-20261006.md` §三。
 - **目录重构已完成**：`workspace/` 从「按产物阶段」改成「**按分支任务**」；旧 `requirements/` `designs/` `tasks/` 三目录与契约**已在本分支删除**（合并后生效）。
-- **★ S2 落点两件（编码准入的硬条件 · 2026-10-06 新出）**——本分支只出**草稿**，合并后由主会话搬移：
+- ✅ **已完成（2026-10-06 · `c1bf7955`）**——**★ S2 落点两件（编码准入的硬条件 · 2026-10-06 新出）**：
   ① `_meta/20261006-trading-positioning-expansion.md` → **搬进 `.agents/direction/rfc/`**，按件内「搬到 `rfc/` 时怎么改 frontmatter」那节改格式（`draft → approved` 须**人定稿后**改），并补 `rfc/_index.md`；
   ② `_meta/roadmap-diff-trading-20261006.md` → **按三条改动落进 `product-roadmap.md`**（L6 行 · Trading OS 行 · 挂 `P2-交易81`）。
-  **前置**：RFC 里 ★1/★2/★3 三处**待 adai 拍板**——拍完才算定稿，两件齐备前**不进编码**（见 `design-final` §13.3）。
+  **前置**：RFC 里 ★1/★2/★3 三处**待 adai 拍板**——拍完才算定稿，两件齐备前**不进编码**（见 `design-final` §13.3）。**（2026-10-06 已消：★1–★4 已拍板 · 两件已落位）**
+- **★ 编码段 deep 深审的誊写与归档（2026-10-06 · 报告 `trading-plugin/review-code-deep-20261006.md`）**——**14 条已于同日全修**（修复批落点见报告 §三；验证：后端 202 suites / **2597** tests · app 441 / web 410 / admin 73 全绿）。报告为在制品（落 `workspace/trading-plugin/`），**收工时**统一办：
+  ① **誊写 `REVIEW.md`**：14 条**预分配**编号（P1-交易89~94 · P2-交易95~100 · P2-admin1 · P2-工程16，誊写时核对主仓库占用）→ P1 段注记 + 下方大表 14 行 + 「最近审核」表一行 + `unfixed-gate` 一行（注明「已修出表」）；
+  ② **报告归档** → `docs/records/audits/` 下（文件名 `2026-10-06-trading-plugin-code-review.md`）；
+  ③ **收工契约账**（align FAIL，ship 前必补）：api-spec 补 11 新端点 + 升版 · status.md 测试数 2462→**2597**、端点数 173→186。
 
 ## 运行环境（本 worktree 特有）
 
