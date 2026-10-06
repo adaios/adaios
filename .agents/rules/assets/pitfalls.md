@@ -3,9 +3,9 @@ title: 已知坑归集（Pitfalls）
 description: 跨 checklists 归集的「踩过的坑」索引——症状/根因/修复/复发信号，按域分组；完整逐条在 checklists 活文档
 version: 1
 created: 2026-08-15
-updated: 2026-10-05
+updated: 2026-10-06
 status: active
-lines: 336
+lines: 342
 depends-on:
   - ../../toolkit/checklists/ai-guard-checklist.md
 related:
@@ -334,3 +334,9 @@ tags: [ai, assets, pitfalls]
 | 坑 | 症状 | 根因 | 修复 | 状态 | 复发信号 |
 |:---|:-----|:-----|:-----|:----:|:---------|
 | **仓库内 worktree 让 IDE 顺着父目录扫到主仓库，再撞上「两个 Gradle 版本」** | IDEA 打开 `.worktrees/<线>` 后 Gradle 报冲突；Gradle 面板出现**两个同名 `adai-core`**（其中一条路径是 `$PROJECT_DIR$/../../services/adai-core`）；IDEA 日志有 `Failed to stop Gradle daemons during project close` | **两条原因叠加**：① worktree 在**主仓库内部** ⇒ IDE 往上级扫到主仓库的**同一个模块**，把它也当外部 Gradle 项目链接；② 本仓库有**两个 Gradle 版本**——后端 `services/adai-core` **8.14.5** · Flutter Android 子工程 `apps/*/android` **9.1.0**（由 Flutter 插件链接），两个版本的 daemon 同时启动会抢同一份 `~/.gradle/daemon/registry.bin` 的锁 | 两份 `.idea/gradle.xml`（主仓库 + 该线）各**只留** `services/adai-core`，把 `apps/*/android` 与 `../../services/adai-core` **Unlink** 掉（`.idea/` 是本机状态，改完 IDEA 按它走、不会自动加回）。要出 Android 包用命令行 `flutter build apk`——不依赖 IDE 的 Gradle 集成 | ✅ 已修（2026-10-05，两处工作副本各验「Gradle 面板只剩一个」） | 新建 worktree / 换机 / IDEA 重新导入后，Gradle 面板里**多于一个**项目；日志出现 `Timeout waiting to acquire shared lock on daemon addresses registry`。**根治「IDE 扫到主仓库」只有把 worktree 放到仓库外**（见 `worktree-workflow.md` §五） |
+
+## 三十七、目录型 `.gitignore` 规则不匹配符号链接（2026-10-06 worktree link 模式）
+
+| 坑 | 症状 | 根因 | 修复 | 状态 | 复发信号 |
+|:---|:-----|:-----|:-----|:----:|:---------|
+| **`data/*/xxx/` 带尾斜杠 = 只匹配目录，而 git 不把符号链接当目录** | worktree（**link 模式**）的 `git status` 冒出 **12 条** `?? data/...` 未跟踪——全是 `ai-worktree-prep.sh` 链过来的**符号链接**；而主仓库与 copy 模式的线**干干净净** | `.gitignore` 里 `data/*/records/` 这类规则**带尾斜杠**，git 语义是「只匹配目录」；而 `data/adai/records` 在 link 模式下是**符号链接**（`lrwxr-xr-x`），git 眼里是"文件" ⇒ 规则不命中。另有三条（`data/admin` · `data/alice` · `data/family`）**根本没有规则**——其**内容**被按类型的规则盖住，但**目录/链接本身**无人管 | 该段规则**一律去尾斜杠**（不带斜杠同时匹配文件与目录 ⇒ 链接也命中；匹配面更大 = 方向**更安全**）+ 补三条用户层目录规则。⚠️ **不能**图省事写成 `data/*/`：那会排除 `data/adai/` 这个**父目录**，而 git 规则是「**父目录被排除后，其子文件无法再被 `!` 重新包含**」⇒ 会连要入库的 `data/adai/identity/profile.sample.md` 一起干掉 | ✅ 已修（2026-10-06）：① 线 status **12 → 0 条**；12 条逐条 `check-ignore` 均命中新规则；白名单 `profile.sample.md` 仍 `rc=1` 未被忽略；**反向验证**（改回带斜杠 → 未命中、噪音立刻回来；复原 → 归零） | 新建 / 新 clone 的 worktree 里 `git status` 出现成片 `?? data/...`；`git check-ignore -v <路径>` 返回 **rc=1**；或有人把规则"优化"成 `data/*/` 通配（会连带干掉 sample 白名单）。另见 `worktree-workflow.md` §二 的 link/copy 说明 |
