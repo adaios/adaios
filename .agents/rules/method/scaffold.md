@@ -3,9 +3,9 @@ title: 新项目脚手架（scaffold）
 description: init-ai-engineering.sh 设计——新项目一条命令搭好 AI 工程流水线（hooks + guard + 流程文件 + CI 模板）
 version: 1
 created: 2026-08-16
-updated: 2026-10-03
+updated: 2026-10-06
 status: active
-lines: 79
+lines: 82
 depends-on:
   - README.md
   - pipeline.md
@@ -24,20 +24,23 @@ tags: [ai, method, scaffold]
 ```
 init-ai-engineering.sh <项目名>
 │
-├── ai-engineering/           ← 三层结构（模板）
-│   ├── README.md              定位 + 切入点图谱
-│   ├── frontmatter-spec.md    元数据契约
-│   ├── ai-guard-meta.sh          结构门禁（模板，自动适配项目）
-│   ├── ai-guard-align.sh         内容对齐（模板，自动适配项目）
-│   ├── assets/                规范/边界/ADR/坑（空模板）
-│   ├── workflow/              discuss→design→develop（模板）
-│   ├── process/               ship→review→audit（模板）
-│   └── state/                 状态指针（模板）
-├── AGENTS.md                  AI 入口（模板）
-├── .githooks/pre-commit       四层门禁（模板）
-├── .agents/mechanism/scripts/ai-setup-hooks.sh     hooks 启用
-└── .gitlab-ci.yml             CI 模板（可选）
+├── .agents/                    ← 7 顶层结构（照参考实现，按需裁剪）
+│   ├── README.md               定位 + 七顶层速查
+│   ├── frontmatter-spec.md     元数据契约
+│   ├── direction/              方向与决策（VISION · roadmap · rfc/）
+│   ├── knowledge/              事实（reference/ · features/）
+│   ├── rules/                  规则（assets/ · guides/ · process/ · workflow/ · method/）
+│   ├── records/                活账本（REVIEW · change-log · state/）
+│   ├── toolkit/                能力（roles/ · skills/ · checklists/）
+│   └── mechanism/              机制（guards/ · scripts/）
+├── AGENTS.md                   AI 入口（模板）
+├── .githooks/pre-commit        **多层**门禁（模板；层数不写死）
+└── .gitlab-ci.yml              CI 模板（可选）
 ```
+
+> **模板 ⇄ 参考实现的关系**：`.agents/` 的**顶层同名**、子目录按项目需要裁剪（新项目不必一步到位）。
+> ⚠️ **旧稿曾把目录名写成 `ai-engineering/`（三层）**——2026-10-03 已收进 `.agents/` 并演进为 **7 顶层**，
+> 此处同步（2026-10-06 体系体检 **H1** 收口）。
 
 ## 脚手架流程
 
@@ -67,7 +70,7 @@ init-ai-engineering.sh <项目名>
 ## 脚手架验收
 
 ```
-1. 跑完脚本 → ai-engineering/ 完整（ai-guard-meta 对模板 PASS）
+1. 跑完脚本 → `.agents/` 完整（ai-guard-meta 对模板 PASS）
 2. ai-setup-hooks → 提交时四层自动跑
 3. 首个功能批次 → 走通 discuss→ship→guard 全链
 4. 人只在三处介入：方案确认 / 审核内容 / 部署决策
@@ -75,5 +78,5 @@ init-ai-engineering.sh <项目名>
 
 ## 状态
 
-- **adaios = 参考实现**：本仓库的 ai-engineering/ 是脚手架要复制的"黄金模板"（已实践验证）
+- **adaios = 参考实现**：本仓库的 `.agents/` 是脚手架要复制的"黄金模板"（已实践验证）
 - **脚手架脚本**：待写（从 adaios 提取模板 + 参数化）
