@@ -79,7 +79,7 @@ tags: [skill, build, learn, digest]
    - **frontmatter**：learn 卡片模板（title/type/source/created/status/trade_related/tags）——**每篇各记自身 `source`**（platform/author/url/published）。
    - **README 如实记来源**：哪些源是用户给的、哪些是顺着内容检索或引用的，必须写清——**不得把用户补充的文章写成「视频引用的原文」**（首例即犯此错，见参考资料「已知失真」）。
 8. **隐私门禁**：确认新落盘目录被 `.gitignore` 覆盖（`data/*/learn/`）——`git check-ignore` 验证，缺失则补规则（B3 红线）。
-9. **费用/成本记录**：云端转写或外发产生费用的，收尾跑 `bash ai-engineering/ai-guard-cost.sh --record` 备注（若涉及会话成本纪律）。
+9. **费用/成本记录**：云端转写或外发产生费用的，收尾跑 `bash .agents/mechanism/guards/ai-guard-cost.sh --record` 备注（若涉及会话成本纪律）。
 
 ## 约束与规则
 

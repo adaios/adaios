@@ -3,9 +3,9 @@ title: .agents/ 目录契约
 description: 规则与机制层的职责边界 · 依赖 · 触发 · 约束 · 守卫 · 维护——判据＝按性质（回答「怎么做」的进本层）；工具中立、真相源进 git、出口不入库
 version: 2
 created: 2026-10-03
-updated: 2026-10-04
+updated: 2026-10-06
 status: active
-lines: 30
+lines: 66
 depends-on: []
 related: [./_directory.md]
 tags: [meta, directory, ai]
@@ -20,7 +20,7 @@ tags: [meta, directory, ai]
 - **不会 → `../docs/`**（档案馆：史 / 存档 / 对外 / 研究）
 
 ## 职责边界
-- **放**：AI 运行时需要的一切——**6 个顶层**：`direction/`（方向）· `knowledge/`（事实）· `rules/`（规则）· `records/`（记录）· `toolkit/`（AI 能力）· `mechanism/`（执行机制）
+- **放**：AI 运行时需要的一切——**7 个顶层**：`direction/`（方向）· `knowledge/`（事实）· `rules/`（规则）· `records/`（记录）· **`workspace/`（在制品）** · `toolkit/`（AI 能力）· `mechanism/`（执行机制）
 - **不放**：代码本体（`services/` `apps/` `os/`）；**① 方向 / ② 事实 / ④ 记录 / 对外材料**（→ `../docs/`）；工具私有（`.idea/` `.obsidian/`）
 
 ## 依赖关系
@@ -37,7 +37,7 @@ tags: [meta, directory, ai]
 | 时机 | 谁触发 | 读 / 执行什么 |
 |:--|:--|:--|
 | 任何会话开工 | `AGENTS.md` 规则 0 | `guards/ai-guard-context.sh` |
-| 提交 | `.githooks/pre-commit` | `guards/` 的六层门禁 |
+| 提交 | `.githooks/pre-commit` | `guards/` 的**多层**门禁（层数随演进而变，**不写死**）|
 | 收工 / 巡检 / 发布 | 用户触发词 | `scripts/task-cadence.sh` |
 | 换机 / 新 worktree | 人 | `scripts/ai-setup-hooks.sh` · `ai-link-skills.sh` · `ai-sync-agents.sh` · `ai-worktree-prep.sh` |
 | 工具加载技能/子代理 | 工具自身 | `skills/`（直连）· `roles/`（经生成物） |
@@ -57,7 +57,7 @@ tags: [meta, directory, ai]
 
 ## 维护动作
 1. **新增子目录** → 建 `_index.md` + `_directory.md` + 在根 `_index.md` 登记
-2. **新增文件** → 写文件（带 10 字段 frontmatter）→ 跑 `bash guards/ai-guard-structure.sh --fix` 刷清单
+2. **新增文件** → 写文件（带 10 字段 frontmatter）→ 跑 `bash mechanism/guards/ai-guard-structure.sh --fix` 刷清单
 3. **移动文件** → 同 2，并检查 `_directory.md` 里的依赖路径
 4. **改动结构（层级）** → 全仓库搜 `$(dirname "$0")/..` 与旧路径（pitfalls 二十三四条）
 

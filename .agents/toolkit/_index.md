@@ -3,9 +3,9 @@ title: toolkit/ 目录索引
 description: .agents/toolkit/ 的文件清单与过期判断；目录的职责边界与依赖契约见 ./_directory.md
 version: 1
 created: 2026-10-04
-updated: 2026-10-04
+updated: 2026-10-06
 status: active
-lines: 71
+lines: 73
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index]

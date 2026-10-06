@@ -64,7 +64,7 @@ flowchart TB
 
 > **本章是资产清单的唯一详述源**。入口侧只做速查（`.agents/README.md`：顶层 + 子目录一句话）、操作侧只做导航（`AGENTS.md` §审查体系：何时跑哪个）——三处**定位不同、不重复详述**（2026-10-06 体系体检 **H4** 收口）。
 
-> **位置说明**（2026-10-04 二批）：**AI 运行时资产已全部收进 `.agents/`**（根 + **29 个受管子目录**（含 `workspace/`）；每个受管目录都有 `_index.md` + `_directory.md`）。留在容器外的只有三类：**`docs/`（档案馆**：史 / 存档 / 对外 / 研究）· **`.githooks/`**（git 约定）· **工具出口目录**（`.dsh/` `.claude/` `.qoder/` `.codex/`，本机状态、不入库）；另加根 `AGENTS.md` / `ARCHITECTURE.md`（L0 入口，就近原则要求原生化）。
+> **位置说明**（2026-10-04 二批）：**AI 运行时资产已全部收进 `.agents/`**（根 + **30 个受管子目录**（含容器根）（含 `workspace/`）；每个受管目录都有 `_index.md` + `_directory.md`）。留在容器外的只有三类：**`docs/`（档案馆**：史 / 存档 / 对外 / 研究）· **`.githooks/`**（git 约定）· **工具出口目录**（`.dsh/` `.claude/` `.qoder/` `.codex/`，本机状态、不入库）；另加根 `AGENTS.md` / `ARCHITECTURE.md`（L0 入口，就近原则要求原生化）。
 
 ### L0 入口（轻量，禁详细规则）
 
@@ -83,7 +83,7 @@ flowchart TB
 |:--|:--|:--|
 | 工程约定（C1–C8…）| `.agents/rules/assets/conventions.md` | `ai-guard-meta` |
 | 原则边界（B1–B9）| `.agents/rules/assets/boundaries.md` | `ai-guard-meta` |
-| 已知坑 + 复发信号（**25 章**）| `.agents/rules/assets/pitfalls.md` | `ai-guard-meta` |
+| 已知坑 + 复发信号（**37 章**）| `.agents/rules/assets/pitfalls.md` | `ai-guard-meta` |
 | 架构决策 ADR（**append-only**：改动写新记录 + superseded 链）| `.agents/rules/assets/adr/*.md` | `ai-guard-meta`（图谱）|
 | 方案决策 RFC（**67 份**，含未采纳的备选与理由；另有 3 份 superseded 在 `docs/archive/`）| `.agents/direction/rfc/*.md` | `ai-guard-feature`（status 枚举）|
 | 业务方向（**唯一蓝图**）| `.agents/direction/VISION.md` · `.agents/direction/product-roadmap.md` | `ai-guard-roadmap` |
@@ -315,7 +315,7 @@ flowchart LR
 
     RQ -->|"需求定稿"| RFC[".agents/direction/rfc/&lt;id&gt;.md"]
     DS -->|"设计定稿"| AR[".agents/knowledge/reference/ + ADR"]
-    TK -->|"合并收尾：待归档"| CL["change-log · REVIEW · _index"]
+    TG -->|"合并收尾：待归档"| CL["change-log · REVIEW · _index"]
 
     RFC -.->|"引用"| DS
     AR -.->|"约束"| DS
@@ -327,7 +327,7 @@ flowchart LR
 | **产作者（编码）** | ✅ 现成——`skills/code-api-writer` / `code-domain-writer` 已是建设技能 |
 | **产作者（设计）** | ✅ 现成——`docs-design-writer`（2026-10-03 建；与审核者**真对打**：两个独立 subagent、不共享上下文）|
 | **多轮交叉的流程** | ✅ 已落成——`rules/process/review-driven.md`（含 **§0 角色全景** · §9 派单协议 · §9.1 执行档位）|
-| **门禁 / 收工 / 归档** | ✅ 全部现成（`pre-commit` 11 层 + `task-cadence ship`）|
+| **门禁 / 收工 / 归档** | ✅ 全部现成（`pre-commit` **多层** + `task-cadence ship`）|
 | **在制品目录** | ✅ `workspace/` **按分支任务组织**——一个分支一个目录（`<分支名>/` 装需求 / 设计 / 审核 / 决策 / 账本，需要才有）· 模板在 `_templates/` · 跨任务的在 `_meta/`（2026-10-06 重构）|
 
 ## 五、工作流：触发词 → 动作
@@ -393,14 +393,14 @@ flowchart LR
 **已落地**：
 - **2026-10-03**（迁移批）：AI 资产收进 `.agents/` 容器 · 目录两件套 + `ai-guard-structure` · 出口 4→3 · 旧守卫适配修复 · **L1 任务层**（分支账本；2026-10-06 起并入 `<分支名>/`）。
 - **2026-10-06**（目录重构批）：`workspace/` 由「按产物阶段」（`requirements/` + `designs/` + `tasks/`）改为「**按分支任务**」——**一个分支一个目录**（`workspace/<分支名>/` 装需求 / 设计 / 审核 / 决策 / 账本，需要才有）；模板收进 `_templates/`、跨任务的进 `_meta/`；旧三目录及契约删除；`ai-guard-structure` / `ai-guard-meta` 全绿。
-- **2026-10-04**（归纳两批）：判据演进「按读者」→「按性质」→ **「AI 运行时是否需要」**；`docs/` 定为**档案馆**；`.agents/` **29 个受管子目录**、`docs/` 12 → **5 区**；**目录两件套 22 组**；守卫判据统一 **7 处**（元文件 vs 业务文件 · S2 分段 · M4 豁免 · 无尾斜杠常量）。
+- **2026-10-04**（归纳两批）：判据演进「按读者」→「按性质」→ **「AI 运行时是否需要」**；`docs/` 定为**档案馆**；`.agents/` **29 个受管子目录**、`docs/` 12 → **5 区**；**目录两件套 30 组**；守卫判据统一 **7 处**（元文件 vs 业务文件 · S2 分段 · M4 豁免 · 无尾斜杠常量）。
 
 | 仍未做 | 目标 | 代价 |
 |:--|:--|:--|
 | **知识回流无确认** | AI 输出「待沉淀清单」→ 人确认才写 | 小（写进 AGENTS.md）|
 | **红线未进守卫 / 无路由 / 无成本度量** | 红线已写入 §七 9 但未实现；`_directory.md` 的「触发关系」是路由雏形；成本度量需统计调用频率 | 中 |
 | **资产体量** | `.agents/` 199 份已确认**无碎片、无孤岛**——**该裁的是"没被读的"，不是"多的"** | 中 |
-| **`docs/` 侧契约不全** | 5 个区中仅 `records/` 有 `_directory.md`，其余 4 区只有 `_index.md` | 小 |
+| **`docs/` 侧契约不全** | 5 个区中仅 `records/` 与 `research/` 有 `_directory.md`，其余 3 区只有 `_index.md` | 小 |
 | **本文件天生易滞后** ⚠️ | 它**是唯一描述「体系如何组织」的文档**——**任何目录变动都必须同步它**。本批实测：漏改留下 **2 处批量替换 bug**（`do../../`）+ **7 处过时数字**（14 子目录 / 23 章 / 70 份 / 11 守卫 / 4 流程…）| 小但**高频** |
 
 ---

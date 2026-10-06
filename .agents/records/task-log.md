@@ -3,9 +3,9 @@ title: 任务开发文档（Task Log）
 description: **历史任务档案**（2026-10-04 退役为历史——待办职能已归口 REVIEW.md，不再是待办源，不再被守卫读取）
 version: 1
 created: 2026-08-15
-updated: 2026-10-04
+updated: 2026-10-06
 status: active
-lines: 380
+lines: 385
 depends-on: []
 related:
   - REVIEW.md

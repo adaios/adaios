@@ -5,7 +5,7 @@ version: 5
 created: 2026-08-15
 updated: 2026-10-06
 status: active
-lines: 88
+lines: 89
 depends-on:
   - frontmatter-spec.md
 related:
@@ -86,3 +86,4 @@ tags: [ai, meta, engineering]
 > **AI 资产的布局、多工具出口与维护规则**见 [`rules/assets/ai-context-layer-spec.md`](rules/assets/ai-context-layer-spec.md)；**体系总览**（L0–L3 + 工具层）见 [`rules/assets/ai-context-engineering.md`](rules/assets/ai-context-engineering.md)。
 
 > **跨项目方法论**：本层是可复制的实例；通用骨架在 [`rules/method/`](rules/method/README.md)。
+

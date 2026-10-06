@@ -30,28 +30,18 @@ AI = ROOT / '.agents'
 # 强制范围（frontmatter-spec §四）：AGENTS.md + docs/_index.md + 各目录 _index.md + .agents/**
 # 2026-10-04 二批（判据＝「AI 上下文运行时是否需要」）：AI 运行需要的文档**全部收进 .agents/**，
 # docs/ 自此为**档案馆**（史 / 存档 / 对外 / 未定型）——本清单据此重组。
-files = [ROOT/'AGENTS.md', DOCS/'_index.md', AI/'_index.md', AI/'README.md', AI/'frontmatter-spec.md']
-files += sorted(DOCS.glob('*/_index.md'))        # docs 各子目录索引（目录治理）
-# ── .agents/ 新增五区（2026-10-04 二批）──
-files += sorted((AI/'direction').glob('*.md'))   # ① 方向（VISION / roadmap）
-files += sorted((AI/'knowledge/reference').rglob('*.md'))  # ② 事实（含子目录——glob 不递归会静默漏检，pitfalls 二十三）
-files += sorted((AI/'knowledge/features').rglob('*.md'))   # ② 事实（功能主轴 + 意图卡，含子目录）
-files += sorted((AI/'direction/rfc').glob('*.md'))         # ① 决策记录（67 份）
-# 账本三份是 append-only 历史（正文含"当时"的路径），**按文件豁免**——
-# 否则历史记录会被要求"指向现在"，那是失真而非修正。
-files += [f for f in sorted((AI/'records').glob('*.md'))
-          if f.name not in ('change-log.md', 'task-log.md', 'REVIEW.md')]
-# 技能包两种布局都覆盖：扁平 <name>.md（旧）与官方目录 <name>/SKILL.md。
-# 只收 SKILL.md，**不收**技能目录内的 references/*.md（无 10 字段契约，会被 REQUIRED 误判）。
-files += sorted((AI/'rules/guides').glob('*.md'))
-files += sorted((AI/'rules/deployment').glob('*.md'))
-files += sorted((AI/'toolkit/roles').glob('*.md')) + sorted((AI/'toolkit/roles').glob('*/SKILL.md'))
-files += sorted((AI/'toolkit/skills').glob('*.md')) + sorted((AI/'toolkit/skills').glob('*/SKILL.md'))
-files += sorted((AI/'rules/process').glob('*.md'))
-files += sorted((AI/'toolkit/checklists').glob('*.md'))
-files += sorted((AI/'rules/assets').glob('*.md'))      # 资产层
-files += sorted((AI/'rules/assets/adr').glob('*.md'))  # ADR
-files += sorted((AI/'rules/assets/projects').glob('*.md'))  # 项目资产卡
+# 2026-10-06（体系体检 r2 · #2）：改为**全量递归**收集——此前是**手工枚举**（漏一个就永不检查；
+# 实测漏了 11 个：4 组顶层两件套 + 根 `_directory.md` + 根契约 + `docs/README.md` + `docs/records/_directory.md`，
+# 其中 9 个声明 `lines: 1`）。全量后 `--fix` 也能一次性回写它们。
+# ⚠️ 排除 `.agents/skills/`——它是**工具出口位**（软链，gitignore），不是真相源。
+files = [ROOT/'AGENTS.md']
+files += sorted(f for f in AI.rglob('*.md') if not str(f.relative_to(AI)).startswith('skills/'))
+# docs/ 是**档案馆**：只收「索引与目录契约」（`README.md` / `_index.md` / `_directory.md`）——
+# 普通内容文档（`archive/` `records/` `ideas/` 等历史材料）**不收**：它们无 frontmatter 是设计如此
+# （全量递归会一次报 103 条，实测如此；那种噪音等于让守卫失效）。
+files += sorted(DOCS.glob('README.md'))
+files += sorted(DOCS.rglob('_index.md'))
+files += sorted(DOCS.rglob('_directory.md'))
 files += sorted((AI/'rules/workflow').glob('*.md'))    # 工作流层
 files += sorted((AI/'records/state').glob('*.md'))       # 状态层
 files += sorted((AI/'mechanism/guards/tests').glob('*.md'))       # 守卫反例回归区索引
@@ -99,6 +89,10 @@ def is_entry(f):
 
 def is_light(f):
     # 轻量档：RFC 用自有 frontmatter（title/date/status/decided-by），audits 为历史存档
+    # ⚠️ **例外：目录契约（`_index.md` / `_directory.md`）永远走严格档**——它们是**活的导航/契约**，
+    #    不是历史材料。否则 `docs/records/_directory.md` 的 lines **永不被查**（2026-10-06 体检 r2 #2 实证）。
+    if f.name in ('_index.md', '_directory.md'):
+        return False
     r = str(f.relative_to(ROOT))
     return r.startswith('.agents/direction/rfc/') or r.startswith('.agents/records/') or r.startswith('docs/records/')
 
@@ -195,7 +189,7 @@ for f in files:
 
 # M4 正文路径引用扫描：强制区文档正文中的仓库内路径（`docs/...`、`ai-engineering/...`、`bash <script>`）
 # 断言目标存在——堵 M1 盲区（frontmatter 边之外，正文路径引用断链）
-M4_SKIP = ('.agents/direction/rfc/', '.agents/records/', 'docs/records/')  # 决策记录与存档含"当时"的路径，不查正文
+M4_SKIP = ('.agents/direction/rfc/', '.agents/records/', 'docs/records/', 'docs/README.md')  # 决策记录与存档含"当时"的路径，不查正文
 for f in files:
     rel = str(f.relative_to(ROOT))
     if rel.startswith(M4_SKIP): continue
@@ -209,6 +203,15 @@ for f in files:
             target = (ROOT / cmd).resolve()
             if not target.exists():
                 fails.append(f'M4 {rel}: bash 命令路径不存在 {cmd}')
+    # 行内 `bash <path>`（2026-10-06 体系体检 r2 · #4 加）：此前**只查 ```bash 代码块** ⇒ 行内命令全逃检，
+    # 实测 5 条死命令（`bash ai-engineering/…` ×4 · `bash guards/…`）躲过了所有守卫。
+    # ⚠️ 只认**像路径的**（含 `/` 或以 `.sh`/`.py` 结尾）——否则 `bash -n` / `bash TOKEN=…` / `bash cd …`
+    # 这类参数与命令会被误判成路径（首版实测 57 条里绝大多数是这个）。
+    # 解析基准：先按仓库根，再按**本文件所在目录**（相对写法如 `../mechanism/guards/x.sh`）。
+    for m in re.finditer(r'`bash\s+((?:[\w.@-]+/)+[\w.@-]+|[\w.-]+\.(?:sh|py))', text):
+        cmd = m.group(1)
+        if not (ROOT / cmd).exists() and not (f.parent / cmd).exists():
+            fails.append(f'M4 {rel}: 行内 bash 命令路径不存在 {cmd}')
     # 行内仓库路径（docs/xxx、ai-engineering/xxx、AGENTS.md；CLAUDE.md 2026-08-19 已删，正则保留防残留）
     for m in re.finditer(r'`((?:docs/|\.agents/|AGENTS\.md|AGENTS\.local\.md|CLAUDE\.md)[\w./-]*(?:\.md|\.sh|/))`', text):
         # 2026-10-03：docs → docs/，避免把文件名 `docs-contract-reviewer.md` 误判为仓库路径

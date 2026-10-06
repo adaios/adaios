@@ -110,6 +110,8 @@ def _structural(d):
     ⚠️ 2026-10-04 修盲区：原判据是「已有 _index.md 的目录」——**不建 _index.md 的目录永远免检**
     （实测漏掉 5 个：workspace / adr / projects / 技能包 / 配置目录；前三个确实是真遗漏）。"""
     rel = d.relative_to(AG)
+    if not rel.parts:                         # **容器根**（`.agents/` 自身）——2026-10-06 体检 r2 #1：
+        return True                           # 根的两件套此前**完全没人查**，「6 个顶层」挂了 4 天
     if str(rel) in _IGNORED:                  # 出口位 / 本机状态（gitignore）→ 不是仓库资产
         return False
     if any(pp.startswith('.') or pp == '__pycache__' for pp in rel.parts):
@@ -123,6 +125,11 @@ def _structural(d):
     return True
 
 SUBS = sorted(str(d.relative_to(AG)) for d in AG.rglob("*") if d.is_dir() and _structural(d))
+# 2026-10-06（体系体检 r2 · #1）：**容器根**同样受管——此前 `rglob("*")` 从 AG 起算、**只收子目录**，
+# 于是根 `_index.md` / `_directory.md` 成了无人区：它们写「6 个顶层」（实际 7）· `rfc/`（68 份，实际 67）
+# · `lines: 30`（实际 66）**挂了 4 天没有任何守卫报警**。用 `.` 代表根，后续 `AG/name` 解析为 `AG/.` 等价。
+if _structural(AG):
+    SUBS = ['.'] + SUBS
 
 # ── S1 + S2 ──
 for name in SUBS:
@@ -153,6 +160,19 @@ for name in SUBS:
             idx.write_text(new, encoding="utf-8")
             fixed.append("%s/_index.md" % name)
         listed = actual
+
+    if name == '.':
+        # **容器根**的 `_index.md` 语义与子目录**不同**：子目录列「全部后代」，根只列**顶层**。
+        # 故根只校验「各顶层是否都被提到」——不比对全部后代（那会把 264 项塞进根索引）。
+        # （2026-10-06 体系体检 r2 · #1：根两件套此前完全无人查。）
+        body = (AG / '_index.md').read_text(encoding='utf-8')
+        tops = sorted({p.split('/')[0] for p in actual})
+        # 顶层**文件**（`README.md` / `frontmatter-spec.md`）不带尾斜杠，目录才带
+        miss_top = [t_ for t_ in tops
+                    if (('`%s`' % t_) if t_.endswith('.md') else ('`%s/`' % t_)) not in body]
+        if miss_top:
+            fails.append("S2 ./_index.md: 顶层漏列 %d 个（%s）" % (len(miss_top), " · ".join(miss_top)))
+        continue
 
     missing = sorted(actual - listed)
     extra = sorted(listed - actual)
@@ -235,9 +255,10 @@ TRUTH = {
     '顶层': len([d for d in AG.iterdir() if d.is_dir() and str(d.relative_to(AG)) not in _IGNORED]),
     '角色': _md_count('toolkit/roles'),
 }
-NUM_PAT = re.compile(r'（\*{0,2}(\d+)\*{0,2}\s*个(顶层|角色)\*{0,2}）')
+NUM_PAT = re.compile(r'（\*{0,2}(\d+)\*{0,2}\s*个(顶层|角色)\*{0,2}[^）]*）')
 for _f in (ROOT / '.agents/README.md', ROOT / 'AGENTS.md',
-           ROOT / '.agents/rules/assets/ai-context-engineering.md'):
+           ROOT / '.agents/rules/assets/ai-context-engineering.md',
+           ROOT / '.agents/_index.md', ROOT / '.agents/_directory.md'):
     if not _f.is_file():
         continue
     for m in NUM_PAT.finditer(_f.read_text(encoding='utf-8')):

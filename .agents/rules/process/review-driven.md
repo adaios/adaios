@@ -103,7 +103,7 @@ v1: 编写者（读需求定稿）→ 审核者（读 design-v1）→ 判定
 
 | 角色 | 真相源 | 派法 |
 |:--|:--|:--|
-| **编写者** | `skills/code-api-writer/SKILL.md` / `code-domain-writer.md`（建设技能引导）| AI 自主 |
+| **编写者** | `skills/code-api-writer/SKILL.md` / `skills/code-domain-writer/SKILL.md`（建设技能引导）| AI 自主 |
 | **审核者** | `roles/*`，按 `review.md` §3 的**派官表** | 至少一轮 |
 
 - 编码阶段的审核**沿用增量深审**（`review.md`），**不另起一套**——本流程只规定"必须派、派谁、何时升级"，具体执行标准归 `review.md`。
@@ -126,7 +126,7 @@ v1: 编写者（读需求定稿）→ 审核者（读 design-v1）→ 判定
 |:--|:--|
 | **需求** | 人的「定稿记录」已填 + 已归档 `.agents/direction/rfc/` 或 `.agents/knowledge/features/` |
 | **设计** | 审核报**无 P0/P1** → 出 `design-final.md` → 归档 `.agents/knowledge/reference/` + ADR → 删 `workspace/<分支名>/` |
-| **编码** | 测试通过 + 审核无 P0/P1 + `pre-commit` **11 层**全过 |
+| **编码** | 测试通过 + 审核无 P0/P1 + `pre-commit` **多层**全过 |
 | **收尾** | `task-cadence.sh ship`（显式路径提交）+ 任务账本「待归档」搬进全局账本（change-log / REVIEW / `_index`）|
 
 ## 6. 与既有流程的关系

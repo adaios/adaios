@@ -57,7 +57,7 @@ tags: [review, backend, skill]
 
 ## 四、存放位置
 
-- **技能本体**：`.agents/toolkit/roles/<name>/SKILL.md`（审查官技能，防守侧）+ `.agents/toolkit/skills/<name>/SKILL.md`（建设/流程技能，进攻侧——code-api-writer / code-domain-writer / ship / data-learn-writer）——留在治理体系内（frontmatter/索引/ai-guard-meta 门禁齐全）
+- **技能本体**：**审查官是扁平的** `.agents/toolkit/roles/<name>.md`（防守侧，**不进技能出口**）· 建设/流程技能用 `.agents/toolkit/skills/<name>/SKILL.md`（官方目录布局，进攻侧）+ `.agents/toolkit/skills/<name>/SKILL.md`（建设/流程技能，进攻侧——code-api-writer / code-domain-writer / ship / data-learn-writer）——留在治理体系内（frontmatter/索引/ai-guard-meta 门禁齐全）
 - **布局与出口（规则出处）**：技能放哪、怎么被各工具发现、出口怎么维护、新增工具怎么接 —— **一律见 [`ai-context-layer-spec.md`](ai-context-layer-spec.md)**（项目级 AI 上下文中间层规范）。本文只管技能包的**格式**：五段结构 + frontmatter 十字段融合。
 - **规范**：本文件（assets/ 层）
 - **工具侧加载路径**：由工具自己配置（见 AGENTS.md「工具接入」），项目内零迁移
@@ -70,13 +70,13 @@ tags: [review, backend, skill]
 
 ## 六、与官方规范的偏离（必须留痕）
 
-本规范以 **Agent Skills 开放标准**（`agentskills.io/specification`）为格式基线，但有**四条有意偏离**——`ai-guard-skills.sh` 的 **S7** 会检查本节是否存在（偏离**必须留痕**，防遗忘）：
+本规范以 **Agent Skills 开放标准**（`agentskills.io/specification`）为格式基线，但有**三条有意偏离**——`ai-guard-skills.sh` 的 **S7** 会检查本节是否存在（偏离**必须留痕**，防遗忘）：
 
 | # | 偏离 | 官方要求 | 我们怎么做 | 理由 |
 |:--|:--|:--|:--|:--|
 | 1 | **真相源位置** | 技能放在客户端约定目录（`.claude/skills/` 等） | 真相源在 **`.agents/toolkit/skills/`**，靠软链出口到各工具目录 | 单一真相源（一份喂多工具，见 `ai-context-layer-spec.md` §二）|
 | 2 | **审查官保持扁平** | 技能用 `<name>/SKILL.md` 目录布局 | `roles/<name>.md` **扁平**，**不进技能出口** | 审查官的"出口"是**生成的 subagent 定义**（Qoder md+YAML / Codex TOML，格式不同必须生成）；目录化零收益、44 处引用成本 |
-| 3 | **过渡期部分技能仍扁平** | 同上 | `code-api-writer` / `code-domain-writer` / `ship` 暂留 `<name>.md` | 按需迁移——不为形式一致付全量迁移成本（`ai-context-layer-spec.md` §八 反模式 5）|
+| 3 | ~~**过渡期部分技能仍扁平**~~（**2026-10-06 已消除**：4/4 全目录布局）| ~~同上~~ | `code-api-writer` / `code-domain-writer` / `ship` 暂留 `<name>.md` | 按需迁移——不为形式一致付全量迁移成本（`ai-context-layer-spec.md` §八 反模式 5）|
 | 4 | **不做哈希锁定（S8）** | 生态中有 `skills-lock.json`（Vercel CLI） | **不做** | 本项目单人 + git 已覆盖版本控制；哈希锁是给"无版本管理的技能市场"用的 |
 | 5 | **`触发条件` 的等价标题** | 段落名为「触发条件」 | 三个外部视角官用 **`为什么需要你`**（`ai-guard-skills` S5 视其为等价） | 对陌生人官/社会性官/支持台官，这一问比"何时触发"更有力——**表达优先于形式对称** |
 

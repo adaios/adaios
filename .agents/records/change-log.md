@@ -3,9 +3,9 @@ title: 批次变更日志（Change Log）
 description: 每个开发批次一行（日期 · 批次 · 摘要 · 测试数变化）——收工 /ship 时在顶部追加；详情以 git log 与 REVIEW 已修复区为准
 version: 1
 created: 2026-08-15
-updated: 2026-10-04
+updated: 2026-10-06
 status: active
-lines: 402
+lines: 423
 depends-on: []
 related:
   - REVIEW.md

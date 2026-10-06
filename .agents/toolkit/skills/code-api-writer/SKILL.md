@@ -32,7 +32,7 @@ tags: [skill, build, api]
 4. **测试配套**：Controller 层 `@WebMvcTest` + MockBean；关键分支（解析/upsert/状态保留/写回）必须测；边界用例（跨天/歧义/脏数据）
 5. **同步 api-spec**：`.agents/knowledge/reference/contracts/api-spec.md` 升版 + 变更记录行（D48 教训：15 端点无版本行）
 6. **同步 status.md**：`.agents/knowledge/reference/status.md` 端点数更新（唯一真相源）
-7. **对齐验证**：`bash ai-engineering/ai-guard-align.sh`（A1 端点对拍）+ `bash ai-engineering/ai-guard-meta.sh` PASS
+7. **对齐验证**：`bash .agents/mechanism/guards/ai-guard-align.sh`（A1 端点对拍）+ `bash .agents/mechanism/guards/ai-guard-meta.sh` PASS
 8. **功能登记**：新功能 → `.agents/knowledge/reference/manuals/feature-reference.md` 补章节（D26 教训：只同步 api-spec 不算完整闭环）
 
 ## 约束与规则

@@ -3,9 +3,9 @@ title: mechanism/ 目录契约
 description: .agents/mechanism/ 的职责边界 · 依赖 · 约束 · 守卫 · 维护（2026-10-04 六顶层重构）
 version: 1
 created: 2026-10-04
-updated: 2026-10-04
+updated: 2026-10-06
 status: active
-lines: 1
+lines: 38
 depends-on: []
 related: [./_index.md]
 tags: [meta, directory]

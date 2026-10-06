@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-06
 updated: 2026-10-06
 status: active
-lines: 69
+lines: 82
 depends-on: []
 related:
   - ./process-issues-20261006.md
@@ -18,6 +18,19 @@ tags: [workspace, meta, dispatch]
 > **任何 AI 开工先看本文件**（`AGENTS.md` 规则 0c）。**有分配给你的任务就执行；没有就忽略**。
 
 ## 当前待处理派单
+
+- **D-20261006-08**（**AI 上下文体系体检 · 复检 r2** · `ai-context-health-reviewer`）
+  - **背景**：`D-20261006-07` 报了 **13 条待修，已全部修复**（三轮：`2598ba5c` · `c01d2b4e` · `38a9f8c5`）。
+    本次复检两个目的：**① 验证 13 条真的清零**（逐条回看落点）**② 找出三轮修复新引入的问题**（动了 ~30 个文件）。
+  - **机械层（主链已跑、照抄）**：health **100/100** · meta **PASS 285** · structure **PASS** · skills **20** · tools **12-0-0**。
+  - **主链已自查、不必重做**：`ai-engineering` 残留 5 处与「12/12」「8+3」2 处**经逐条甄别全部合理**
+    （scope 标签 / Mermaid 概念节点 / 历史 RFC 文件名 / pitfalls 的历史记录 / 守卫注释里的测试数据 / H3 的历史列）
+    —— 请**不要**把它们当新问题重报。
+  - **请集中查**：**H2 文档⇄行为** · **H4 跨目录双源**（上轮刚收口，验证是否真不再漂）· **H6 结构断裂**
+    （上轮改了很多行：重点看 `.agents/README.md` / `AGENTS.md` / `ai-context-engineering.md` / `layer-spec`）· **H7 死胡同**；
+    外加**回归验证**：对前一轮 13 条的落点**逐条**给「✅ 已清零 / ⚠️ 未清或回退」。
+  - **交付**：`docs/records/audits/2026-10-06-ai-context-health-r2.md`（H1–H8 + **13 条回归表** + 新发现 P0–P3）。
+  - **纪律**：只报告不改（B7）· 每条带证据（文件:行 + 可复现命令）· **宁可报少不可报错** · 不重写已有判据。
 
 - **D-20261006-07**（**AI 上下文体系体检** · 新角色 `ai-context-health-reviewer` 首次实跑）· ✅ **已完结 2026-10-06**（交付与结论见下方「已完成」）
   - **任务**：按 `toolkit/checklists/ai-context-health-reviewer.md` 的 **H1–H8** 对 `.agents/` 做全景体检。

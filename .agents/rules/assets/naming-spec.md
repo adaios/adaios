@@ -117,9 +117,9 @@ tags: [ai, spec, naming]
 | 历史名 | 体系名 | 形态 |
 |:--|:--|:--|
 | `learn-digest/` | `data-learn-writer/` | 目录（官方布局，有工具出口） |
-| `new-api.md` | `code-api-writer.md` | 扁平（按需加载） |
-| `new-domain.md` | `code-domain-writer.md` | 扁平（按需加载） |
-| `ship.md` | `task-ship.md` | 扁平（按需加载） |
+| `code-api-writer/` | `code-api-writer/` | 目录（官方布局，2026-10-06 迁移）|
+| `code-domain-writer/` | `code-domain-writer/` | 目录（官方布局，2026-10-06 迁移）|
+| `task-ship/` | `task-ship/` | 目录（官方布局，2026-10-06 迁移）|
 
 ### 6.4 `guards/`（13，含原先漏计的两个）
 
