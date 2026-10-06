@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-10-06
 status: active
-lines: 88
+lines: 91
 depends-on:
   - .agents/README.md
 related:
@@ -24,6 +24,9 @@ tags: [ai, entry]
 AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memory + Knowledge）为核心、个人文件（`data/`）为资产、Domain OS（`os/`）为能力边界。不是 CRUD 应用。
 
 ## AI 协作规则（必读）
+
+> **语言纪律（先于以下全部规则）**：**用户可见的答复、以及你的思考过程（reasoning / thinking / 内部推理），一律使用中文** —— 不只是结论用中文、推理却用英文。**代码 / 命令 / 文件名 / API / 专有名词保持原文**，正文说明用中文。
+> （2026-10-06 用户确立：**跨工具统一**——此前只写在 DSH 的全局指令（`~/.dsh/AGENTS.md`）里，**其它工具读不到**；本文件是所有工具的统一入口，故落在此处。）
 
 0. **开工自举（必做，零人工）**：任何 AI 开始工作前**自动执行** `bash .agents/mechanism/guards/ai-guard-context.sh`，以其输出（状态/未修项/边界/坑/规范/待办/成本提醒）为上下文基线——用户不需要手动跑脚本、不需要回忆任何事（2026-08-18 用户确立）
 0b. **跨会话记忆（自动）**：DSH/Claude 等工具会话开始时**自动注入**项目根 `AGENTS.local.md`——上次收尾的状态快照（机器生成勿手改；真相源是 `docs/` 源文件；体积预算见 .agents/toolkit/checklists/ai-cost-checklist.md C7）。**收尾时强制两步，缺一不可**：① `bash .agents/mechanism/guards/ai-guard-context.sh --write-local`（刷 AGENTS.local.md 快照）② `bash .agents/mechanism/guards/ai-guard-cost.sh --record`（今日成本入账）——下次开工自动带上，用户零操作（2026-08-20 确立，2026-08-22 补 cost 强制）

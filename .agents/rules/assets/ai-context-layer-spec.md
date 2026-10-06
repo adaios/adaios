@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-06
 status: active
-lines: 211
+lines: 218
 depends-on:
   - skills-spec.md
   - ../../frontmatter-spec.md
@@ -103,6 +103,13 @@ tags: [ai, meta, governance, context-layer]
 3. **放探针实测**：技能 + 子代理各一个最小探针 → 目标工具里验证 → **结果写回 §四（含日期）并同步 §四 表** → 清理探针。
 
 > 探针一律**本地忽略**（`.git/info/exclude` 或 `.gitignore`），验证完即删。
+
+4. **协作规则入口：让工具指向 `AGENTS.md`，不在工具目录里复制规则。**
+   项目的协作规则（**语言纪律**〔**答复与思考过程一律中文**〕· 讨论与实施分离 · 触发词 · 审核驱动主链…）
+   **只有一份**：项目根 `AGENTS.md` —— 工具侧在**各自设置里**指向它（本仓库**不建** `CLAUDE.md` 之类的
+   副本，2026-08-19 已删过一次）。**加规则只改 `AGENTS.md`**；并按第 3 步**放探针确认新工具真读到它**
+   —— 否则那条规则对该工具**等于不存在**（2026-10-06 实例：语言纪律原先只写在 DSH 的全局指令
+   `~/.dsh/AGENTS.md` 里，**Claude / Qoder / Codex 等读不到**，故收归 `AGENTS.md`）。
 
 ## 六、准入与布局
 
