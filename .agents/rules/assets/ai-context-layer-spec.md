@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-06
 status: active
-lines: 229
+lines: 233
 depends-on:
   - skills-spec.md
   - ../../frontmatter-spec.md
@@ -126,15 +126,19 @@ tags: [ai, meta, governance, context-layer]
 
 - **技能格式**：按 `skills-spec.md`（五段结构 + frontmatter 十字段）。
 - **布局**：`<name>/SKILL.md`，**目录名 == frontmatter `name`**（官方硬约束，也是命令名来源）。
-- **技能出口**：只注册"用户直触发"的技能——其余技能常驻 catalog 要花钱，还可能被误触发（成本纪律，见 `checklists/ai-cost-checklist.md`）。
-  **判据**：用户能不能**一句话直呼它**？能 → 进 `REGISTER`；只有流程走到某一步才需要 → 不进（由流程文档导航）。当前 4 个技能包逐一对号：
+- **技能出口**：**按「谁触发」分三类**，只有前两类进 `REGISTER`（**2026-10-06 判据修正**）。
+  常驻的是 **description（一行）**、**不是 SKILL.md 全文** ⇒ 成本很低（实测单条 ≈80 token）；
+  真正的浪费是**该注册的没注册** —— 那样 AI **根本不知道它存在**，技能就退化成"一份得靠自觉去翻的文档"。
 
-  | 技能 | 注册 | 判据 |
-  |:--|:--:|:--|
-  | `data-learn-writer` | ✅ | 用户说「整理 <链接> / 把这篇文章存下来」＝直触发 |
-  | `code-api-writer` | ❌ | 只在"新增端点"这一步需要 → 流程内触发（`review.md` / `ship.md` 导航） |
-  | `code-domain-writer` | ❌ | 同上（新增领域模块时） |
-  | `task-ship` | ❌ | 「收工」触发的是 `task-cadence.sh ship`（脚本）；技能包是给 AI 读的流程说明 |
+  | 触发方式 | 谁决定加载 | 注册？ | 例 |
+  |:--|:--|:--:|:--|
+  | **① 用户直呼** | 工具按 description 匹配 | **必须** | `data-learn-writer`（「整理这个链接」）|
+  | **② AI 自主判断** | **AI 看 catalog 自行匹配** | **必须** | `code-api-writer`（动端点时）· `code-domain-writer`（加领域时）· `task-ship`（收尾时）|
+  | **③ 流程显式派** | orchestrator 读 `roles/` 派官 | **不必** | 16 个审查官（主链**派**，不经 catalog）|
+
+  ⇒ **当前 `REGISTER` 4 个**：`data-learn-writer` + 上面 3 个建设技能
+  （**2026-10-06 补齐**：原先只注册 ① 类，② 类不注册 ⇒ AI 不会主动加载、等于只有文档；代价仅 ≈250 token）。
+  **③ 类不注册是刻意的**：它们是**派**出来的、不是**匹配**出来的，注册只会白占 catalog。
 - **subagent 出口**：角色**全量注册**（**16/16**，2026-10-06 起）——实测 `description` 合计远低于 Claude Code 官方 **15k token** 告警线。这条线是硬约束：接近时**优先缩短 description**，不要砍审查官。
 - **产出物不进真相源**（生成的卡片/报告/缓存归 `data/` 或 `state/`）。
 

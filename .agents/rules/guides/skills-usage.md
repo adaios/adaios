@@ -86,8 +86,8 @@ AI 加载 `code-api-writer` 技能后会按 8 步走：
 ## 六、工具侧配置（一次性）
 
 - 角色与技能文件在项目内（角色 `.agents/toolkit/roles/<name>.md`【**扁平**，刻意不目录化】+ 技能 `.agents/toolkit/skills/<name>/SKILL.md`【官方目录布局】），随 Git 走，**换机/换工具零迁移**
-- 工具侧靠**软链**发现（不是让工具去指 `.agents/`）：`bash .agents/mechanism/scripts/ai-link-skills.sh` 把「用户直触发」技能软链到 `.dsh/skills`、`.agents/skills`、`.claude/skills`、`.qoder/skills`（**Qoder 的项目级技能目录是 `.qoder/skills/`，不是项目根 `skills/`**——2026-10-03 官方 CLI + IDE 文档确认）四个出口——出口被 `.gitignore` 忽略（注册是本机状态）
-- **只注册直触发技能**（当前仅 `data-learn-writer`）；**16 个角色**走流程内触发，**不注册**（避免常驻上下文，成本纪律见 `checklists/ai-cost-checklist.md`）
+- 工具侧靠**软链**发现（不是让工具去指 `.agents/`）：`bash .agents/mechanism/scripts/ai-link-skills.sh` 把**该注册的技能**（判据见下条）软链到 `.dsh/skills`、`.agents/skills`、`.claude/skills`、`.qoder/skills`（**Qoder 的项目级技能目录是 `.qoder/skills/`，不是项目根 `skills/`**——2026-10-03 官方 CLI + IDE 文档确认）四个出口——出口被 `.gitignore` 忽略（注册是本机状态）
+- **按「谁触发」分三类注册**（当前 **4 个**：`data-learn-writer`〔① 用户直呼〕+ `code-api-writer` / `code-domain-writer` / `task-ship`〔② **AI 自主判断**——动端点 / 加领域 / 收尾时该自己加载〕）；**16 个角色不注册**（③ 主链**派**官，不经 catalog）。**判据见 `ai-context-layer-spec.md` §六**；成本纪律见 `checklists/ai-cost-checklist.md`
 - 项目内不用改任何东西（AGENTS.md「工具接入」原则）
 
 ## 七、FAQ

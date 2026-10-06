@@ -18,11 +18,13 @@
 #   ⚠️ 出口根 skills/（服务 Qoder）在 .gitignore 里必须是锚定根的 `/skills/`：
 #      写成 `skills/` 会把真相源 .agents/toolkit/skills/ 一起忽略掉。
 #
-# 为什么只注册「直触发」技能而不是 19 个：
-#   `.agents/toolkit/` 下共 20 个技能包（roles/ 16 + skills/ 4），但只有「用户一句话就能直触发」
-#   的才进工具 catalog。**16 个角色**是**流程内触发**（`process/review.md` / `review-driven.md` 派发），
-#   全量注册会常驻会话上下文，并可能在你随口改一行代码时自动派全套审查官走查
-#   ——那是全项目最贵的 AI 流程（见 checklists/ai-cost-checklist.md / process/audit.md 成本纪律）。
+# 注册判据：按「谁触发」分三类，只有前两类进 REGISTER（2026-10-06 修正，此前只认 ① 类）：
+#   ① 用户直呼     → 工具按 description 匹配      → **必须**（如 data-learn-writer）
+#   ② AI 自主判断  → AI 看 catalog 自行匹配       → **必须**（如 code-api-writer / task-ship）
+#   ③ 流程显式派   → orchestrator 读 roles/ 派官  → **不必**（16 个审查官；注册只会白占 catalog）
+#   ⚠️ 常驻的是 description（一行，实测单条 ≈80 token），**不是 SKILL.md 全文** ⇒ 成本很低；
+#      真正的浪费是**该注册的没注册**——那样 AI 根本不知道它存在，技能就退化成"一份得靠自觉去翻的文档"。
+#   （成本纪律见 checklists/ai-cost-checklist.md / process/audit.md。）
 #
 # 验证：bash .agents/mechanism/guards/ai-guard-tools.sh（T4 按软链真身判定，不认名字）
 # 规范：布局 / 出口 / 新增工具的完整规则见 .agents/rules/assets/ai-context-layer-spec.md
@@ -32,7 +34,12 @@ cd "$(git rev-parse --show-toplevel)"   # 层级无关（2026-10-04 加固：原
 ROOT="$(pwd)"
 
 # ── 注册清单：新增直触发技能时把名字加进来（= .agents/toolkit/skills/ 下的目录名）──
-REGISTER=(data-learn-writer)
+REGISTER=(
+  data-learn-writer      # ① 用户直呼：「整理 <链接> / 把这篇文章存下来」
+  code-api-writer        # ② AI 自主判断：动端点时该自己加载（2026-10-06 补，见 spec §六「注册判据」）
+  code-domain-writer     # ② AI 自主判断：加新功能域时
+  task-ship              # ② AI 自主判断：收尾提交时
+)
 
 # ── 目标工具 skills 目录：**清单的唯一真相源在 lib/ai-export-targets.sh**（2026-10-05 起）──
 #    此前这里与 ai-sync-agents.sh / ai-guard-tools.sh T4 / 规范 §四 各写一份 ⇒
