@@ -2578,7 +2578,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('先粘贴内容，或选择通达信导出的文件'), findsOneWidget);
 
-    await tester.tap(find.text('选择文件（通达信导出）'));
+    await tester.tap(find.text('选择文件（可多选，通达信导出）'));
     await tester.pumpAndSettle();
     expect(find.text('先粘贴内容，或选择通达信导出的文件'), findsOneWidget,
         reason: '空文件清掉这句等于把仍成立的话藏起来（用户仍不知道该粘什么）');
@@ -2607,7 +2607,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('先粘贴内容，或选择通达信导出的文件'), findsOneWidget);
 
-    await tester.tap(find.text('选择文件（通达信导出）'));
+    await tester.tap(find.text('选择文件（可多选，通达信导出）'));
     await tester.pumpAndSettle();
 
     expect(find.text('先粘贴内容，或选择通达信导出的文件'), findsNothing,
