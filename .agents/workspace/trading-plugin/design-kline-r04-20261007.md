@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-07
 updated: 2026-10-07
 status: active
-lines: 85
+lines: 112
 depends-on:
   - ./design-final-20261006.md
   - ./requirement.md
@@ -83,3 +83,30 @@ apps/adai-web/lib/widgets/case_kline_chart.dart        ← 保留：改为内部
 
 - app 端 K 线（需求明写不做）；规则 / 计划 两个区的**图**（留后续）；
 - web 首屏信息架构的代码实现（今晚只做 K 线这一条）——**其余设计稿已定，按批推进**。
+
+## 七、本地真跑实测（2026-10-07 深夜 · 生产数据）
+
+> 做法：`code-backup-prod.sh` 拉生产快照 → 换入本地 `data/accounts` + `data/adai` →
+> `gradlew bootRun` → smoke 账号登录 → 真打端点。**不是只跑单测**。
+
+```
+GET /api/v1/trading/kline?symbol=002428&window=90        → HTTP 200
+candles  90 根（2026-05-26 → 2026-09-30）
+marks    13 个真实买卖点（B/T/S 推导正确）
+context  {held: true, tradeCount: 13}
+peakLine 104.17（峰值 109.65 · 08-17）
+stopLine null        ← ⚠️ 见下
+```
+
+（末根 09-30 是对的：10-01~10-07 是国庆假期，09-30 是节前最后一个交易日。）
+
+**实测暴露两处，如实登记（明天先修这个）**：
+
+1. **`stopLine` 恒为 null（真缺口）** —— 实现只读了 `TradeRecord.stopLossPrice`，
+   **没读批次止损**（`data/{userId}/trading/lot-stoploss.json`）与规则里的止损。
+   云南锗业在 app 里设过批次止损，端点上却画不出那条线。修法：`TradingKlineAppService.stopLine()`
+   依次取「最近一次买入的 `stopLossPrice` → 该标的批次的 `effectiveStopLoss` → 规则默认」，
+   三处都取不到才 null。
+2. **同日多笔没合并（与本文第三节口径不符）** —— 第三节写的是「同日同向合并」，
+   实现按逐笔出标记，所以 08-03 会出现「买 100（B）+ 加 400（T）」两条。
+   修法二选一：合并同日同向为一笔，**或**把第三节口径改成「逐笔」并说明理由（同日加仓本来就是 T）。
