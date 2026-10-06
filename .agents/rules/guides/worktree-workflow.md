@@ -38,7 +38,7 @@ tags: [guide, workflow, ai-tooling]
 | `data/` | 337M；git 只跟踪 `data/adai/identity/profile.sample.md` 一个文件 | 后端 `adai.data.base-path` 默认 `../../data` 正好指向这个空壳 → 记忆/交易/行情全空，**且不报错**（market 314M 行情尤其明显） |
 | `services/adai-core/.env` | 6 个密钥（DEEPSEEK_API_KEY / GLM_API_KEY / ADAI_ADMIN_TOKEN / ADAI_PUSH_WECHAT_SENDKEY / ADAI_SMOKE_ACCOUNT / ADAI_SMOKE_PASSWORD） | spring 配的是 `optional:file:.env` → 读不到即静默降级（AI、推送、smoke 全受影响） |
 | `.agents/records/state/` | 巡检游标 `task-cadence.json`、成本账 `cost-log.jsonl`、心跳缓存、各定时任务日志 | 每个 worktree 一份独立账本 → 巡检游标分叉、成本记错本、发布判定失真 |
-| **工具出口** | 技能 4 个（`.dsh/skills` · `.agents/skills` · `.claude/skills` · `.qoder/skills`）＋ 子代理 2 组（`.qoder/agents/*.md` · `.codex/agents/*.toml`）；都是 gitignore 的本机状态 | 新 worktree 里 AI 工具**看不见技能与审查官**——DSH 没技能、Qoder/Codex 连 12 个审查官都没有；**且不报错**（工具只是「没有可用技能」）|
+| **工具出口** | 技能 4 个（`.dsh/skills` · `.agents/skills` · `.claude/skills` · `.qoder/skills`）＋ 子代理 2 组（`.qoder/agents/*.md` · `.codex/agents/*.toml`）；都是 gitignore 的本机状态 | 新 worktree 里 AI 工具**看不见技能与审查官**——DSH 没技能、Qoder/Codex 连 16 个角色都没有；**且不报错**（工具只是「没有可用技能」）|
 
 **出口跟另三样不同：它不 link 主仓库，而是「各自注册」。** `ai-worktree-prep.sh` 会自动跑 `.agents/mechanism/scripts/ai-link-skills.sh`（**相对软链**）＋ `.agents/mechanism/scripts/ai-sync-agents.sh`（**生成**），两者都指向 **本 worktree 的真相源** ⇒ **技能与审查官随分支走**。若图省事 link 主仓库的出口，你在 `feat/a` 加的技能会**漏进** `feat/b`——分支隔离在 AI 上下文层直接失效。
 

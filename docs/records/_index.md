@@ -3,9 +3,9 @@ title: docs/records 目录索引
 description: docs/records/ 的文件清单与过期判断——**历史存档区**（走查存档 / 事故记录 / 发布史 / 归档问题清单）
 version: 2
 created: 2026-10-04
-updated: 2026-10-04
+updated: 2026-10-06
 status: active
-lines: 51
+lines: 50
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index, records]
@@ -19,12 +19,11 @@ tags: [meta, index, records]
 
 ## 文件清单
 
-### 走查存档（`audits/`，27 份）
+### 走查存档（`audits/`，29 份）
 
 | 范围 | 说明 |
 |:--|:--|
 | `audits/2026-*.md` | 历次全维度走查 / 深审 / 对抗审查的**原始报告**（2026-08 ~ 2026-10） |
-| `audits/_index.md` | 存档清单 |
 
 ### 事故与处置
 

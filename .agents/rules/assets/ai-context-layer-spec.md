@@ -25,7 +25,7 @@ tags: [ai, meta, governance, context-layer]
 
 本项目由**一个人 + 多个 AI 工具**（DSH / Qoder / Codex / 未来更多）开发。若 AI 资产跟着工具走，换一次工具就要重写一次；若不跟着工具走，工具又**看不见**它（各工具只扫自己的目录）。
 
-**弱发现 vs 原生发现**：靠"AGENTS.md 里写一句『去 `ai-engineering/` 找技能』"是弱发现——AI 要先读到那句话、再主动去翻文件，费上下文且不稳定；**原生发现**是工具把它当作可用技能列出。
+**弱发现 vs 原生发现**：靠"AGENTS.md 里写一句『去 `.agents/` 找技能』"是弱发现——AI 要先读到那句话、再主动去翻文件，费上下文且不稳定；**原生发现**是工具把它当作可用技能列出。
 
 中间层要解决的就是这件事：**真相源一份、每个工具原生看得见**。
 
@@ -57,7 +57,7 @@ tags: [ai, meta, governance, context-layer]
 | 技能 | `.agents/toolkit/skills/<name>/SKILL.md` | 官方目录布局 | 软链到出口（§四）|
 | 审查官 | `.agents/toolkit/roles/<name>.md`（**扁平**） | — | **不进技能出口**（流程内触发，见 §六）；其「出口」是下行生成的 subagent 定义 |
 | 子代理 | 同上（审查官 `.md` 即 subagent 的真相源） | — | **生成**到 `.qoder/agents/<name>.md`（md+YAML）· `.codex/agents/<name>.toml`（**TOML**）——**格式不同故不能软链**；生成时**重写相对路径**（`./x`→`.agents/rules/assets/x`）+ **只读强制**（Qoder `tools: Read, Grep, Glob` · Codex `sandbox_mode="read-only"`）|
-| 脚本与门禁 | `ai-engineering/*.sh` · `scripts/` · `.githooks/` | — | 工具无关；靠契约文档导航 |
+| 脚本与门禁 | `.agents/mechanism/scripts/*.sh` · `scripts/` · `.githooks/` | — | 工具无关；靠契约文档导航 |
 | 知识库（被读写） | `docs/`（rfc / features / review / reference / guides…） | — | 同上 |
 
 ## 四、出口契约（实测基线）
@@ -78,7 +78,7 @@ tags: [ai, meta, governance, context-layer]
 
 1. **没有任何单一目录能被所有工具读到**——Claude Code 官方明确不读 `.agents/`；DSH 不读根 `skills/`；Qoder 只认 `.qoder/skills/`。**押注"中立目录"这条路不存在。**
 2. **主流收敛到官方目录布局 `<name>/SKILL.md`**（Claude Code / Qoder 只认它，DSH 两种都认）⇒ 技能真相源必须用目录布局。
-3. **`.agents/` 是出口位，不能当真相源**——它是**被多家工具扫描**的目录（Codex / Cursor / Gemini CLI / Copilot / OpenCode 等）。把 `ai-engineering/` 改名搬进去会同时踩四个雷：① **语义不符**（`.agents/` 在行业语义里是「技能/子代理容器」，而我们那 12 个子目录是整个工程体系）；② **真相源会被工具当出口直接扫**——`skills/`、`process/`、`checklists/` 全被当技能读，**真相源/出口分层当场崩掉**；③ **gitignore 冲突**（`.agents/` 被忽略、真相源必须进 git）；④ **`ai-guard-tools` T4 判据失效**（它检查的是「`.agents/skills` 里的软链是否指向本仓库 `ai-engineering/`」）。
+3. **`.agents/` 是出口位，不能当真相源**——它是**被多家工具扫描**的目录（Codex / Cursor / Gemini CLI / Copilot / OpenCode 等）。把 `.agents/` 改名搬进去会同时踩四个雷：① **语义不符**（`.agents/` 在行业语义里是「技能/子代理容器」，而我们那 12 个子目录是整个工程体系）；② **真相源会被工具当出口直接扫**——`skills/`、`process/`、`checklists/` 全被当技能读，**真相源/出口分层当场崩掉**；③ **gitignore 冲突**（`.agents/` 被忽略、真相源必须进 git）；④ **`ai-guard-tools` T4 判据失效**（它检查的是「`.agents/skills` 里的软链是否指向本仓库 `.agents/`」）。
 
 **当前出口 4 个**（= `SKILL_TARGETS`，2026-10-05 复核）：`.dsh/skills` · `.claude/skills` · `.qoder/skills` · `.agents/skills`（末项喂 Codex / Cursor / Gemini CLI / Copilot / OpenCode 等公约数阵营）。
 
@@ -117,7 +117,7 @@ tags: [ai, meta, governance, context-layer]
   | `code-api-writer` | ❌ | 只在"新增端点"这一步需要 → 流程内触发（`review.md` / `ship.md` 导航） |
   | `code-domain-writer` | ❌ | 同上（新增领域模块时） |
   | `task-ship` | ❌ | 「收工」触发的是 `task-cadence.sh ship`（脚本）；技能包是给 AI 读的流程说明 |
-- **subagent 出口**：审查官**全量注册**（12/12，2026-10-03 起）——实测 12 个 `description` 合计 **≈1.3k token**，远低于 Claude Code 官方 **15k token** 告警线。这条线是硬约束：接近时**优先缩短 description**，不要砍审查官。
+- **subagent 出口**：角色**全量注册**（**16/16**，2026-10-06 起）——实测 `description` 合计远低于 Claude Code 官方 **15k token** 告警线。这条线是硬约束：接近时**优先缩短 description**，不要砍审查官。
 - **产出物不进真相源**（生成的卡片/报告/缓存归 `data/` 或 `state/`）。
 
 ## 七、维护规则

@@ -74,7 +74,7 @@ tags: [review, backend, skill]
 
 | # | 偏离 | 官方要求 | 我们怎么做 | 理由 |
 |:--|:--|:--|:--|:--|
-| 1 | **真相源位置** | 技能放在客户端约定目录（`.claude/skills/` 等） | 真相源在 **`ai-engineering/`**，靠软链出口到各工具目录 | 单一真相源（一份喂多工具，见 `ai-context-layer-spec.md` §二）|
+| 1 | **真相源位置** | 技能放在客户端约定目录（`.claude/skills/` 等） | 真相源在 **`.agents/toolkit/skills/`**，靠软链出口到各工具目录 | 单一真相源（一份喂多工具，见 `ai-context-layer-spec.md` §二）|
 | 2 | **审查官保持扁平** | 技能用 `<name>/SKILL.md` 目录布局 | `roles/<name>.md` **扁平**，**不进技能出口** | 审查官的"出口"是**生成的 subagent 定义**（Qoder md+YAML / Codex TOML，格式不同必须生成）；目录化零收益、44 处引用成本 |
 | 3 | **过渡期部分技能仍扁平** | 同上 | `code-api-writer` / `code-domain-writer` / `ship` 暂留 `<name>.md` | 按需迁移——不为形式一致付全量迁移成本（`ai-context-layer-spec.md` §八 反模式 5）|
 | 4 | **不做哈希锁定（S8）** | 生态中有 `skills-lock.json`（Vercel CLI） | **不做** | 本项目单人 + git 已覆盖版本控制；哈希锁是给"无版本管理的技能市场"用的 |

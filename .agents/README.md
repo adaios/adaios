@@ -5,7 +5,7 @@ version: 5
 created: 2026-08-15
 updated: 2026-10-06
 status: active
-lines: 84
+lines: 86
 depends-on:
   - frontmatter-spec.md
 related:
@@ -33,6 +33,8 @@ tags: [ai, meta, engineering]
 ## 顶层结构（**7** 个顶层）
 
 > **层级**：`.agents/<顶层>/<子目录>/`。顶层按**知识性质**分；每个顶层都有 `_index.md` + `_directory.md`（**两件套**，由 `ai-guard-structure` 双向校验）。
+>
+> ⚠️ **`ls .agents/` 会看到 8 个目录** —— 多出的 `.agents/skills/` 是**工具出口位**（软链，被 `.gitignore` 忽略，本机状态），**不计入顶层**（2026-10-06 体系体检 P3-12）。
 
 | 顶层 | 类 | 装什么 |
 |:--|:--:|:--|
@@ -41,7 +43,7 @@ tags: [ai, meta, engineering]
 | `rules/` | ③ 规则 | `assets/`（规矩）· `guides/`（操作）· `deployment/`（运维）· `process/`（流程）· `workflow/`（生命周期）· `method/`（元方法）|
 | `records/` | ④ 记录 | 活账本（`REVIEW` / `change-log` / `task-log`）· `state/`（**本机状态，不入 git**）|
 | `workspace/` | ④ 记录（**在制品**）| **会变空的在制品容器**——一条分支/任务一个目录（`_templates/` 模板 · `_meta/` 跨任务）|
-| `toolkit/` | ⑤ AI 能力 | `roles/`（**16 个角色**）· `skills/`（建设技能）· `checklists/`（与角色一一对应，人也能用）|
+| `toolkit/` | ⑤ AI 能力 | `roles/`（**16 个角色**）· `skills/`（建设技能）· `checklists/`（**部分一一对应**：14/16 角色有同名清单 + 3 份专项，人也能用）|
 | `mechanism/` | ⑤ 执行机制 | `guards/`（守卫 **15** 个 · 含 `tests/`）· `scripts/`（执行器 · 含 `lib/`）|
 
 > **`workspace/` 为什么单列**：它与 `records/` **性质相反**——`records/` 是**只追加的历史账本**，
