@@ -32,7 +32,7 @@ tags: [meta, directory]
 | 时机 | 谁触发 | 读 / 执行什么 |
 |:--|:--|:--|
 | **每次开工** | `ai-guard-context.sh` | `status.md`（C1 当前状态） |
-| 写 / 改接口 | `skills/code-api-writer.md` | `api-spec.md` → 改完同步 |
+| 写 / 改接口 | `skills/code-api-writer/SKILL.md` | `api-spec.md` → 改完同步 |
 | 改前端 | 人 + AI | `frontend-reference.md` |
 | 改交易 / 记忆模块 | 人 + AI | 对应的领域设计文档 |
 | 收尾 | `/ship` | `ai-guard-align` 对拍 |

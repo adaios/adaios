@@ -5,7 +5,7 @@ version: 5
 created: 2026-08-15
 updated: 2026-10-06
 status: active
-lines: 86
+lines: 88
 depends-on:
   - frontmatter-spec.md
 related:
@@ -50,6 +50,8 @@ tags: [ai, meta, engineering]
 > `workspace/` 是**会清空的在制品**；混在一起会掩盖「这里应该有活」的信号（2026-10-04 用户拍板）。
 
 ### 顶层内的关键子目录
+
+> **速查版**：本表只给「子目录 → 一句话」。**逐条职责与保真方式的唯一详述源**是 [`rules/assets/ai-context-engineering.md`](rules/assets/ai-context-engineering.md) **§二 资产清单**（2026-10-06 体系体检 **H4-1** 收口——两处**定位不同**：此处速查、那边详述，不再各自演化）。
 
 | 子目录 | 说明 |
 |:--|:--|

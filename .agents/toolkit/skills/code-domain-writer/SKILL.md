@@ -8,11 +8,11 @@ updated: 2026-08-20
 status: active
 lines: 54
 depends-on:
-  - ../../rules/assets/boundaries.md
-  - ../../rules/workflow/design.md
+  - ../../../rules/assets/boundaries.md
+  - ../../../rules/workflow/design.md
 related:
-  - ../../knowledge/reference/designs/product-architecture.md
-  - ../../direction/rfc/20260814-domain-plugin-model.md
+  - ../../../knowledge/reference/designs/product-architecture.md
+  - ../../../direction/rfc/20260814-domain-plugin-model.md
 tags: [skill, build, domain]
 ---
 
@@ -27,7 +27,7 @@ tags: [skill, build, domain]
 ## 执行步骤
 
 1. **归属判断**：先回答「属于 Kernel 还是 Domain OS」——找不到归属先讨论架构（不写码）；Kernel Domain 是共享系统域，Domain OS 是挂载其上的业务域
-2. **RFC + 六维**：写 `.agents/direction/rfc/`（骨架 7 段 + 六维检查，见 `../../rules/workflow/design.md`）；重大方向走 RFC 给人确认，approved 后才动码（W6 讨论与实施分离）
+2. **RFC + 六维**：写 `.agents/direction/rfc/`（骨架 7 段 + 六维检查，见 `../../../rules/workflow/design.md`）；重大方向走 RFC 给人确认，approved 后才动码（W6 讨论与实施分离）
 3. **插件模型**：新 Domain = 受控插件？注册 PluginRegistry + Account.plugins 门控 + ContextEngine 全量门控（RFC 20260814 第二步）
 4. **数据流设计**（红线 4）：Record 文件格式 → Timeline 投影 → Context 组合 → Memory 沉淀，先设计再写码；File First（os/ 知识资产 + data/ 路径）
 5. **分层落地**：domain/ 实现 + application 编排 + infrastructure 适配；Domain 间禁止直接依赖（B6，跨域经 application）
@@ -48,7 +48,7 @@ tags: [skill, build, domain]
 
 ## 参考资料
 
-- 六维模板与 RFC 骨架：`../../rules/workflow/design.md`
-- 插件模型：`../../direction/rfc/20260814-domain-plugin-model.md`
-- 产品架构：`../../knowledge/reference/designs/product-architecture.md`
-- 边界：`../../rules/assets/boundaries.md`；红线：`../../../ARCHITECTURE.md`
+- 六维模板与 RFC 骨架：`../../../rules/workflow/design.md`
+- 插件模型：`../../../direction/rfc/20260814-domain-plugin-model.md`
+- 产品架构：`../../../knowledge/reference/designs/product-architecture.md`
+- 边界：`../../../rules/assets/boundaries.md`；红线：`../../../../ARCHITECTURE.md`

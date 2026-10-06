@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-06
 status: active
-lines: 408
+lines: 411
 depends-on:
   - ../../knowledge/reference/status.md
 related:
@@ -62,6 +62,8 @@ flowchart TB
 
 ## 二、资产清单（按层组织）
 
+> **本章是资产清单的唯一详述源**。入口侧只做速查（`.agents/README.md`：顶层 + 子目录一句话）、操作侧只做导航（`AGENTS.md` §审查体系：何时跑哪个）——三处**定位不同、不重复详述**（2026-10-06 体系体检 **H4** 收口）。
+
 > **位置说明**（2026-10-04 二批）：**AI 运行时资产已全部收进 `.agents/`**（根 + **29 个受管子目录**（含 `workspace/`）；每个受管目录都有 `_index.md` + `_directory.md`）。留在容器外的只有三类：**`docs/`（档案馆**：史 / 存档 / 对外 / 研究）· **`.githooks/`**（git 约定）· **工具出口目录**（`.dsh/` `.claude/` `.qoder/` `.codex/`，本机状态、不入库）；另加根 `AGENTS.md` / `ARCHITECTURE.md`（L0 入口，就近原则要求原生化）。
 
 ### L0 入口（轻量，禁详细规则）
@@ -96,16 +98,17 @@ flowchart TB
 | 接口事实（端点表）| `.agents/knowledge/reference/contracts/api-spec.md` | **`ai-guard-align` A1：与源码 `@Mapping` 逐一对拍** |
 | 状态事实（测试数 · 端点 · 环境 · 发布态）| `.agents/knowledge/reference/status.md` | **`ai-guard-align` A2：与实测对拍** |
 | 契约与设计（**13 份**：api-spec / data-format-freeze / 五层架构 / 插件模型 / 记忆设计 / 交易设计…）| `.agents/knowledge/reference/{contracts,designs,manuals}/*.md` | `ai-guard-meta` · `ai-guard-align` |
-| 功能手册（**4 份**：status / feature-reference / trading-features / admin-features / framework-plugin-gap / task-plugin-model）| `.agents/knowledge/reference/{contracts,designs,manuals}/*.md` | `ai-guard-meta` |
+| 功能手册（**4 份**：admin-features / feature-reference / task-plugin-model / trading-features）| `.agents/knowledge/reference/{contracts,designs,manuals}/*.md` | `ai-guard-meta` |
 | 领域 wiki | `os/*/11-context/*.md`（现 life-os / project-os）| 人/AI |
 
 ### 工具层（机制：横跨以上各层）
 
 | 资产 | 位置 | 规模 / 保真 |
 |:--|:--|:--|
-| 技能（**1 个目录布局** `<name>/SKILL.md` + **3 个扁平** `<name>.md`）| `.agents/toolkit/skills/` | `ai-guard-skills` S3/S4/S5/S7 |
+| 技能（**4 个官方目录布局** `<name>/SKILL.md`）| `.agents/toolkit/skills/` | `ai-guard-skills` S3/S4/S5/S7 |
 | 审查官（**扁平** `<name>.md`＝ subagent 真相源）| `.agents/toolkit/roles/` | `ai-guard-skills` + `ai-sync-agents` |
-| 守卫与执行器 | `.agents/mechanism/guards/*.sh`（**15**，含产品侧 `guard.sh`）· `.agents/mechanism/scripts/*.sh` | shell-lint + 自检 |
+| 守卫（**15**，含产品侧 `guard.sh`）| `.agents/mechanism/guards/*.sh` | shell-lint + 自检（`ai-guard-tools`）|
+| 执行器（含 `lib/`）| `.agents/mechanism/scripts/*.sh` | shell-lint + 自检 |
 | 流程定义 | `.agents/rules/process/*.md` | **5 份**（audit / review / ship / task-cadence / review-driven）|
 | 检查清单 | `.agents/toolkit/checklists/*.md` | **17 份** |
 | 契约 | `.agents/frontmatter-spec.md`（**顶层**）· `assets/skills-spec.md` · `assets/ai-context-layer-spec.md` | `ai-guard-meta` / `ai-guard-skills` |

@@ -246,6 +246,27 @@ for _f in (ROOT / '.agents/README.md', ROOT / 'AGENTS.md',
             fails.append("S6 %s: 「%d 个%s」与实际 %d 不符"
                          % (_f.relative_to(ROOT), n, kind, TRUTH[kind]))
 
+# ── S6c：资产清单表「同行 glob ⇄ 数字」对拍（2026-10-06 加）──
+# 起因：`ai-context-engineering.md` 的资产清单表有 9 处数字靠人肉维护，2026-10-06 体系体检实测漂了 8 处。
+# 局限（**刻意保守——宁可少判，不可误报**）：
+#   ① 只认 **以 `.agents/` 开头、止于单层 `*.md` / `*.sh`** 的 glob（不含 `{}` 展开、不含具体文件名）；
+#   ② 该行**恰好一个**加粗数字才判（多个数字 ⇒ 归属有歧义 ⇒ 跳过）。
+#   凡措辞改到判据之外的行会自动**不被检查**（失败模式是"少查"，不是"误报"）。
+ROW_GLOB = re.compile(r'`(\.agents/[^`{}]*\*[^`{}]*)`')
+ROW_NUM = re.compile(r'\*\*(\d+)(?:\s*[份个])?\*\*')
+_S6C_DOC = AG / 'rules/assets/ai-context-engineering.md'
+if _S6C_DOC.is_file():
+    for _ln, _line in enumerate(_S6C_DOC.read_text(encoding='utf-8').splitlines(), 1):
+        _globs = ROW_GLOB.findall(_line)
+        _nums = ROW_NUM.findall(_line)
+        if len(_globs) != 1 or len(_nums) != 1:
+            continue
+        _pat = _globs[0][len('.agents/'):]
+        _cnt = len([x for x in AG.glob(_pat) if x.name not in ('_index.md', '_directory.md')])
+        if int(_nums[0]) != _cnt:
+            fails.append("S6 %s:%d: 「%s」与 `%s` 实际 %d 不符"
+                         % (_S6C_DOC.relative_to(ROOT), _ln, _nums[0], _globs[0], _cnt))
+
 if FIX and fixed:
     print("STRUCTURE-GUARD: 已重刷 %d 个 _index.md 清单" % len(fixed))
     for x in fixed:

@@ -103,7 +103,7 @@ v1: 编写者（读需求定稿）→ 审核者（读 design-v1）→ 判定
 
 | 角色 | 真相源 | 派法 |
 |:--|:--|:--|
-| **编写者** | `skills/code-api-writer.md` / `code-domain-writer.md`（建设技能引导）| AI 自主 |
+| **编写者** | `skills/code-api-writer/SKILL.md` / `code-domain-writer.md`（建设技能引导）| AI 自主 |
 | **审核者** | `roles/*`，按 `review.md` §3 的**派官表** | 至少一轮 |
 
 - 编码阶段的审核**沿用增量深审**（`review.md`），**不另起一套**——本流程只规定"必须派、派谁、何时升级"，具体执行标准归 `review.md`。

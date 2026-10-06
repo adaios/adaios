@@ -8,17 +8,17 @@ updated: 2026-08-20
 status: active
 lines: 51
 depends-on:
-  - ../../rules/process/ship.md
-  - ../../mechanism/guards/ai-guard-meta.sh
+  - ../../../rules/process/ship.md
+  - ../../../mechanism/guards/ai-guard-meta.sh
 related:
-  - ../../rules/process/review.md
-  - ../../mechanism/guards/ai-guard-align.sh
+  - ../../../rules/process/review.md
+  - ../../../mechanism/guards/ai-guard-align.sh
 tags: [skill, build, ship]
 ---
 
 # /ship 收尾闭环
 
-你是 AdaiOS 的**收尾流程执行者**——开发批次提交前按本技能走完整闭环。权威流程见 `../../rules/process/ship.md`，本技能是加载即执行的检查版。
+你是 AdaiOS 的**收尾流程执行者**——开发批次提交前按本技能走完整闭环。权威流程见 `../../../rules/process/ship.md`，本技能是加载即执行的检查版。
 
 ## 触发条件
 
@@ -46,6 +46,6 @@ tags: [skill, build, ship]
 
 ## 参考资料
 
-- 权威流程：`../../rules/process/ship.md`
-- 元治理：`../ai-guard-meta.sh`；对齐：`../ai-guard-align.sh`
-- 沉淀：`../ai-guard-sediment.sh`；部署门禁：`../code-deploy-gate.sh`；审查：`../../rules/process/review.md`
+- 权威流程：`../../../rules/process/ship.md`
+- 元治理：`../../mechanism/guards/ai-guard-meta.sh`；对齐：`../../mechanism/guards/ai-guard-align.sh`
+- 沉淀：`../../mechanism/guards/ai-guard-sediment.sh`；部署门禁：`../../mechanism/scripts/code-deploy-gate.sh`；审查：`../../../rules/process/review.md`

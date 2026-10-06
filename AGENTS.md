@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-10-06
 status: active
-lines: 86
+lines: 88
 depends-on:
   - .agents/README.md
 related:
@@ -42,6 +42,8 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 12. **触发词「体检」（2026-10-06 用户确立：「我需要一个体检角色/skill」）**：用户说「**体检**」，AI 走两步——① **机械层**：`bash .agents/mechanism/guards/ai-guard-health.sh --full`（六维总检 + 健康分；机械结论**照抄不解读**）；② **叙事层**：派 **`ai-context-health-reviewer`**（体系体检官）按 `toolkit/checklists/ai-context-health-reviewer.md` 的 **H1–H8** 逐条查——**结构断裂 · 跨目录双源 · 滞后 · 文档与行为不一致 · 缩写路径死胡同 · 总纲可执行性**（**全是守卫覆盖不到的**）。报告落 `docs/records/audits/<日期>-ai-context-health.md`，**只讲结论与待修，不堆原始输出**。**只报告不改**（B7）：修复方案写清落点，用户点头再动。**何时该体检**：结构类改动之后（顶层级重构 / 加删角色 / 批量改名）· 里程碑前 · 「每周」时按需
 
 ## 审查体系（.agents/）
+
+> **本表是操作导航**（什么时候跑哪个）；**体系里逐条资产的完整清单与规模**见 `rules/assets/ai-context-engineering.md` **§二**（2026-10-06 体检 **H4-2** 收口）。
 
 | 命令/操作 | 文件 | 说明 |
 |:---------|:-----|:-----|

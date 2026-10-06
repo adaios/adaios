@@ -54,10 +54,10 @@ tags: [meta, index]
 | `roles/ux-stranger-reviewer.md` | 当产品要交给没听过 AdaiOS 的人用之前加载——零上下文、禁读源码，只判「第一次打开的人能不能自己用起来」 | active |
 | `roles/ux-support-reviewer.md` | 当产品要交给人用之前加载——预演「他一定会问你的问题」，把每条答不上来的问题变成一条待修缺陷 | active |
 | `roles/ux-visual-reviewer.md` | 当需要审查页面布局/触达/视觉层级/三端一致/深色模式/空态加载态时加载——误触风险、可读性 | active |
-| `skills/code-api-writer.md` | 当需要新增/修改 API 端点时加载——从代码到契约同步的完整闭环（api-spec/status/测试/插件门… | active |
-| `skills/code-domain-writer.md` | 当需要新增 Domain OS / 重大架构能力时加载——RFC+六维 → 插件模型 → 数据流设计 → 分层落… | active |
+| `skills/code-api-writer/SKILL.md` | 当需要新增/修改 API 端点时加载——从代码到契约同步的完整闭环（api-spec/status/测试/插件门… | active |
+| `skills/code-domain-writer/SKILL.md` | 当需要新增 Domain OS / 重大架构能力时加载——RFC+六维 → 插件模型 → 数据流设计 → 分层落… | active |
 | `skills/data-learn-writer/SKILL.md` | 当用户要求整理外部内容（B站视频/YouTube/文章/字幕/图片）为学习文档时加载——抓取→转写/取文→结构化… | active |
-| `skills/task-ship.md` | 当开发批次完成需要收尾（/ship）时加载——五件套完成标准→契约同步→登记→门禁→规范提交 | active |
+| `skills/task-ship/SKILL.md` | 当开发批次完成需要收尾（/ship）时加载——五件套完成标准→契约同步→登记→门禁→规范提交 | active |
 
 ## 子目录
 

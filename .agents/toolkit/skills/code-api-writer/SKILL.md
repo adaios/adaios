@@ -8,11 +8,11 @@ updated: 2026-08-20
 status: active
 lines: 55
 depends-on:
-  - ../../rules/assets/conventions.md
-  - ../checklists/code-backend-reviewer.md
+  - ../../../rules/assets/conventions.md
+  - ../../checklists/code-backend-reviewer.md
 related:
-  - ../../knowledge/reference/contracts/api-spec.md
-  - ../../rules/process/ship.md
+  - ../../../knowledge/reference/contracts/api-spec.md
+  - ../../../rules/process/ship.md
 tags: [skill, build, api]
 ---
 
@@ -50,6 +50,6 @@ tags: [skill, build, api]
 
 ## 参考资料
 
-- 后端检查清单：`../checklists/code-backend-reviewer.md`
-- 契约：`../../knowledge/reference/contracts/api-spec.md`
-- 规范：`../../rules/assets/conventions.md`；边界：`../../rules/assets/boundaries.md`；已知坑：`../../rules/assets/pitfalls.md`
+- 后端检查清单：`../../checklists/code-backend-reviewer.md`
+- 契约：`../../../knowledge/reference/contracts/api-spec.md`
+- 规范：`../../../rules/assets/conventions.md`；边界：`../../../rules/assets/boundaries.md`；已知坑：`../../../rules/assets/pitfalls.md`
