@@ -320,7 +320,7 @@ flowchart LR
 
 | 环节 | 现状（2026-10-06）|
 |:--|:--|
-| **审核者** | ✅ 现成——**15 个角色**在 `.agents/toolkit/roles/`：产作者 1 · 审核者 13（**需求评审官** `docs-requirement-reviewer`＋域客观官 8＋对抗官 1＋**外部视角 3**）· 流程官 1（`process-reviewer`）；关系全景见 `rules/process/review-driven.md` **§0** |
+| **审核者** | ✅ 现成——**16 个角色**在 `.agents/toolkit/roles/`：产作者 1 · 审核者 14（**需求评审官** `docs-requirement-reviewer`＋域客观官 8＋对抗官 1＋**外部视角 3**＋**体系体检 1**）· 流程官 1（`process-reviewer`）；关系全景见 `rules/process/review-driven.md` **§0** |
 | **产作者（编码）** | ✅ 现成——`skills/code-api-writer` / `code-domain-writer` 已是建设技能 |
 | **产作者（设计）** | ✅ 现成——`docs-design-writer`（2026-10-03 建；与审核者**真对打**：两个独立 subagent、不共享上下文）|
 | **多轮交叉的流程** | ✅ 已落成——`rules/process/review-driven.md`（含 **§0 角色全景** · §9 派单协议 · §9.1 执行档位）|

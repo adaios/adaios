@@ -3,9 +3,9 @@ title: AdaiOS AI 协作入口
 description: 任何 AI 工具打开本项目的统一入口——项目定位、协作规则、审查体系导航（工具无关）
 version: 1
 created: 2026-08-15
-updated: 2026-10-04
+updated: 2026-10-06
 status: active
-lines: 85
+lines: 86
 depends-on:
   - .agents/README.md
 related:
@@ -39,6 +39,7 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 9. **触发词「收工」（2026-09-26 用户确立：「收尾/收工，提交 diff」；**2026-10-03 更新：收工默认含提交**）**：用户说「**收工**」（或「收尾」），AI 执行 `bash .agents/mechanism/scripts/task-cadence.sh ship`——一条命令出**本批 diff**（自上次收工基线以来已提交的 commit + 工作区未提交的清单与统计）、刷开工快照、成本入账，并把收工基线推到当前 commit；**随后按本批显式路径提交**（2026-10-03 用户拍板「提交，且以后收工默认连提交」——提交是收工的最后一步，不再需要用户额外说一次）；**提交后把收工基线补推到新 commit**（`bash .agents/mechanism/scripts/task-cadence.sh mark ship`）——否则下次收工会把本批再算一遍。**提交纪律不变**：仓库可能有并发会话（`.agents/rules/process/ship.md §7` 的真实事故），**严禁 `git add -A`**，一律**显式路径** + `ADAI_BATCH_PATHS` 范围守卫；**审查判定有 P0/P1 时先修再提交**。**收工止步于提交——不自动 push、不自动部署**（外向动作仍须用户点头，部署走 `code-deploy-gate.sh`，原则 B8）
 10. **触发词「每周」「待办」（2026-09-26 确立）**：「**每周**」→ `bash .agents/mechanism/scripts/task-cadence.sh weekly`（每周审查 W1–W6 + 本周人肉清单 + 到期红线）；「**待办**」→ `bash .agents/mechanism/scripts/task-cadence.sh todo`（REVIEW 未修项一眼看全）。**开工第一眼**（或想确认当前节奏）跑 `bash .agents/mechanism/scripts/task-cadence.sh`（无参数 = 状态总览：上次巡检/上次收工/上次周审 + 欠账提醒）。五条默契的总表与游标机制见 `.agents/rules/process/cadence.md`
 11. **触发词「发布」「发版」（2026-09-26 用户确立：「不主动部署，通过部署动作一键触发，确定是否更新发布」）**：用户说「**发布**」「**发版**」，或问「**要不要发**」「**该发什么**」，AI 执行 `bash .agents/mechanism/scripts/task-cadence.sh release`——**只判定**：现在欠着什么没发、要发哪几端（后端 / Web 桌面端 / 管理后台 / iOS App），附生产↔本地 commit 对照与未推送数。**AI 绝不主动部署、绝不主动 push**（原则 B8）：判定结果讲给用户后，**只有用户点头**才走 `code-deploy-gate.sh`（门禁 + 部署后 smoke）或对应端的构建 / 发布命令；未获指示时只报告、不动作
+12. **触发词「体检」（2026-10-06 用户确立：「我需要一个体检角色/skill」）**：用户说「**体检**」，AI 走两步——① **机械层**：`bash .agents/mechanism/guards/ai-guard-health.sh --full`（六维总检 + 健康分；机械结论**照抄不解读**）；② **叙事层**：派 **`ai-context-health-reviewer`**（体系体检官）按 `toolkit/checklists/ai-context-health-reviewer.md` 的 **H1–H8** 逐条查——**结构断裂 · 跨目录双源 · 滞后 · 文档与行为不一致 · 缩写路径死胡同 · 总纲可执行性**（**全是守卫覆盖不到的**）。报告落 `docs/records/audits/<日期>-ai-context-health.md`，**只讲结论与待修，不堆原始输出**。**只报告不改**（B7）：修复方案写清落点，用户点头再动。**何时该体检**：结构类改动之后（顶层级重构 / 加删角色 / 批量改名）· 里程碑前 · 「每周」时按需
 
 ## 审查体系（.agents/）
 
@@ -48,19 +49,19 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 | 全维度走查 | `.agents/rules/process/audit.md` | 8 客观官 + 1 对抗官独立并行全量走查 + 交叉印证 |
 | 增量深审 | `.agents/rules/process/review.md` | 按改动派对应审查官 |
 | 收尾闭环 | `.agents/rules/process/ship.md` | /ship：测试→契约→登记→ai-guard-meta 门禁→提交 |
-| **审查角色（15 个）** | `.agents/toolkit/roles/` | **分三类**（全景与关系见 `process/review-driven.md` **§0**）：**产作者 1**（`docs-design-writer`）· **审核者 13**（需求评审 `docs-requirement-reviewer` ＋ 域客观官 8：`docs-product` / `code-backend` / `code-frontend` / `ux-interaction` / `ux-visual` / `docs-contract` / `data-knowledge` / `ai-context` ＋ 对抗官 `ai-adversarial-reviewer`〔deep 默认附加〕＋ 外部视角 3）· **流程官 1**（`process-reviewer`，管过程不管产物）。均封装为 SKILL.md 技能包（触发/步骤/约束/输出/参考 五段）|
+| **审查角色（16 个）** | `.agents/toolkit/roles/` | **分三类**（全景与关系见 `process/review-driven.md` **§0**）：**产作者 1**（`docs-design-writer`）· **审核者 14**（需求评审 `docs-requirement-reviewer` ＋ 域客观官 8：`docs-product` / `code-backend` / `code-frontend` / `ux-interaction` / `ux-visual` / `docs-contract` / `data-knowledge` / `ai-context` ＋ 对抗官 `ai-adversarial-reviewer`〔deep 默认附加〕＋ 外部视角 3 ＋ **体系体检 1**）· **流程官 1**（`process-reviewer`，管过程不管产物）。均封装为 SKILL.md 技能包（触发/步骤/约束/输出/参考 五段）|
 | **外部视角审查** | `.agents/toolkit/roles/`（`ux-stranger-reviewer` / `ux-social-reviewer` / `ux-support-reviewer`）| **面向身边人 / 新用户前必跑**：**陌生人官**（首次使用，**禁读源码**）+ **社会性官**（递出去那一刻）+ **支持台官**（他一定会问的问题）——补内部 8 官「读代码 → 结构上永远知道按钮在哪」的盲区 |
 | 建设技能 | `.agents/toolkit/skills/<name>/SKILL.md` | code-api-writer / code-domain-writer / task-ship / data-learn-writer 四技能：建设与收尾流程封装为 SKILL.md，加载即执行（官方目录布局；工具侧靠 `.agents/mechanism/scripts/ai-link-skills.sh` 软链出口） |
 | 技能包规范 | `.agents/rules/assets/skills-spec.md` | SKILL.md 技能包标准：name + frontmatter 10 字段融合、五段结构、新增流程 |
 | 架构红线 | `ARCHITECTURE.md` | 技术栈/五层架构/分层依赖/数据流/红线清单，AI 进项目直读 |
-| 检查清单 | `.agents/toolkit/checklists/` | 逐条可执行（人也能用）：与 15 个角色**一一对应**（含需求评审官 `docs-requirement-reviewer` 与流程官 `process-reviewer`）+ `ai-guard-checklist` |
+| 检查清单 | `.agents/toolkit/checklists/` | 逐条可执行（人也能用）：与 16 个角色**一一对应**（含需求评审官 `docs-requirement-reviewer` 与流程官 `process-reviewer`）+ `ai-guard-checklist` |
 | 元数据规范 | `.agents/frontmatter-spec.md` | 文档 frontmatter 契约（图谱/治理/归档）|
 | **健康总检（一条命令）** | `.agents/mechanism/guards/ai-guard-health.sh` | **「整个 `.agents/` 健不健康」的总入口**：六维体检（① 结构 · ② 元数据 · ③ 命名 · ④ 体积 · ⑤ 契约 · ⑥ 新鲜度）+ 健康分 + 子目录概览；① ② 直接调 structure/meta（**不重写已有判据**），③④⑤⑥ 是它们没有的内容规范层。`--json` 喂 AI · `--full` 看提示级明细 · `--fix` 先修再检（2026-10-04 用户「我需要一个脚本维持整个 `.agents/` 的健康」）|
 | 元治理自检 | `.agents/mechanism/guards/ai-guard-meta.sh` | 一条命令：frontmatter 图谱断链/lines 漂移/孤儿（`--fix` 回写）|
 | **技能包质量** | `.agents/mechanism/guards/ai-guard-skills.sh` | 官方 Agent Skills 规范硬约束：S3 `name` 字符集/长度/与目录名一致 · S4 `description` 长度 · S5 五段结构 · S7 偏离在案（git pre-commit 自动触发）|
 | 文档自动对齐 | `.agents/mechanism/guards/ai-guard-align.sh` | 代码↔文档内容对齐：端点↔api-spec / 测试数↔status.md（git pre-commit 自动触发）|
 | **功能索引自检** | `.agents/mechanism/guards/ai-guard-feature.sh` | **功能主轴**（`.agents/knowledge/features/`）是否真实：索引行字段/链接/状态枚举 · 欠着编号存在 · 卡内无实现细节 · 卡 ≤12 行 · 卡文件非孤儿（git pre-commit 自动触发）；规格见 RFC 20261001 |
-| 任务上下文 | `.agents/mechanism/guards/ai-guard-context.sh` | 开工前生成上下文清单（状态/未修项/边界/坑/规范/待办，可按主题过滤）；`--write-local` 收尾刷 AGENTS.local.md 快照（DSH 自动注入）|
+| 任务上下文 | `.agents/mechanism/guards/ai-guard-context.sh` | 开工前生成上下文清单（状态/未修项/边界/坑/规范/待办）；`--write-local` 收尾刷 AGENTS.local.md 快照（DSH 自动注入）。⚠️ **该脚本没有 `--topic` 参数**（曾误标「可按主题过滤」，2026-10-06 实测修正）；**输出很大**，会话开头别跑全量——读 `AGENTS.local.md` 等价 |
 | 沉淀检查 | `.agents/mechanism/guards/ai-guard-sediment.sh` | ship 时检查沉淀/出表/登记（S1 坑/ADR、S2 REVIEW 出表、S3 change-log）|
 | 部署门禁 | `.agents/mechanism/scripts/code-deploy-gate.sh` | 部署前强制 review+guard，部署后自动 smoke（最硬闸门）；同时把「本次应更新哪几端」写进生产 `DEPLOYED` |
 | **发版体检（发布前随时问）** | `.agents/mechanism/guards/ai-guard-release.sh` | **发布前**一条命令答「现在欠着什么没发」：生产当前 commit/上批清单/待 push 数 + **逐端判定**（后端 · Web 桌面端 · 管理后台 · **iOS App**）要发还是不用发 + 下一步命令（jar+code-deploy-gate / flutter build web+tar / TestFlight 构建号 N→N+1）；`--json` 可喂 AI。路径映射唯一真相源 `.agents/mechanism/scripts/lib/release-units.sh`（code-deploy-gate 共用）|

@@ -19,8 +19,8 @@
 #      写成 `skills/` 会把真相源 .agents/toolkit/skills/ 一起忽略掉。
 #
 # 为什么只注册「直触发」技能而不是 19 个：
-#   `.agents/toolkit/` 下共 19 个技能包（roles/ 15 + skills/ 4），但只有「用户一句话就能直触发」
-#   的才进工具 catalog。**15 个角色**是**流程内触发**（`process/review.md` / `review-driven.md` 派发），
+#   `.agents/toolkit/` 下共 20 个技能包（roles/ 16 + skills/ 4），但只有「用户一句话就能直触发」
+#   的才进工具 catalog。**16 个角色**是**流程内触发**（`process/review.md` / `review-driven.md` 派发），
 #   全量注册会常驻会话上下文，并可能在你随口改一行代码时自动派全套审查官走查
 #   ——那是全项目最贵的 AI 流程（见 checklists/ai-cost-checklist.md / process/audit.md 成本纪律）。
 #

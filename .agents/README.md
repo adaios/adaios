@@ -41,7 +41,7 @@ tags: [ai, meta, engineering]
 | `rules/` | ③ 规则 | `assets/`（规矩）· `guides/`（操作）· `deployment/`（运维）· `process/`（流程）· `workflow/`（生命周期）· `method/`（元方法）|
 | `records/` | ④ 记录 | 活账本（`REVIEW` / `change-log` / `task-log`）· `state/`（**本机状态，不入 git**）|
 | `workspace/` | ④ 记录（**在制品**）| **会变空的在制品容器**——一条分支/任务一个目录（`_templates/` 模板 · `_meta/` 跨任务）|
-| `toolkit/` | ⑤ AI 能力 | `roles/`（**15 个角色**）· `skills/`（建设技能）· `checklists/`（与角色一一对应，人也能用）|
+| `toolkit/` | ⑤ AI 能力 | `roles/`（**16 个角色**）· `skills/`（建设技能）· `checklists/`（与角色一一对应，人也能用）|
 | `mechanism/` | ⑤ 执行机制 | `guards/`（守卫 **15** 个 · 含 `tests/`）· `scripts/`（执行器 · 含 `lib/`）|
 
 > **`workspace/` 为什么单列**：它与 `records/` **性质相反**——`records/` 是**只追加的历史账本**，
@@ -60,7 +60,7 @@ tags: [ai, meta, engineering]
 | `process/` | 流程定义：audit（走查）· review（深审）· ship（收尾）· cadence（节奏）· **review-driven（需求 → 设计 → 编码主链）** |
 | `reference/` | **② 事实（按需查）**——契约 / 状态 / 手册 / 领域设计 |
 | `rfc/` | **① 决策记录**——方案决策（要不要做 / 怎么做，含备选与理由）|
-| `roles/` | **15 个角色定义**（**subagent 的真相源**）：产作者 1 · 审核者 13（需求评审 1 + 域客观官 8 + 对抗官 1 + 外部视角 3）· 流程官 1 —— 关系见 `process/review-driven.md` **§0** |
+| `roles/` | **16 个角色定义**（**subagent 的真相源**）：产作者 1 · 审核者 14（需求评审 1 + 域客观官 8 + 对抗官 1 + 外部视角 3 + 体系体检 1）· 流程官 1 —— 关系见 `process/review-driven.md` **§0** |
 | `scripts/` | 环境与注册脚本（换机 / 新工作区要跑的那些）|
 | `skills/` | 建设与流程技能（工具 skill 出口直连这里）|
 | `state/` | **本机状态**（不入 git）：协作游标 / 成本账 / 心跳缓存 |

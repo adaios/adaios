@@ -1,0 +1,37 @@
+---
+title: 检查清单：AI 上下文体系体检官
+description: ai-context-health-reviewer 的逐条判据 H1–H8——全部是机械守卫覆盖不到的叙事层；机械层（health/structure/meta/tools）的结论只照抄、不重判
+name: ai-context-health-reviewer
+version: 1
+created: 2026-10-06
+updated: 2026-10-06
+status: active
+lines: 37
+depends-on: []
+related:
+  - ../roles/ai-context-health-reviewer.md
+tags: [checklist, ai-context, health]
+---
+
+# 检查清单：AI 上下文体系体检（H1–H8）
+
+> **前置**：机械层先跑并**照抄结论**——`ai-guard-health`（六维）· `ai-guard-structure`（S1–S6）·
+> `ai-guard-meta`（M1–M4）· `ai-guard-skills` · `ai-guard-feature` · `ai-guard-tools` · `ai-guard-align`。
+> **本清单只查它们覆盖不到的**（否则就是重复判据，违反「不重写已有判据」）。
+
+| # | 检查方法 | 上次发现 |
+|:--:|:--|:--|
+| **H1** | **总纲 ⇄ 实际**：`.agents/README.md` · `AGENTS.md` · `rules/assets/ai-context-engineering.md` 里描述的结构 / 数字 / 角色与实测逐条对拍（`ls -d .agents/*/`、`ls roles/*.md \| wc -l`）。**机械部分（顶层数 / 角色数）已由 S6 覆盖**，其余（rfc 数 / guards 数 / 技能包数 / 目录清单）靠人肉 | roles 写 12（实际 **15**）· rfc 写 68（实际 **67**）· 顶层写 6（实际 **7**，漏 `workspace/`）—— 2026-10-06 |
+| **H2** | **文档 ⇄ 行为**：规范里声称「已落地 / 在跑」的机制，**实际是否真在跑**（「四个技能出口」↔ 软链实物；「pre-commit 多层」↔ `.githooks` 实件；「收件箱派单」↔ `inbox.md`） | `ai-context-engineering` 写「产作者（设计）❌ 缺」，而它 **10-03 当天就建了** —— 2026-10-06 |
+| **H3** | **交叉一致**：同一事实在 ≥2 处出现时**逐处**对拍（角色数 / 目录数 / 流程步骤 / 阈值）——`grep -rn "<该数字>"` 后**看点**，不能只看一处 | 「12 个审查官」在 `audit.md`·`skills-usage.md`·`development.md`·`ai-link-skills.sh` **4 处**残留 —— 2026-10-06 |
+| **H4** | **跨目录双源**：同一知识是否在两处**详述**。`S5` 只查两件套**内部**的整行重复——**跨目录的没人查**。判据：**一处详述、其余指针** | 待查 |
+| **H5** | **滞后**：`git log -1 --format=%ad <doc>` 与**最近一次结构/角色重构**的时间对拍——谁没跟上，一目了然 | README 停在六顶层重构**前**（10-04 重构 → 10-06 才补）—— 2026-10-06 |
+| **H6** | **结构断裂**：**读完整文件**（不看片段）——是否 ① 一个文件里**两套结构并存** ② **孤立残行**（如尾巴挂个多余 `\|`） ③ **丢了标题的表** | README 同时有旧「三层结构」表与新「6 个顶层」表 + 一条孤立残行 + 子目录表丢标题 —— 2026-10-06 |
+| **H7** | **死胡同与孤儿**：① 引用了**不存在**的东西 —— `M4` 只认 `.agents/`/`docs/` 开头的形态，**缩写路径是它的盲区**（`assets/xxx` 实为 `rules/assets/xxx`、`process/xxx` 实为 `rules/process/xxx`）② 文档**无人引用**且不在任何 `_index` | README **5 处** `assets/xxx` 断链（M4 全部漏检）—— 2026-10-06 |
+| **H8** | **可执行性**：文档里的命令 / 路径**真跑一遍**（`bash -n` 查语法 + 关键命令实测）——`D8` 只覆盖 skill/agent 自身，**总纲与规范里的命令**同样要能跑 | `AGENTS.md` 的守卫表写 `ai-guard-context.sh`「可按主题过滤（`--topic`）」，而该参数**根本不存在** —— 2026-10-06 |
+
+## 判据维护（自迭代门禁）
+
+- **新判据必须绑定一次真实事故**（`rules/assets/skills-spec.md` §七）——无事故不加判据；
+- **能被机械化的就移进守卫**：某条一旦可脚本化（如 H1 的「顶层 / 角色数」→ **S6**），**从本清单删除**，避免人肉与机器重复；
+- 本清单的改动走「**提案 → 守卫 → 人点头**」，角色**不得自改**。

@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-06
 status: active
-lines: 43
+lines: 44
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index]
@@ -15,21 +15,22 @@ tags: [meta, index]
 
 > 本文件只列**有什么**；**规则与依赖**见 [`_directory.md`](./_directory.md)。
 
-## 文件清单（16 项）
+## 文件清单（17 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
+| `ai-context-health-reviewer.md` | ai-context-health-reviewer 的逐条判据 H1–H8——全部是机械守卫覆盖不到的叙事层；… | active |
 | `ai-context-reviewer.md` | ai-context-reviewer 逐条检查项（人也能用）——Purpose/Trigger/Action/… | active |
 | `ai-cost-checklist.md` | DeepSeek 峰谷定价后的烧钱动作清单 + 省钱原则——DSH/后端/日常开发哪些操作会烧钱、怎么省、怎么盯… | active |
-| `ai-guard-checklist.md` | 每次 /review 必跑的 G1-G10 防 P0 复发清单（数据丢失/契约破坏/口径漂移），执行器为 doc… | active |
+| `ai-guard-checklist.md` | 每次 /review 必跑的 G1-G10 防 P0 复发清单（数据丢失/契约破坏/口径漂移），执行器为 .ag… | active |
 | `code-backend-reviewer.md` | code-backend-reviewer 逐条检查项（人也能用）——数据流水线/存储健壮性/分层/AI 集成/… | active |
 | `code-frontend-reviewer.md` | code-frontend-reviewer 逐条检查项（人也能用）——DTO 契约/生命周期/状态管理/测试 | active |
 | `code-perf-reviewer.md` | app/web/admin 加载慢时的轻量快查——按加载链路分阶段逐条核对，15 分钟出结果（AI 触发 /pe… | active |
 | `data-knowledge-reviewer.md` | data-knowledge-reviewer 逐条检查项（人也能用）——os/ 消费链路/data/ 健康/隐… | active |
 | `docs-contract-reviewer.md` | docs-contract-reviewer 逐条检查项（人也能用）——契约真相源/RFC 决策漂移/文档资产健… | active |
 | `docs-product-reviewer.md` | docs-product-reviewer 逐条检查项（人也能用）——五层架构/数据流/Roadmap/原则/功… | active |
-| `docs-requirement-reviewer.md` | docs-requirement-reviewer 逐条检查项（人也能用）——13 条需求质量判据（含 design-independent 与可验证性 + 路线对齐）| active |
-| `process-reviewer.md` | process-reviewer 逐条检查项（人也能用）——P-01…P-10：观测性/交付判据/轮次纪律/自迭代门禁 | active |
+| `docs-requirement-reviewer.md` | docs-requirement-reviewer 逐条检查项（人也能用）——13 条需求质量判据（含 desi… | active |
+| `process-reviewer.md` | process-reviewer 逐条检查项（人也能用）——把「做事的方式」逐条对：可观测性、交付判据、轮次纪律… | active |
 | `ux-interaction-reviewer.md` | ux-interaction-reviewer 逐条检查项（人也能用）——操作路径/状态机/异常流/反馈/跨端/… | active |
 | `ux-social-reviewer.md` | ux-social-reviewer 逐条检查项（人也能用）——通知暴露面/递手机/付出门槛/人情/退出口/体面 | active |
 | `ux-stranger-reviewer.md` | ux-stranger-reviewer 逐条检查项（人也能用）——三端入口可达/开号/空世界首屏/第一件事/五… | active |

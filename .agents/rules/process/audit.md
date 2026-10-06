@@ -33,7 +33,7 @@ bash .agents/mechanism/guards/guard.sh        # G1-G7 代码级守护
 bash .agents/mechanism/guards/ai-guard-meta.sh       # 元治理：frontmatter 图谱/lines/孤儿（D30/D34）
 ```
 
-## 3. 8 客观官 + 1 对抗官独立并行（`roles/` 共 15 个角色定义；**本节只派这 9 个**，外部视角官 3 按场景必跑，需求评审官 / 产作者 / 流程官不进本流程——各自归属见 `review-driven.md` §0）
+## 3. 8 客观官 + 1 对抗官独立并行（`roles/` 共 16 个角色定义；**本节只派这 9 个**，外部视角官 3 按场景必跑，需求评审官 / 产作者 / 流程官不进本流程——各自归属见 `review-driven.md` §0）
 
 每个审查官**独立**执行（互不参考，保证视角纯净），按各自 `roles/*.md` 定义：
 

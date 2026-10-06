@@ -40,6 +40,7 @@ REGISTER=(
   docs-requirement-reviewer   # 需求文稿审核官（介入点①前一步，2026-10-06）
   docs-design-writer   # 审核驱动主链的产作者（与设计文档审核者真对打，2026-10-03）
   process-reviewer   # 流程官（QA）——盯流程 / 记问题 / 提改进，不判内容、不代笔（2026-10-06）
+  ai-context-health-reviewer   # 体系体检官——全景体检 .agents/ 的叙事层（守卫覆盖不到的那些）；触发词「体检」（2026-10-06）
 )
 
 # ── 目标工具 subagent 目录：**清单的唯一真相源在 lib/ai-export-targets.sh**（2026-10-05 起）──
