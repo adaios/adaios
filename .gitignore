@@ -78,28 +78,37 @@ heapdump.*
 # ── AdaIOS 个人隐私数据 ──
 # 个人记忆、交易记录、持仓等隐私数据不提交
 # 多用户架构预留（2026-08-02）：数据按用户分层 data/{userId}/，用通配忽略所有用户层
-data/*/records/
-data/*/memory/
-data/*/trading/
+#
+# ⚠️ 规则**一律不带尾斜杠**（2026-10-06 修）：带尾斜杠的模式**只匹配目录**，而 git 不把
+#    **符号链接**当目录 —— worktree 的 link 模式正是把 `data/` 的子项链成符号链接，
+#    于是这些链接全部漏网、在 `git status` 里冒成 12 条未跟踪
+#    （详见 `.agents/rules/assets/pitfalls.md` 与 `guides/worktree-workflow.md` §五）。
+#    不带尾斜杠 = 同时匹配文件与目录 = 链接也命中（匹配面更大，方向是**更安全**）。
+# ⚠️ 也**不能**图省事写成 `data/*/` —— 那会排除 `data/adai/` 这个**父目录**，而 git 的规则是
+#    「父目录被排除后，其子文件无法再被 `!` 重新包含」，会连要入库的
+#    `data/adai/identity/profile.sample.md` 一起干掉。
+data/*/records
+data/*/memory
+data/*/trading
 # learn 学习卡片（learn 插件 RFC 20260829：外部内容学习沉淀，含视频字幕/原文摘录，个人消化留存不提交）
-data/*/learn/
+data/*/learn
 # 推送设备登记（RFC 20260913 APNs 批：deviceToken 是可关联到具体设备的个人标识，换机/重装即变）
 # 2026-09-13 本批新增落盘目录 data/{userId}/push/devices.json → 按 B3/B25「新增落盘目录必须 gitignore 验证」同步
-data/*/push/
+data/*/push
 # 全局行情数据（2026-08-30 TDX 通达信本地日线，全 A 数百 MB，不入库）
-data/market/
+data/market
 
 # 任务数据（R2 记录↔任务派生，含私人待办，不提交）
 # 2026-08-15 文档治理批：P1-3 补齐（此前 data/*/project/ 漏忽略，data/adai/project 曾误提交）
-data/*/project/
+data/*/project
 # 待办（RFC 20260917 起取代 project/tasks；2026-09-23 补漏——迁移时只保留了 project 的旧规则、没加 todos）
-data/*/todos/
+data/*/todos
 # 节律（RFC 20260923 B 批新增落盘目录 data/{userId}/rhythm/；按 B3「新增落盘目录必须 gitignore 验证」同步）
-data/*/rhythm/
+data/*/rhythm
 
 # AI 交互日志含完整 prompt 全文（档案/记忆/持仓/用户原文），不提交
 # 2026-08-12 deep 审核 P0 #226：新增落盘目录必须同步 .gitignore（B25 检查点）
-data/*/ai-logs/
+data/*/ai-logs
 
 # identity 的示例配置文件选择性提交（见 data/identity/profile.sample.md）
 # data/identity/ 下除 *.sample.md 外全部不提交（含真实用户偏好/头像等）
@@ -108,13 +117,20 @@ data/*/identity/*
 !data/*/identity/*.sample.md
 
 # 索引文件可从 records 重建，不追踪
-data/*/index/
+data/*/index
 
 # 数据迁移自动备份（data-backup-*.tar.gz，确认后可删）
 data-backup-*.tar.gz
 
 # 账号列表（系统级敏感配置，不提交；AccountFileRepository 首次启动自动 seed adai）
-data/accounts/
+data/accounts
+
+# 其余用户层目录：**内容**已被上面按类型忽略，但目录/符号链接**本身**没有规则管
+# （link 模式下它们是指向主仓库的符号链接 → 会冒成未跟踪）。逐个列而非通配，理由见上方 ⚠️。
+# 新增用户、且其目录全为个人数据时，在此加一行。
+data/admin
+data/alice
+data/family
 
 # ── 后端测试残留数据 ──
 services/adai-core/data/
