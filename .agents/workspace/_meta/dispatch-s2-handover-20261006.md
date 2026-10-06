@@ -32,7 +32,7 @@ tags: [workspace, meta, dispatch, trading]
 
 ## 交付 1 · RFC 草稿
 
-`.agents/workspace/_meta/rfc-draft-trading-positioning-expansion-20261006.md`
+`.agents/direction/rfc/20261006-trading-positioning-expansion.md`
 
 照 `20260902` 那份的结构写（背景 / 新定位 / 边界 / 备选与理由），并**逐条落**下面六段：
 

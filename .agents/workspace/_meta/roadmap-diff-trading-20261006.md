@@ -8,7 +8,7 @@ status: draft
 lines: 89
 depends-on: []
 related:
-  - ./rfc-draft-trading-positioning-expansion-20261006.md
+  - ../../direction/rfc/20261006-trading-positioning-expansion.md
   - ./dispatch-s2-handover-20261006.md
   - ../../direction/product-roadmap.md
 tags: [workspace, roadmap, trading]
@@ -17,7 +17,7 @@ tags: [workspace, roadmap, trading]
 # roadmap 改动提案 · 交易定位扩容三条
 
 > **性质**：**提案**——`product-roadmap.md` 属**外围**（分支上只动 `workspace/`），本分支**不改它**，由合并后的主会话按本清单落盘。
-> **口径**：与 `rfc-draft-trading-positioning-expansion-20261006.md` **同口径**（人人可用 + 规则自生长）。
+> **口径**：与 `20261006-trading-positioning-expansion.md` **同口径**（人人可用 + 规则自生长）。
 > **原文来源**：下文「现状原文」**逐字抄自 `.agents/direction/product-roadmap.md`**（行号以本分支现件为准），**未凭记忆**。
 > **修订**：`r2`（2026-10-06）—— 按人 2026-10-06 口头修正：**87 课 = 规则层 · 私人财产**（改动 2 / 改动 3 的「仅对 owner 注入」补成与 RFC 同口径的措辞）。
 

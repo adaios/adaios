@@ -1,45 +1,22 @@
 ---
-title: RFC 草稿 · 交易模块定位扩容（建议引擎 → 人人可用的交易记录与照见）
-description: 承接 20260902 定位 RFC 的增量提案——把 trading 从「owner 专属建议引擎」扩为「人人可用的交易记录与照见」；含不做清单；四处★已由 adai 2026-10-06 拍板（status: approved）
-version: 3
-created: 2026-10-06
-updated: 2026-10-06
+title: 交易模块定位扩容——从「owner 专属」到「人人可用」（承接 20260902 的增量）
+description: 承接 RFC 20260902「交易记忆」定位的增量提案——把 trading 从 owner 专属扩为「人人可用的交易记录与照见」，并明确「规则从新用户自己的数据里长出来」；含不做清单（N-01 规则分享等）；87 课 = 规则层 · owner 的私人财产，仅对 owner 注入
+date: 2026-10-06
 status: approved
-lines: 197
-depends-on:
-  - ../../direction/rfc/20260902-trading-memory-positioning.md
-related:
-  - ./dispatch-s2-handover-20261006.md
-  - ./roadmap-diff-trading-20261006.md
-  - ../trading-plugin/design-final-20261006.md
-  - ../trading-plugin/requirement.md
-tags: [rfc, trading, positioning]
+decided-by: 用户（2026-10-06 拍板 ★1–★4：非 owner 一律不注入 87 课 · 不做清单写进 RFC 作为对外承诺 · 与 20260902 承接+增量不取代 · 规则写入路径分两步）
+tags: [trading, 定位, 扩容, 合规, 商业化]
 ---
 
-# RFC 草稿 · 交易模块定位扩容（建议引擎 → 人人可用的交易记录与照见）
+# 交易模块定位扩容——从「owner 专属」到「人人可用」
 
-> **状态**：**`approved`**（内容已由 **adai 2026-10-06** 拍板，四处 ★ 结论见「决策记录」）。本文件写在 `.agents/workspace/`，按分支纪律**不在本分支**搬进 `rfc/`——**由合并后的主会话搬移**（见文首「搬到 `rfc/` 时怎么改 frontmatter」）。
+> **状态**：**`approved`**（内容已由 **adai 2026-10-06** 拍板，四处 ★ 结论见「决策记录」）。**本件已在 `.agents/direction/rfc/`**——2026-10-06 由合并后的主会话从 `workspace/_meta/` 迁入（见下方迁移记录）。
 > **一句话**：`20260902` 把交易从「建议引擎」改成「交易记忆」；**本 RFC 只做一件事**——再往前一步，把「交易记忆」从 **owner 专属** 扩成 **人人可用**，并明确「规则从新用户自己的数据里长出来」。
 > **四处实质判断已在「决策记录」落定**（★1–★4，adai 2026-10-06 拍板）。
 > **修订**：`r2`（2026-10-06）—— 按人 2026-10-06 口头修正：**87 课 = 规则层 · 私人财产**（落点：§三 措辞升级 + 新增 §四 + §六 `N-01` 理由 + §七 主线 + ★4）。
 
 ---
 
-## 搬到 `rfc/` 时怎么改 frontmatter
-
-本稿现在用 **workspace 口径（10 字段）**。搬进 `.agents/direction/rfc/` 时，**换成 rfc/ 口径**（照 `20260902-trading-memory-positioning.md`）：
-
-| 字段 | rfc/ 目标写法 | 怎么定 |
-|:--|:--|:--|
-| `title` | 保留（可去掉「草稿」字样） | 搬移时定 |
-| `description` | 保留，去掉「草稿」措辞 | 搬移时定 |
-| `date` | **`2026-10-06`**（替代 workspace 的 `created` / `updated`） | 搬移时定 |
-| `status` | **`draft` → `approved`** | **★ 由人定稿后才改**（人未点头前保持 `draft`，枚举见 `rfc/_directory.md`） |
-| `decided-by` | 写「用户（`2026-10-06` 拍板：…）」 | **定稿时**由人拍板内容回填 |
-| `tags` | 保留 `[trading, 定位, 记忆, 合规, 商业化]`（去掉 `rfc`） | 搬移时定 |
-| `supersedes` | 见 §七承接结论 + ★3 | 按 §九 ★3 判定回填（**只取代点名条款**，不整份取代） |
-
-> **要删/不迁的**：workspace 专有的 `version` / `created` / `updated` / `lines` / `depends-on` / `related` 在 `rfc/` 口径下按目标文件惯例处理（`rfc/_directory.md` 明写 rfc/ 用 10 字段 frontmatter，但字段集与 workspace 不同——以 `20260902` 实件为准）。
+> **迁移记录**（2026-10-06 · 主会话执行）：本件原在 `.agents/workspace/_meta/rfc-draft-trading-positioning-expansion-20261006.md`（分支纪律：workspace 产物不在分支上搬 `rfc/`），合并后由主会话迁入本目录；frontmatter 已按 `rfc/` 口径改写（照 `20260902` 实件），`status: approved`（adai 2026-10-06 拍板 ★1–★4）。按 ★3 判定，本件与 `20260902` 是**承接 + 增量、不取代**，故**不设** `supersedes`。同批落位：`product-roadmap.md` 两行（L6 · Trading OS）已按本件同口径改写。
 
 ---
 

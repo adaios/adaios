@@ -9,7 +9,7 @@ lines: 65
 depends-on: []
 related:
   - ./inbox.md
-  - ./rfc-draft-trading-positioning-expansion-20261006.md
+  - ../../direction/rfc/20261006-trading-positioning-expansion.md
   - ./roadmap-diff-trading-20261006.md
 tags: [workspace, meta, dispatch, trading]
 ---
@@ -22,7 +22,7 @@ tags: [workspace, meta, dispatch, trading]
 
 **就地修订这两个文件**（不新建版本）：
 
-- `.agents/workspace/_meta/rfc-draft-trading-positioning-expansion-20261006.md`（168 行）
+- `.agents/direction/rfc/20261006-trading-positioning-expansion.md`（168 行）
 - `.agents/workspace/_meta/roadmap-diff-trading-20261006.md`（88 行）
 
 ## 修订 1 · RFC §三：措辞升级 + 补"同构"

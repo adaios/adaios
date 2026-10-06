@@ -87,13 +87,13 @@ SemVer（规则见 `.agents/direction/rfc/20260801-release-versioning.md`）：`
 | | **多模态记录（图片/音频）** | 📋 | 图片 ✅ 已落地（`POST/GET /records/media` · GLM-4.1V-Thinking-Flash · 记忆 KIND_INSIGHT，`20260802-multimodal-image-glm`）；音频 ⬜ 待定 |
 | **L5 外部信息** | 行情接入（腾讯）Phase 1 上下文注入 | ✅ | 已落地 |
 | | 行情主动推送 / Feed 行情嵌入 | ✅ | Feed 行情嵌入 v0.2.0 ✅；主动推送 Phase 2 ✅（`MarketAlertService` 交易时段轮询：止损/放飞/跌破成本线 → `type=push` 入 Feed，2026-08-06）；新闻 ⬜ 无稳定源暂不做 |
-| **L6 交易闭环** | 持仓 / 复盘 / 知识反哺（promote/conflicts）/ 意图识别（STATEMENT/QUESTION）| ✅ | 完整 |
+| **L6 交易闭环** | 持仓 / 复盘 / 知识反哺（promote/conflicts）/ 意图识别（STATEMENT/QUESTION）/ **目标用户扩容（人人可用）** | ✅ | 完整 |
 
 ### 3.2 Domain OS
 
 | Domain | 状态 | 说明 |
 |:-------|:----:|:-----|
-| **Trading OS** | ✅ | 87 课知识库 → knowledge/context → KnowledgeSource → Context Engine 全链路 |
+| **Trading OS** | ✅ | 87 课**规则层**（**owner 的私人财产**）→ knowledge/context → KnowledgeSource → Context Engine 全链路（**仅对 owner 注入**，非 owner 一律不注入 87 课）；**候选规则自生长**（从用户自己的数据长规则，规则分享先不做）；**未修项关联：`P2-交易81`**（新用户初始化顺序未产品化，是扩容落地的第一道坎） |
 | **Project OS** | ❌ 已退役 | **project 插件已撤（2026-09-17 RFC `20260917-todo-kernel-retire-project-plugin.md`）**：Status API + git 自举 + RFC 索引 + 轻量任务系统随插件删除（6 个 `/api/v1/project/**` 端点 breaking 下线）；**待办归 Kernel builtin**（独立清单页，两态 + 可选到期日 + `todo-due` 到期提醒）；`os/project-os/` 知识文件保留但不再注入 |
 | **Life OS** | 🏗 等数据 | 骨架就绪（快速记录 + LifeKnowledgeSource）；情绪/习惯/周报待数据积累后触发 |
 | **插件模型（Domain = 插件）** | ✅ | **RFC `20260814-domain-as-plugin` approved + 已实现**（2026-09-26 补录，来源：全维度走查 S-W1「已 approved 的方向在蓝图不可见」）：`PluginRegistry`（Domain ↔ 插件映射）+ `PluginService` 按账号 `enabledPlugins` 门控；三层定位 = **core 内核**（Record/Context/Memory，永远在）/ **builtin 内置能力**（待办·搜索·时间线·简报，无门控）/ **optional 可选插件**（**trading**·**learn**，可按账号关）；`ContextContributor` 是插件的上下文接入点；`GET /api/v1/me/plugins` 供前端做模块显隐；门控为**写读双侧**（不只看前端隐藏：受控端点无插件返回 403） |

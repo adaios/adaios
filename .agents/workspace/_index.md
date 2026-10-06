@@ -5,7 +5,7 @@ version: 2
 created: 2026-10-04
 updated: 2026-10-06
 status: active
-lines: 80
+lines: 79
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index, workspace]
@@ -31,47 +31,46 @@ tags: [meta, index, workspace]
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
-| `_templates/design.md` | 设计文档模板——本轮回应 / 设计 / 取舍 / 未决 / 自评风险；一轮只收敛一类 | active |
-| `_templates/dispatch.md` | **派单模板**——回执 · 材料前置 · 先落文件 · 3 分钟闸门（协议见 review-driven §9） | active |
-| `_templates/ledger.md` | 分支账本模板——目标 / 进度 / 风险 / 待交接 | active |
-| `_templates/requirement.md` | 需求文稿模板——问题动机 / 业务规则 / 范围 / 验收 / 未决 / 定稿记录 | active |
-| `_templates/review-design.md` | 审核文件模板（设计 / 需求共用）——审核对象 / 结论 / 问题清单 / 收敛判定 | active |
-| `_meta/process-issues-20261006.md` | 流程问题与改进 · 汇总（本次实跑实测 **12 条**） | active |
-| `_meta/inbox.md` | **派单收件箱**——消息通道丢载荷时的**可靠投递通道**（`AGENTS.md` 规则 **0c**） | active |
-| `_meta/dispatch-v3-product-20261006.md` | 派单样板：设计 v3 产品视角 3 点复核（材料全前置） | active |
-| `_meta/dispatch-v4-writer-20261006.md` | 派单：设计 **final 稿（合并正文）**——收 4 类阻塞项（材料全前置） | active |
-| `_meta/dispatch-v4-backend-review-20261006.md` | 派单 D-04：design-final 收敛性审核（**后端官**） | active |
-| `_meta/dispatch-v4-product-review-20261006.md` | 派单 D-05：design-final 收敛性审核（**产品官**） | active |
-| `_meta/dispatch-v4-process-20261006.md` | 派单 D-06：**流程官**记录本轮（流程事实 + 改进提案） | active |
-| `_meta/process-log-20261006-v4.md` | **流程官首跑记录（v4 轮）**——时间台账 · 违反判据 P-04/P-05/P-08/P-11/P-12 · 7 条改进提案 · 健康度 C | active |
-| `_meta/dispatch-v5-writer-fix-20261006.md` | 派单 D-07：design-final **就地修订**（收 v4 新引 3 条 P1） | active |
-| `_meta/dispatch-s2-handover-20261006.md` | 派单 D-08：**S2 落点**两份可搬移草稿（RFC + roadmap 改动） | active |
-| `_meta/dispatch-s2-revise-20261006.md` | 派单 D-09：**修订** S2 两份草稿（87 课 = 规则层 · 私人财产 → 四处修正） | active |
-| `_meta/rfc-draft-trading-positioning-expansion-20261006.md` | **定位扩容 RFC**（建议引擎 → 人人可用）——★1–★4 **已拍板** · 合并后搬进 `rfc/` | approved |
-| `_meta/roadmap-diff-trading-20261006.md` | **roadmap 三条改动提案**（L6 / Trading OS / 未修项）——合并后由主会话落盘 | draft |
-| `_meta/inbox-receipt.md` | 通道探针回执——**E3 证据**（0c 通道可用） | active |
-| `trading-plugin/LEDGER.md` | `feat/trading-plugin` 分支账本——本批目标 · 并行纪律 · **待交接** | active |
-| `trading-plugin/thinking-log.md` | **思考记录**（中文）——每轮推理链：看到 / 判断 / 选择 / 放弃的 | active |
-| `trading-plugin/requirement.md` | 交易插件重做 **需求文稿（已定稿）** | active |
-| `trading-plugin/requirement-review-20261006.md` | 需求审核（第一轮）——不收敛（P1×2 / P2×3 / P3×2） | active |
-| `trading-plugin/requirement-review-20261006-r2.md` | 需求审核（第二轮）——收敛 | active |
-| `trading-plugin/requirement-review-20261006-r3.md` | 需求审核（第三轮 · 归位后）——收敛 | active |
-| `trading-plugin/overview.md` | 交易插件全景梳理（定位 / 功能 / RFC / 未修 / 未优化） | active |
-| `trading-plugin/blueprint.md` | 交易插件概念与流程（按讨论顺序） | active |
-| `trading-plugin/input.md` | 设计输入（讨论产物 · 只剩"怎么做"） | active |
-| `trading-plugin/decisions.md` | **设计决策记录（人拍板）**——S1/S2 · U1–U6 · V1–V3 · V2 拆两层 | active |
-| `trading-plugin/design-v1-20261006.md` | 设计稿 v1（编写者） | active |
-| `trading-plugin/review-v1-20261006.md` | 设计审核 v1（产品）——不收敛；**主会话代誊**（审核者未落盘） | active |
-| `trading-plugin/design-v2-20261006.md` | 设计稿 v2（编写者） | active |
-| `trading-plugin/review-v2-20261006.md` | 设计审核 v2（产品）——不收敛 | active |
-| `trading-plugin/review-v2-backend-20261006.md` | 设计审核 v2（**后端代码**对拍）——不收敛；含 §9 实测差异表 | active |
-| `trading-plugin/design-v3-20261006.md` | 设计稿 v3（**增量稿** · 只收敛 P0/P1） | active |
-| `trading-plugin/design-final-20261006.md` | **设计 final 稿（合并正文 · 585 行）**——取代 v2/v3，成为唯一正文 | active |
-| `trading-plugin/review-v4-backend-20261006.md` | 设计审核 v4（**后端面**）——不收敛；新引 P1×2（§4.1 漏 3 条实存路径 · §10.1 正则漏自举例） | active |
-| `trading-plugin/review-v4-20261006.md` | 设计审核 v4（**产品面**）——不收敛；上轮 6 项全闭环，新引 P1×1（§1 数量声明与实体不符） | active |
-| `trading-plugin/review-r2-backend-20261006.md` | **差异复核 r1→r2**——三条改动**全部真到位** · 无连带新引 P0/P1（→ 设计**收敛**） | active |
-| `trading-plugin/review-v3-backend-20261006.md` | 设计审核 v3（**后端代码**对拍）——不收敛；S1/S2 未闭环 · 新引 P1×2 | active |
-| `trading-plugin/review-v3-product-20261006.md` | 设计审核 v3（**产品视角 · 独立子代理**）——只判 3 点；新引 P1×2（增量稿声明↔载体不一致） | active |
+| `_meta/dispatch-s2-handover-20261006.md` | 派给文档编写者的任务书——产出一份可搬进 rfc/ 的定位扩容 RFC 草稿 + 一份 roadmap 三条改动… | active |
+| `_meta/dispatch-s2-revise-20261006.md` | 按人 2026-10-06 的口头修正，就地改 RFC 草稿与 roadmap 提案——四处（措辞升级 / 分享… | active |
+| `_meta/dispatch-v3-product-20261006.md` | 单发派给一个独立子代理；材料全部前置。同时验证「fork_turns=none + 文件指针」能否修复任务书投递… | active |
+| `_meta/dispatch-v4-backend-review-20261006.md` | 派给 code-backend-reviewer 的任务书——只判上轮 2 战略 + 6 P1 是否闭环 + 是… | active |
+| `_meta/dispatch-v4-process-20261006.md` | 派给 process-reviewer 的任务书——只记本轮流程事实（走了哪一档 / 时间 / 空转 / 代笔 … | active |
+| `_meta/dispatch-v4-product-review-20261006.md` | 派给 docs-product-reviewer 的任务书——只判上轮 1 战略 + 2 P1 + 3 点是否闭… | active |
+| `_meta/dispatch-v4-writer-20261006.md` | 派给设计文档编写者的任务书——产出 design-final 合并正文，收掉 4 类阻塞项（材料全前置）；单号 … | active |
+| `_meta/dispatch-v5-writer-fix-20261006.md` | 派给设计文档编写者的任务书——就地修订 design-final，收掉后端 2 条 + 产品 1 条新引 P1，… | active |
+| `_meta/inbox-receipt.md` | 子代理在零消息下自行读到 inbox.md 并执行——证明 AGENTS.md 规则 0c 通道可用 | active |
+| `_meta/inbox.md` | 消息通道丢载荷时的兜底派单通道；任何 AI 开工先看本文件（AGENTS.md 规则 0c） | active |
+| `_meta/process-issues-20261006.md` | 本次会话实跑「需求 → 设计」全流程时实测发现的 12 条流程问题（主链本身 5 · 契约与守卫 3 · 子代理… | active |
+| `_meta/process-log-20261006-v4.md` | 流程官（QA）对本轮（2026-10-06 · trading-plugin 设计 final v4 轮）的事实… | active |
+| `_meta/roadmap-diff-trading-20261006.md` | product-roadmap.md 的三条改动提案（现状原文 → 改后原文 + 理由），与 RFC 草稿同口径… | draft |
+| `_templates/design.md` | 设计文档模板——本轮回应 · 设计 · 取舍 · 未决 · 自评风险；每轮一份、不覆盖；**一轮只收敛一类**（… | active |
+| `_templates/dispatch.md` | 派审核官 / 编写者时的 prompt 骨架——照抄改；含回执 · 材料前置 · 先落文件 · 3 分钟闸门（协… | active |
+| `_templates/ledger.md` | 分支账本模板——本分支的目标 · 进度 · 风险 · 待交接；放在 .agents/workspace/<分支名… | active |
+| `_templates/requirement.md` | 需求文稿模板——问题动机 · 业务规则 · 范围 · 验收标准 · 未决 · 定稿记录；定稿由人拍板；**分支上… | active |
+| `_templates/review-design.md` | 审核文件模板（设计 / 需求共用）：审核对象 · 结论 · 问题清单（P0–P3）· 收敛判定；每轮一份，与稿成… | active |
+| `trading-plugin/LEDGER.md` | ② 交易线的分支账本——本批目标 + 并行作业纪律 + 待交接；一个分支一个目录（feat/trading-pl… | active |
+| `trading-plugin/blueprint.md` | 交易插件的概念与流程，按我们逐步讨论的顺序记录——定位 · 规则 · 没有规则怎么办 · 清仓股+历史成交 · … | active |
+| `trading-plugin/decisions.md` | 设计 v1 的 6 项未决（U1–U6）+ 审核 v1 的战略级 2 条（S1/S2）+ 设计 v2 的 3 项… | active |
+| `trading-plugin/design-final-20261006.md` | 交易线设计 final 稿——以 v2 正文为底合并 v3 增量与两份 v3 审核的整改，收 4 类阻塞项（§9… | draft |
+| `trading-plugin/design-v1-20261006.md` | 交易插件重做 · 设计稿 v1（设计文档编写者）——本轮回应 · 设计（归属分层 / 六模块 / 四条数据流 /… | draft |
+| `trading-plugin/design-v2-20261006.md` | 交易插件重做 · 设计稿 v2（设计文档编写者）——本轮回应 13 条（S1/S2 · P1×3 · P2×5 … | draft |
+| `trading-plugin/design-v3-20261006.md` | 设计第 3 轮的增量稿——正文仍看 design-v2；本稿只写"本轮改什么"（战略级 3 · P1×8 已改；… | draft |
+| `trading-plugin/input.md` | 归位之后剩下的"怎么做"——数据现实与处理 / 去重 / 顺序 / 表头识别 / 送股兜底 / 同日行序陷阱 /… | active |
+| `trading-plugin/overview.md` | trading 插件的「一页总览」——定位与整体现状 · 功能全景 · 全部相关 RFC · 未修与待办 · 未… | active |
+| `trading-plugin/requirement-review-20261006-r2.md` | 第一轮问题修复后的复审——12 条判据全部通过，结论：收敛（无 P0/P1），可送人签字；仅剩 P3（一笔生命周… | active |
+| `trading-plugin/requirement-review-20261006-r3.md` | A 归位（业务规则并回需求、机制留给设计）之后的复审——12 条判据全过 + 归位核对通过；结论：收敛，可送人签… | active |
+| `trading-plugin/requirement-review-20261006.md` | 用「需求文稿审核官（草案）」的 12 条判据，对本分支需求文稿的第一轮审核——结论：不收敛（P1×2 / P2×… | active |
+| `trading-plugin/requirement.md` | 交易插件重做的需求（要什么 · 现状无关）——问题动机 · 谁在什么时刻要什么 · 目标与不目标 · 用户要付出… | active |
+| `trading-plugin/review-r2-backend-20261006.md` | 只核 r1 → r2 三条改动是否真到位 + 有无连带新引 P0/P1，逐条给 文件:行 证据；判定：三条全部真… | draft |
+| `trading-plugin/review-v1-20261006.md` | 对设计稿 v1 的产品架构审查——无 P0；战略级 2 条（L6 反哺闭环被砍无 RFC · 定位扩容未进蓝图）… | active |
+| `trading-plugin/review-v2-20261006.md` | 对设计稿 v2 的产品架构审查——无 P0；战略级 1 条（S2 的 RFC/roadmap 仍在分支外）· P… | active |
+| `trading-plugin/review-v2-backend-20261006.md` | 对设计稿 v2 的后端视角审查（设计 × 现状代码对拍）——无 P0；战略级 2（关插件闸门清单漏 kernel… | active |
+| `trading-plugin/review-v3-backend-20261006.md` | 对设计稿 v3 增量稿的后端收敛性审核——不收敛：S1 关插件闸门扩面仍漏「记忆/上下文注入」与 has-act… | active |
+| `trading-plugin/review-v3-product-20261006.md` | 只判 3 点——S2 落点是否闭环 / 增量稿与正文是否自相矛盾 / 数量声明是否属实 | draft |
+| `trading-plugin/review-v4-20261006.md` | 产品面收敛性审核——只判上轮战略 S2 + 产品 P1-1 / P1-2 + 三点复核（新引 2 条）是否真闭环… | draft |
+| `trading-plugin/review-v4-backend-20261006.md` | 后端面收敛性审核——只判上轮 2 条战略（S1 闸门 / S2 §9 基线）+ 6 条 P1 是否真闭环 + 本… | active |
+| `trading-plugin/thinking-log.md` | 本分支 AI 的思考过程落盘——每轮写「看到什么 → 怎么判断 → 为什么这么选 → 放弃了什么」；与产物（re… | active |
 
 ## 过期判断
 

@@ -50,7 +50,7 @@ tags: [workspace, task, trading, ledger]
 - ~~流程问题 12 条~~ **已完成**（2026-10-06）：12 条改进已在本分支落地（`review-driven.md` · **12 个角色补 C1** · `workspace` 契约 · `_templates/`）——逐条状态见 `_meta/process-issues-20261006.md` §三。
 - **目录重构已完成**：`workspace/` 从「按产物阶段」改成「**按分支任务**」；旧 `requirements/` `designs/` `tasks/` 三目录与契约**已在本分支删除**（合并后生效）。
 - **★ S2 落点两件（编码准入的硬条件 · 2026-10-06 新出）**——本分支只出**草稿**，合并后由主会话搬移：
-  ① `_meta/rfc-draft-trading-positioning-expansion-20261006.md` → **搬进 `.agents/direction/rfc/`**，按件内「搬到 `rfc/` 时怎么改 frontmatter」那节改格式（`draft → approved` 须**人定稿后**改），并补 `rfc/_index.md`；
+  ① `_meta/20261006-trading-positioning-expansion.md` → **搬进 `.agents/direction/rfc/`**，按件内「搬到 `rfc/` 时怎么改 frontmatter」那节改格式（`draft → approved` 须**人定稿后**改），并补 `rfc/_index.md`；
   ② `_meta/roadmap-diff-trading-20261006.md` → **按三条改动落进 `product-roadmap.md`**（L6 行 · Trading OS 行 · 挂 `P2-交易81`）。
   **前置**：RFC 里 ★1/★2/★3 三处**待 adai 拍板**——拍完才算定稿，两件齐备前**不进编码**（见 `design-final` §13.3）。
 
