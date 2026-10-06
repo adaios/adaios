@@ -109,7 +109,7 @@ flowchart TB
 | 审查官（**扁平** `<name>.md`＝ subagent 真相源）| `.agents/toolkit/roles/` | `ai-guard-skills` + `ai-sync-agents` |
 | 守卫（**15**，含产品侧 `guard.sh`）| `.agents/mechanism/guards/*.sh` | shell-lint + 自检（`ai-guard-tools`）|
 | 执行器（含 `lib/`）| `.agents/mechanism/scripts/*.sh` | shell-lint + 自检 |
-| 流程定义 | `.agents/rules/process/*.md` | **5 份**（audit / review / ship / task-cadence / review-driven）|
+| 流程定义 | `.agents/rules/process/*.md` | **5 份**（audit / review / ship / cadence / review-driven）|
 | 检查清单 | `.agents/toolkit/checklists/*.md` | **17 份** |
 | 契约 | `.agents/frontmatter-spec.md`（**顶层**）· `assets/skills-spec.md` · `assets/ai-context-layer-spec.md` | `ai-guard-meta` / `ai-guard-skills` |
 | 注册与环境脚本 | `.agents/mechanism/scripts/*.sh` · `.agents/mechanism/scripts/lib/*.sh` | shell-lint |

@@ -3,7 +3,7 @@ title: checklists/ 目录契约
 description: checklists/ 的职责边界 · 依赖关系 · 触发关系 · 约束 · 守卫 · 维护方式（机器可校验的目录级元数据）
 version: 1
 created: 2026-10-03
-updated: 2026-10-03
+updated: 2026-10-06
 status: active
 lines: 50
 depends-on: []
@@ -13,7 +13,7 @@ tags: [meta, directory]
 
 # checklists/ 目录契约
 
-**职责**：逐条可执行的核对清单——**人与审查官共用**（8 客观官 + 1 对抗官 + 3 外部视角官 + 守护/成本）
+**职责**：逐条可执行的核对清单——**人与审查官共用**（**17 份**：14 个角色同名清单 + 3 份专项 `ai-guard-checklist` · `ai-cost-checklist` · `code-perf-reviewer`）
 
 ## 职责边界
 - **放**：按角色或主题的勾选清单，每条可执行、可判定
@@ -31,9 +31,9 @@ tags: [meta, directory]
 
 | 时机 | 谁触发 | 读 / 执行什么 |
 |:--|:--|:--|
-| 派官审查时 | `../../rules/process/review.md` 派官表 | 对应 `review-<官>.md` |
-| 收尾自检 | `../../rules/process/ship.md` | `guard.md`（G1–G7） |
-| 成本判断 | `ai-guard-cost.sh` 提示 | `cost.md` |
+| 派官审查时 | `../../rules/process/review.md` 派官表 | 对应 `<官名>.md`（如 `code-backend-reviewer.md`） |
+| 收尾自检 | `../../rules/process/ship.md` | `ai-guard-checklist.md`（G1–G7） |
+| 成本判断 | `ai-guard-cost.sh` 提示 | `ai-cost-checklist.md` |
 
 ## 约束
 
@@ -47,4 +47,4 @@ tags: [meta, directory]
 
 ## 维护动作
 
-1. 新增审查官 → 同时新增 `review-<官>.md` + 在 `../roles/` 建对应官 + 补本目录 `_index.md`
+1. 新增审查官 → 同时新增 `<官名>.md` + 在 `../roles/` 建对应官 + 补本目录 `_index.md`

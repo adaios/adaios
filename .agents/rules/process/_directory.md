@@ -3,7 +3,7 @@ title: process/ 目录契约
 description: process/ 的职责边界 · 依赖关系 · 触发关系 · 约束 · 守卫 · 维护方式（机器可校验的目录级元数据）
 version: 1
 created: 2026-10-03
-updated: 2026-10-03
+updated: 2026-10-06
 status: active
 lines: 50
 depends-on: []
@@ -34,7 +34,7 @@ tags: [meta, directory]
 | 用户说「收工」 | `task-cadence.sh ship` | `ship.md` |
 | 要全量走查 | 人 | `audit.md` |
 | 按 diff 深审 | 人 / AI | `review.md` |
-| 固定节奏 | 用户触发词 | `task-cadence.md`（总表） |
+| 固定节奏 | 用户触发词 | `cadence.md`（总表） |
 
 ## 约束
 

@@ -1,11 +1,11 @@
 ---
 title: 技能使用指南（Skills Usage Guide）
-description: 人看的技能使用说明——AdaiOS 技能体系是什么、11 个技能各何时用、怎么触发、怎么维护
+description: 人看的技能使用说明——AdaiOS 能力体系是什么——**4 个技能包**（走 skill 出口）+ **16 个角色**（走 subagent 出口，**不注册技能**）各何时用、怎么触发、怎么维护
 version: 1
 created: 2026-08-20
 updated: 2026-10-06
 status: active
-lines: 102
+lines: 105
 depends-on: []
 related:
   - ../assets/skills-spec.md
@@ -21,7 +21,9 @@ tags: [guide, skills]
 
 技能 = 把 AdaiOS 的**高频工作流程**（建 API、建 Domain、收尾、审查）固化成标准文件。AI 接到对应任务时自动加载并**按流程执行**——不再每次临场发挥、不再靠"记不记得"。
 
-## 二、技能清单（12 个）
+## 二、能力清单（4 个技能包 + 16 个角色）
+
+> ⚠️ **两者出口不同**：**技能包**（`skills/`，4 个）软链进各工具的技能目录；**角色**（`roles/`，16 个）**不注册技能**，走**生成的 subagent 定义**（`.qoder/agents` / `.codex/agents`）。见 `ai-context-layer-spec.md` §四。
 
 ### 建设技能（进攻侧：你做东西时，AI 按流程做）
 
@@ -29,7 +31,8 @@ tags: [guide, skills]
 |:--|:--|:--|
 | `code-api-writer` | 说"加个接口 / 改个端点" | 代码 + 测试 + api-spec/status 同步 + 门禁全过，不会漏同步 |
 | `code-domain-writer` | 想加一个新功能域 / 大能力 | RFC（含六维需求）+ 插件模型 + 数据流设计 + 落地闭环 |
-| `ship` | 说"收尾 / ship" | 五件套核对 + 契约同步 + 登记 + 门禁 + 规范提交 |
+| `data-learn-writer` | 说"整理这个视频 / 文章" | 抓取转写 + 结构化学习文档落 `data/adai/learn/` + 时效追踪 |
+| `task-ship` | 说"收尾 / ship" | 五件套核对 + 契约同步 + 登记 + 门禁 + 规范提交 |
 
 ### 审查技能（防守侧：做完东西后，AI 帮你检查）
 
@@ -50,19 +53,19 @@ tags: [guide, skills]
 ### 方式一：直接说需求，AI 自动匹配（推荐）
 
 - "帮我加一个查询持仓的接口" → AI 自动加载 `code-api-writer` 技能
-- "这个功能做完了，收尾吧" → AI 自动走 `ship` 流程
+- "这个功能做完了，收尾吧" → AI 自动走 `task-ship` 流程
 - "帮我看看这次后端改动" → AI 自动派 `code-backend-reviewer`
 
 ### 方式二：显式点名
 
 - "用 code-api-writer 技能做"
-- "加载 ship 技能"
+- "加载 task-ship 技能"
 - "派 docs-contract-reviewer 审查这个改动"
 
 ### 方式三：走标准流程
 
 - `/review` → 按改动自动派对应审查官
-- `/ship` → 收尾闭环（就是 ship 技能）
+- `/ship` → 收尾闭环（就是 `task-ship` 技能）
 
 ## 四、对话示例
 

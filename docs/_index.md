@@ -3,7 +3,7 @@ title: docs 目录索引
 description: AdaiOS 档案馆索引——史 / 存档 / 对外 / 未定型；AI 运行需要的文档一律在 .agents/
 version: 3
 created: 2026-08-15
-updated: 2026-10-04
+updated: 2026-10-06
 status: active
 lines: 48
 depends-on: []
@@ -29,7 +29,7 @@ tags: [meta, index]
 | 路径 | 职责 | 类 |
 |:--|:--|:--|
 | `archive/_index.md` | 退役文档——3 份 `superseded` RFC + 早期 AI Context 模板 + project-os-usage | 史 |
-| `records/_index.md` | 历史存档——走查存档 27 份 · 事故记录 · 发布史 · 归档问题清单 | 史 |
+| `records/_index.md` | 历史存档——走查存档 **32** 份 · 事故记录 · 发布史 · 归档问题清单 | 史 |
 | `research/_index.md` | 研究 · 调研 · 诊断材料（一次性产物） | 研究 |
 | `ideas/_index.md` | 未定型但有价值的想法（成熟后升级为 RFC） | 想法 |
 | `legal/_index.md` | 对外材料——隐私政策正文（App Store / TestFlight 提交材料） | 对外 |

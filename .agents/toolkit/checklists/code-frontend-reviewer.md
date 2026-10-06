@@ -3,7 +3,7 @@ title: 前端代码审查检查清单
 description: code-frontend-reviewer 逐条检查项（人也能用）——DTO 契约/生命周期/状态管理/测试
 version: 1
 created: 2026-08-15
-updated: 2026-09-23
+updated: 2026-10-06
 status: active
 lines: 108
 depends-on: []
@@ -13,7 +13,7 @@ tags: [review, checklist, frontend]
 
 # 前端审核检查点清单
 
-> 格式：`[检查方法]` — 检查什么。`上次发现` 记录历史命中。新发现模式追加到底部。守护项（G#）见 `guard.md`，不重复。
+> 格式：`[检查方法]` — 检查什么。`上次发现` 记录历史命中。新发现模式追加到底部。守护项（G#）见 `ai-guard-checklist.md`，不重复。
 
 ## DTO 契约
 
