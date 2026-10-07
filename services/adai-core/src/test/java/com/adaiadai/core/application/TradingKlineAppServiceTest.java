@@ -97,6 +97,30 @@ class TradingKlineAppServiceTest {
     // ── ② 买卖点推导：B 建仓 / T 加仓 / S 卖出 ──
 
     @Test
+    void 同日同向的成交合并成一条买卖点_加权均价() {
+        Mocks m = mocks();
+        when(m.history().findAll("u")).thenReturn(List.of(
+                trade("t1", TradeDirection.BUY, 15.00, 100, D, null),
+                trade("t2", TradeDirection.BUY, 17.00, 300, D, null), // 同一天、同一方向
+                trade("t3", TradeDirection.SELL, 18.00, 200, D.plusDays(5), null)));
+        KlineService kline = mock(KlineService.class);
+        when(kline.kline(anyString(), anyInt())).thenReturn(candles(15.0, 16.0, 17.0, 18.0, 19.0,
+                20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 24.0, 23.0, 22.0, 21.0, 20.0, 19.0, 18.0,
+                17.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 26.0));
+
+        Map<String, Object> r = new TradingKlineAppService(kline, m.history(), m.positions(),
+                m.sold(), m.lots()).kline("u", SYM, 30);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> marks = (List<Map<String, Object>>) r.get("marks");
+        assertEquals(2, marks.size(), "同一天的两笔买入要合成一条，不能出两个点");
+        assertEquals("B", marks.get(0).get("type"));
+        assertEquals(400, marks.get(0).get("quantity"));
+        assertEquals(16.50, (Double) marks.get(0).get("price"), 1e-9); // (15×100 + 17×300) / 400
+        assertEquals("S", marks.get(1).get("type"));
+    }
+
+    @Test
     void 买卖点按成交先后推导成买加卖三种标记() {
         Mocks m = mocks();
         when(m.history().findAll("u")).thenReturn(List.of(

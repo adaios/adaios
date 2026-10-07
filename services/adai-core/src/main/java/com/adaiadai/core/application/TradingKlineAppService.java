@@ -114,19 +114,45 @@ public class TradingKlineAppService {
     private List<Map<String, Object>> marks(List<TradeRecord> trades) {
         List<Map<String, Object>> marks = new ArrayList<>();
         int holding = 0;
-        for (TradeRecord t : trades) {
-            if (t.direction() == null) continue;
-            boolean buy = t.direction() == TradeDirection.BUY;
+        int i = 0;
+        while (i < trades.size()) {
+            TradeRecord head = trades.get(i);
+            if (head.direction() == null || head.entryDate() == null) {
+                i++;
+                continue;
+            }
+            // 2026-10-08 用户拍板：**同一天、同一方向的成交合成一条** ——
+            // 同一天买三笔在图上只该有一个点（否则图上一堆重影标记，看不出「哪一天动过」）。
+            final LocalDate day = head.entryDate();
+            final boolean buy = head.direction() == TradeDirection.BUY;
+            int qty = 0;
+            BigDecimal amount = BigDecimal.ZERO;
+            int j = i;
+            while (j < trades.size()) {
+                TradeRecord t = trades.get(j);
+                if (t.direction() == null || t.entryDate() == null) break;
+                if (!day.equals(t.entryDate())) break;
+                if ((t.direction() == TradeDirection.BUY) != buy) break;
+                qty += t.volume();
+                if (t.price() != null) {
+                    amount = amount.add(t.price().multiply(BigDecimal.valueOf(t.volume())));
+                }
+                j++;
+            }
             String type = buy ? (holding <= 0 ? "B" : "T") : "S";
             Map<String, Object> m = new LinkedHashMap<>();
-            m.put("date", t.entryDate() == null ? null : t.entryDate().toString());
+            m.put("date", day.toString());
             m.put("type", type);
-            m.put("price", t.price() == null ? null : t.price().doubleValue());
-            m.put("quantity", t.volume());
-            m.put("tradeId", t.id());
+            // 合并后的价格 = 加权均价（不是随便取一笔）
+            m.put("price", qty > 0 && amount.signum() > 0
+                    ? amount.divide(BigDecimal.valueOf(qty), 4, RoundingMode.HALF_UP).doubleValue()
+                    : null);
+            m.put("quantity", qty);
+            m.put("tradeId", head.id());
             m.put("note", buy ? ("B".equals(type) ? "买入" : "加仓") : "卖出");
             marks.add(m);
-            holding = Math.max(0, holding + (buy ? t.volume() : -t.volume()));
+            holding = Math.max(0, holding + (buy ? qty : -qty));
+            i = j;
         }
         return marks;
     }
