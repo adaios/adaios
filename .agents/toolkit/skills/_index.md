@@ -3,9 +3,9 @@ title: skills/ 目录索引
 description: skills/ 的文件清单与过期判断；目录的职责边界与依赖契约见 ./_directory.md
 version: 1
 created: 2026-10-03
-updated: 2026-10-06
+updated: 2026-10-07
 status: active
-lines: 31
+lines: 32
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index]
@@ -15,12 +15,13 @@ tags: [meta, index]
 
 > 本文件只列**有什么**；**规则与依赖**见 [`_directory.md`](./_directory.md)。
 
-## 文件清单（4 项）
+## 文件清单（5 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
 | `code-api-writer/SKILL.md` | 当需要新增/修改 API 端点时加载——从代码到契约同步的完整闭环（api-spec/status/测试/插件门… | active |
 | `code-domain-writer/SKILL.md` | 当需要新增 Domain OS / 重大架构能力时加载——RFC+六维 → 插件模型 → 数据流设计 → 分层落… | active |
+| `code-mockup-writer/SKILL.md` | 当用户说「画原型 / 出图 / 出可点稿 / 概念图 / 画几张看看」，或设计讨论需要「看与试」时加载——用自包… | active |
 | `data-learn-writer/SKILL.md` | 当用户要求整理外部内容（B站视频/YouTube/文章/字幕/图片）为学习文档时加载——抓取→转写/取文→结构化… | active |
 | `task-ship/SKILL.md` | 当开发批次完成需要收尾（/ship）时加载——五件套完成标准→契约同步→登记→门禁→规范提交 | active |
 
