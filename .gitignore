@@ -118,6 +118,9 @@ data/*/identity/*
 
 # 索引文件可从 records 重建，不追踪
 data/*/index
+# 清理批备份目录（YYYYMMDD 命名；2026-08-14 数据清理时移存的 rec_*.md 用户原文）
+# 2026-10-08 补漏：data/adai/_cleanup_20260814 不在任何逐类型规则内 → 在 git status 冒未跟踪（B3 检查点）
+data/*/_cleanup_*
 
 # 数据迁移自动备份（data-backup-*.tar.gz，确认后可删）
 data-backup-*.tar.gz
