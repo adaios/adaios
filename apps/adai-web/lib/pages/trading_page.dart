@@ -2009,9 +2009,72 @@ class _TradingPageState extends State<TradingPage> {
     );
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // 骨架重排（2026-10-08 · ② 彻底版）：**9 个平铺 Tab → 6 个分区**
+  //   持仓（含 自选 / 清仓 筛选）· 账（资金 ‖ 历史成交）· 分析 · 规则 · 案例 · 计划
+  //   设计口径见 .agents/workspace/trading-plugin/uiux-discovery-20261007.md §十一
+  //   ⚠️ 这一批**连测试一起改** —— 围着旧 9 Tab 写的用例按新结构重写，不退回。
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// 持仓区筛选：0=持仓 1=自选 2=清仓（原为三个并列 Tab）。
+  int _positionFilter = 0;
+
+  /// 持仓区：三个持仓态收成一条筛选。
+  Widget _buildPositionZone() {
+    const labels = ['持仓', '自选', '清仓'];
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Wrap(spacing: 8, runSpacing: 8, children: [
+        for (var i = 0; i < labels.length; i++)
+          ChoiceChip(
+            label: Text(labels[i]),
+            selected: _positionFilter == i,
+            onSelected: (_) => setState(() => _positionFilter = i),
+            backgroundColor: AppColors.darkSurface,
+            selectedColor: AppColors.darkGreen.withValues(alpha: 0.18),
+            labelStyle: TextStyle(
+                fontSize: 12,
+                fontWeight: _positionFilter == i ? FontWeight.w600 : FontWeight.w400,
+                color: _positionFilter == i ? AppColors.darkGrey1 : AppColors.darkGrey5),
+            side: BorderSide(color: AppColors.darkBorder.withValues(alpha: 0.6)),
+          ),
+      ]),
+      const SizedBox(height: 10),
+      if (_positionFilter == 0) _buildPositionTable(),
+      if (_positionFilter == 1) _buildWatchlistSection(),
+      if (_positionFilter == 2) _buildSoldSection(),
+    ]);
+  }
+
+  /// 账区：资金在上、流水在下（设计口径 §十一「三合一」）—— 对账不用来回跳 Tab。
+  /// ⚠️ 合并后内容变高：承载它的视窗必须跟着变高（下面 `_workspaceHeight`），
+  /// 否则下半个区块连人带测试都点不到 —— 前两次失败的正是这一点，不是布局方向。
+  Widget _buildAccountZone() {
+    // ⚠️ 两块都拿 **Expanded 分到的有界高度** —— `_HistorySection` 内部用了 Expanded，
+    // 把它放进 SingleChildScrollView（高度无界）会当场抛
+    // 「non-zero flex but incoming height constraints are unbounded」，每帧一条异常。
+    // 高度按需分配：资金约 160 / 流水约 384 —— 流水那半原本就要 380+ 才不溢出，
+    // 同时两块的「顶」都要落在视窗内（否则测试与人点不到）。
+    return Column(children: [
+      Expanded(flex: 22, child: SingleChildScrollView(child: _buildCashSection())),
+      const SizedBox(height: 14),
+      Expanded(
+        flex: 38,
+        child: _HistorySection(
+          key: _historyKey,
+          api: widget.api,
+          onImportSnapshot: _openPositionsImport,
+          onImported: () => unawaited(_loadIntegrity()),
+        ),
+      ),
+    ]);
+  }
+
+  /// 工作区视窗高度：合并后的「账」比原来任何单个 Tab 都高 → 跟着放大（原来的 380 只够一屏）。
+  static const double _workspaceHeight = 620;
+
   Widget _buildTabWorkspace() {
     return DefaultTabController(
-      length: 9,
+      length: 6,
       child: _TabHistoryRefreshListener(
         onHistorySelected: () => _historyKey.currentState?.refreshSilently(),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -2030,10 +2093,7 @@ class _TradingPageState extends State<TradingPage> {
               labelStyle: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
               tabs: [
                 Tab(text: '持仓'),
-                Tab(text: '自选'),
-                Tab(text: '清仓'),
-                Tab(text: '资金'),
-                Tab(text: '历史成交'),
+                Tab(text: '账'),
                 Tab(text: '分析'),
                 Tab(text: '规则'),
                 Tab(text: '案例'),
@@ -2043,18 +2103,11 @@ class _TradingPageState extends State<TradingPage> {
           ),
           const SizedBox(height: 10),
           SizedBox(
-            height: 380,
+            height: _workspaceHeight,
             child: TabBarView(children: [
-              SingleChildScrollView(child: _buildPositionTable()),
-              SingleChildScrollView(child: _buildWatchlistSection()),
-              SingleChildScrollView(child: _buildSoldSection()),
-              SingleChildScrollView(child: _buildCashSection()),
-              _HistorySection(
-                key: _historyKey,
-                api: widget.api,
-                onImportSnapshot: _openPositionsImport,
-                onImported: () => unawaited(_loadIntegrity()),
-              ),
+              SingleChildScrollView(child: _buildPositionZone()),
+              // 账区自己管高度（内含两个 Expanded）→ 不能再套一层无界滚动
+              _buildAccountZone(),
               // 2026-10-06（R-05）：三粒度「分析」——全局 / 单标的 / 单笔
               SingleChildScrollView(child: _AnalysisSection(api: widget.api)),
               SingleChildScrollView(child: _buildRuleSection()),
@@ -5476,7 +5529,8 @@ class _TabHistoryRefreshListenerState extends State<_TabHistoryRefreshListener> 
   }
 
   void _onChanged() {
-    if (_controller?.index == 4) widget.onHistorySelected();
+    // 骨架重排（2026-10-08）：Tab 9 → 6 后「账」（含历史成交）落到 index 1
+    if (_controller?.index == 1) widget.onHistorySelected();
   }
 
   @override

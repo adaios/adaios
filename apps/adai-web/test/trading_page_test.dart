@@ -967,7 +967,7 @@ void main() {
       await _pumpTrading(tester, api);
 
       // RFC 20260823：历史成交从页头 Dialog 升级为第 5 Tab，点击 Tab 进入
-      await tester.tap(find.text('历史成交'));
+      await tester.tap(find.text('账'));
       await tester.pumpAndSettle();
 
       // 日期分组（页面其它普通文本可能同日期字串，分组头按加粗精确匹配）
@@ -1016,7 +1016,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('历史成交'));
+      await tester.tap(find.text('账'));
       await tester.pumpAndSettle();
       expect(find.text('这段时间还没有历史成交'), findsOneWidget);
       expect(find.text('导入通达信历史成交导出'), findsOneWidget);
@@ -1038,7 +1038,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('历史成交'));
+      await tester.tap(find.text('账'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
@@ -1090,7 +1090,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('历史成交'));
+      await tester.tap(find.text('账'));
       await tester.pumpAndSettle();
 
       // 类型标签取代「买入/卖出」，普通行不受影响
@@ -1732,7 +1732,7 @@ void main() {
     final api = ApiService(baseUrl: 'http://test', client: client);
     await _pumpTrading(tester, api);
 
-    await tester.tap(find.text('资金'));
+    await tester.tap(find.text('账'));
     await tester.pumpAndSettle();
     // P2-交易31（2026-08-29，U32）：principal=0 → 总盈亏 null → 显示「—（设置本金后显示）」，
     // 不再回落浮盈（漏已实现盈亏误导）；也不把全部资产当总盈亏
@@ -1769,7 +1769,7 @@ void main() {
     final api = ApiService(baseUrl: 'http://test', client: client);
     await _pumpTrading(tester, api);
 
-    await tester.tap(find.text('历史成交'));
+    await tester.tap(find.text('账'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('导入历史成交'));
     await tester.pumpAndSettle();
@@ -2101,7 +2101,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('历史成交'));
+      await tester.tap(find.text('账'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
@@ -2150,7 +2150,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('历史成交'));
+      await tester.tap(find.text('账'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
@@ -2193,7 +2193,7 @@ void main() {
       });
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
-      await tester.tap(find.text('历史成交')); // 一键同步按钮在历史成交 Tab 工具行
+      await tester.tap(find.text('账')); // 一键同步按钮在历史成交 Tab 工具行
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('一键同步'));
@@ -3067,7 +3067,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('历史成交'));
+      await tester.tap(find.text('账'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
@@ -3125,7 +3125,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('历史成交'));
+      await tester.tap(find.text('账'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
@@ -3191,7 +3191,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('历史成交'));
+      await tester.tap(find.text('账'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
@@ -3245,7 +3245,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('历史成交'));
+      await tester.tap(find.text('账'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
@@ -3286,7 +3286,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('历史成交'));
+      await tester.tap(find.text('账'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
@@ -3345,7 +3345,7 @@ void main() {
       await _pumpTrading(tester, api);
 
       expect(find.textContaining('阿呆发现账对不上'), findsNothing);
-      await tester.tap(find.text('历史成交'));
+      await tester.tap(find.text('账'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
@@ -4019,7 +4019,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('历史成交'));
+      await tester.tap(find.text('账'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
@@ -4067,7 +4067,7 @@ void main() {
       });
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
-      await tester.tap(find.text('历史成交'));
+      await tester.tap(find.text('账'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
@@ -4103,7 +4103,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('资金'));
+      await tester.tap(find.text('账'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入资金'));
       await tester.pumpAndSettle();
@@ -4137,7 +4137,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('资金'));
+      await tester.tap(find.text('账'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入资金'));
       await tester.pumpAndSettle();
@@ -4206,7 +4206,7 @@ void main() {
         return _tradingHandler(request);
       });
       await _pumpTrading(tester, ApiService(baseUrl: 'http://test', client: client));
-      await tester.tap(find.text('资金'));
+      await tester.tap(find.text('账'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入资金'));
       await tester.pumpAndSettle();
