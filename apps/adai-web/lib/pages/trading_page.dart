@@ -261,7 +261,12 @@ class _TradingPageState extends State<TradingPage>
   // m6（2026-10-07 · 原型 .wd-eye）：金额/数量打码——默认掩码（数量与成本类），
   // 页头 👁 本地解开显形（服务递手机场景）；不持久化，刷新即回掩码。
   bool _amountsRevealed = false;
-  // P3-6（2026-10-07 拍板「抽屉式」）：窄窗（< 1080，右栏不渲染）的「阿呆说」页内抽屉开关——
+  // 批 2（2026-10-07 · D2 重排配套）：宽度预算断点——交易页内容区 ≥ 1200 = 宽窗
+  //（右栏常驻）；< 1200 = 窄窗（右栏收成「阿呆说」抽屉，顶栏出入口）。
+  // 原 1080 偏低：本机全局侧栏 200px，1280 视口下内容区仅 ~1079——右栏一常驻
+  // 持仓表就被挤掉一列；1200 对应「视口 ≥ ~1440 才常驻」（验收口径）。
+  static const double _wideBreakpoint = 1200;
+  // P3-6（2026-10-07 拍板「抽屉式」）：窄窗（< _wideBreakpoint，右栏不渲染）的「阿呆说」页内抽屉开关——
   // 顶栏入口点开，右侧滑入装下原右栏三卡；点外部 / X 关闭。宽窗不用（右栏常驻）。
   bool _adeptDrawerOpen = false;
   // RFC 20260923 D 批：行情（K 线）链路可用性（GET /trading/market-data/health）——ok=false 才显示横幅
@@ -924,13 +929,15 @@ class _TradingPageState extends State<TradingPage>
   @override
   Widget build(BuildContext context) {
     // P3-6（2026-10-07 拍板「抽屉式」）：顶栏要先知道内容区宽（窄窗给「阿呆说」入口）——
-    // 外层摘宽往里传，顶栏入口与右栏开关**同一断点**（< 1080 = 窄窗）。
+    // 外层摘宽往里传，顶栏入口与右栏开关**同一断点**（< _wideBreakpoint = 窄窗）。
+    // 批 2（2026-10-07）：断点 1080 → 1200——原阈值右栏在 1280 视口下仍常驻，持仓表掉列。
     return LayoutBuilder(
-      builder: (pageCtx, pageCons) => _buildPage(pageCons.maxWidth >= 1080),
+      builder: (pageCtx, pageCons) =>
+          _buildPage(pageCons.maxWidth >= _wideBreakpoint),
     );
   }
 
-  /// 页体（原 build 主体 · P3-6 拆出以便顶栏拿到内容区宽度）：[wide] = 内容区 ≥ 1080（右栏在场）。
+  /// 页体（原 build 主体 · P3-6 拆出以便顶栏拿到内容区宽度）：[wide] = 内容区 ≥ _wideBreakpoint（右栏在场）。
   Widget _buildPage(bool wide) {
     return Column(
       children: [
@@ -1075,7 +1082,7 @@ class _TradingPageState extends State<TradingPage>
               : LayoutBuilder(
                   builder: (ctx, cons) {
                     // m5（2026-10-07 · 原型 .wd-rail）：右栏（阿呆说 / 今天 / 三条口径）固定在最右。
-                    // 窄视窗（< 1080）不显示右栏——它是锦上添花，主表可用宽优先。
+                    // 窄视窗（< _wideBreakpoint = 1200）不显示右栏——它是锦上添花，主表可用宽优先。
                     // P3-6（2026-10-07 拍板「抽屉式」）：窄窗不等于丢出口——顶栏有「阿呆说」入口，
                     // 点开右侧页内抽屉装下三卡；断点与顶栏入口同一来源 [wide]。
                     final hasRail = wide;

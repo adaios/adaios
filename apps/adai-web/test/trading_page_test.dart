@@ -8113,7 +8113,7 @@ void _marketStageGroup() {
   });
 
   // ══════════════════════════════════════════════════════════════════════
-  // P3-6（2026-10-07 拍板「抽屉式」）：窄窗（< 1080）右栏三卡不再消失——顶栏
+  // P3-6（2026-10-07 拍板「抽屉式」）：窄窗（< 1200，批 2 后断点；右栏不渲染）右栏三卡不再消失——顶栏
   // 「阿呆说」入口 + 页内右侧抽屉（点 X / 点遮罩两路收合）；宽窗仍是常驻右栏、无入口。
   // ══════════════════════════════════════════════════════════════════════
   group('P3-6 窄窗「阿呆说」抽屉', () {
@@ -8194,6 +8194,26 @@ void _marketStageGroup() {
 
       expect(find.byKey(const Key('adeptSayEntry')), findsNothing);
       expect(find.text('三条口径'), findsOneWidget, reason: '宽窗右栏常驻');
+    });
+
+    testWidgets('断点边界（批 2）：1200 = 宽窗（右栏常驻）· 1199 = 窄窗（入口出现）', (tester) async {
+      await pumpAt(
+        tester,
+        ApiService(baseUrl: 'http://test', client: _tradingMock()),
+        const Size(1200, 900),
+      );
+      expect(find.text('三条口径'), findsOneWidget, reason: '1200 = 宽窗：右栏常驻');
+      expect(find.byKey(const Key('adeptSayEntry')), findsNothing);
+
+      // 再缩 1px：跨过断点 → 右栏收起、顶栏出入口出现（同一断点两处行为翻转）
+      await tester.binding.setSurfaceSize(const Size(1199, 900));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('adeptSayEntry')),
+        findsOneWidget,
+        reason: '1199 = 窄窗：出入口在',
+      );
+      expect(find.text('三条口径'), findsNothing, reason: '窄窗右栏不渲染');
     });
   });
 
