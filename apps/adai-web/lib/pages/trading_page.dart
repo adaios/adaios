@@ -845,10 +845,8 @@ class _TradingPageState extends State<TradingPage> {
                       // P2-交易72：今天的状态盘点（首屏不折叠——最短路径，他打开交易页就看得见）
                       _buildDayStatusRow(),
                       const SizedBox(height: 12),
-                      // 批 A（2026-10-08）：状态条（基础数据全在场，到线抢主位）+ 阿呆说
+                      // 减法（2026-10-08）：状态条 + 阿呆说并成一条 —— 上面每省一行，工作区就多一行
                       _buildStatusStrip(),
-                      const SizedBox(height: 10),
-                      _buildAdaiRail(),
                       const SizedBox(height: 12),
                       // E1（2026-08-16）：Tab 工作区替代纵向堆叠（UI/UX 审查方案）
                       _buildTabWorkspace(),
@@ -1944,67 +1942,33 @@ class _TradingPageState extends State<TradingPage> {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
       ),
-      child: Row(children: [
-        // 资金类基础数据在紧邻的「账户卡」里已经全都在场（总资产/可用/可取/参考市值/当日盈亏），
-        // 这里**不重复** —— 只放账户卡没有、又是重点的那两格：你自己的线 + 账实。
-        cell('到线', '$onLine 只', color: onLine > 0 ? AppColors.darkOrange : AppColors.darkGrey3),
-        cell('到线的票',
-            onLine > 0
-                ? _positions
-                    .where((it) {
-                      final sl = it.effectiveStopLoss;
-                      return sl != null && sl > 0 && it.currentPrice <= sl;
-                    })
-                    .map((it) => it.name)
-                    .join('、')
-                : '没有',
-            color: onLine > 0 ? AppColors.darkGrey1 : AppColors.darkGrey5),
-        cell('账实', clean ? '✓ 对上了' : '⚠ 有差异',
-            color: clean ? AppColors.darkGreen : AppColors.darkOrange),
-      ]),
-    );
-  }
-
-  /// 阿呆说：把**已经在页面上**的事实收成两三句 —— 只陈述 + 用你自己的线对照。
-  Widget _buildAdaiRail() {
-    final onLine = _positionsOnLineCount();
-    final clean = _integrity == null || !_integrity!.hasIssue;
-    final lines = <String>[];
-    lines.add(clean ? '账对上了。' : '账有一处对不上 —— 上面的横条里写了差在哪。');
-    if (onLine > 0) {
-      final hit = _positions
-          .where((it) {
-            final sl = it.effectiveStopLoss;
-            return sl != null && sl > 0 && it.currentPrice <= sl;
-          })
-          .map((it) => '${it.name} ${it.currentPrice.toStringAsFixed(2)}')
-          .join('、');
-      lines.add('$hit 到了你定的止损下面。');
-    } else if (_positions.isNotEmpty) {
-      lines.add('${_positions.length} 只都没有到线。');
-    }
-    if (_marketHealth != null && _marketHealth!.shouldWarn) {
-      lines.add('今天行情没取全 —— 上面的横条里写了原因。');
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-      decoration: BoxDecoration(
-        color: AppColors.darkSurface,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.darkOrange.withValues(alpha: 0.30)),
-      ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('阿呆说', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
-        const SizedBox(height: 6),
-        for (var i = 0; i < lines.length; i++)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Text(lines[i],
-                style: TextStyle(
-                    fontSize: 12.5,
-                    height: 1.5,
-                    color: i == 0 ? AppColors.darkGrey3 : AppColors.darkGrey1)),
-          ),
+        Row(children: [
+          // 资金类基础数据在紧邻的「账户卡」里已经全都在场（总资产/可用/可取/参考市值/当日盈亏），
+          // 这里**不重复** —— 只放账户卡没有、又是重点的那两格：你自己的线 + 账实。
+          cell('到线', '$onLine 只', color: onLine > 0 ? AppColors.darkOrange : AppColors.darkGrey3),
+          cell('到线的票',
+              onLine > 0
+                  ? _positions
+                      .where((it) {
+                        final sl = it.effectiveStopLoss;
+                        return sl != null && sl > 0 && it.currentPrice <= sl;
+                      })
+                      .map((it) => it.name)
+                      .join('、')
+                  : '没有',
+              color: onLine > 0 ? AppColors.darkGrey1 : AppColors.darkGrey5),
+          cell('账实', clean ? '✓ 对上了' : '⚠ 有差异',
+              color: clean ? AppColors.darkGreen : AppColors.darkOrange),
+        ]),
+        // 阿呆说压成同一条里的一句话（原先是独立一块）：只陈述 + 用你自己的线对照
+        const SizedBox(height: 8),
+        Text(
+          onLine > 0
+              ? '阿呆说：账${clean ? '对上了' : '有一处对不上'}；上面的票到了你定的止损下面。'
+              : '阿呆说：账${clean ? '对上了' : '有一处对不上'}；${_positions.isEmpty ? '还没有持仓' : '${_positions.length} 只都没有到线'}。',
+          style: const TextStyle(fontSize: 12.5, height: 1.5, color: AppColors.darkGrey3),
+        ),
       ]),
     );
   }
