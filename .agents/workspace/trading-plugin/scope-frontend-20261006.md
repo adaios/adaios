@@ -24,7 +24,7 @@ tags: [workspace, trading, scope]
 
 | # | 条目 | 面 | 计划 | 状态 | 证据 | 去向 |
 |:--|:--|:--|:--|:--|:--|:--|
-| `R-01` | 记录 · web 导入（一次全收） | web | 本批 | 已交付 | `apps/adai-web/lib/pages/trading_page.dart#_openImportDialog,_openBundleImport,_BundleImportDialog`; `apps/adai-web/lib/services/api_service.dart#importTradingBundle`; `apps/adai-web/test/trading_bundle_analysis_test.dart#R-12 统一导入` | — |
+| `R-01` | 记录 · web 导入（一次全收） | web | 本批 | 已交付 | `apps/adai-web/lib/pages/trading_page.dart#_openImportDialog,_showImportDrawer`; `apps/adai-web/lib/services/api_service.dart#importTradingBundle`; `apps/adai-web/test/trading_bundle_analysis_test.dart#R-12 统一导入` | — |
 | `R-01` | 记录 · web 逐笔编辑 | web | 下批 | — | — | LEDGER 🟥 · 批 3 |
 | `R-01` | 记录 · app 手动记一笔 / 一句话 / 截图入账 | app | 下批 | — | — | LEDGER 🟥 · 批 5（app） |
 | `R-02` | 对账 · web（差额横幅已上线；断点定位缺） | web | 下批 | — | — | LEDGER 🟥 · 批 3 |
@@ -38,7 +38,7 @@ tags: [workspace, trading, scope]
 | `R-08` | 纠错 · web 就地改 | web | 下批 | — | — | LEDGER 🟥 · 批 3 |
 | `R-09` `R-10` | 自选留历史 / 案例全功能 · web 补齐 | web | 下批 | — | — | LEDGER 🟥 · 批 4 |
 | `R-11` | 提醒 · app 收提醒 | app | 下批 | — | — | LEDGER 🟥 · 批 5（app） |
-| `R-12` | 一次交文件 · web（app 不能导入，设计已声明） | web | 本批 | 已交付 | `apps/adai-web/lib/pages/trading_page.dart#选择文件（可多选，通达信导出）,先看计划（预检：只报会做什么，不动数据）`; `apps/adai-web/lib/services/api_service.dart#importTradingBundle,BundleImportReceipt`; `apps/adai-web/test/trading_bundle_analysis_test.dart#先看计划,已导入——可关闭` | — |
+| `R-12` | 一次交文件 · web（app 不能导入，设计已声明） | web | 本批 | 已交付 | `apps/adai-web/lib/pages/trading_page.dart#选择文件（可多选，通达信导出,确认入账`; `apps/adai-web/lib/services/api_service.dart#importTradingBundle,BundleImportReceipt`; `apps/adai-web/test/trading_bundle_analysis_test.dart#R-12 统一导入,确认入账` | — |
 | `R-13` | 画像 · web 页面（客观 + 主观） | web | 下批 | — | — | LEDGER 🟥 · 批 4 |
 | `资金层` | 资金曲线 + 分周期盈亏 | web | 非本任务 | 已交付 | `apps/adai-web/lib/pages/trading_page.dart#_EquityCurveCard,_pnlPeriods` | — |
 | `资金层` | 只读曲线 | app | 非本任务 | 已交付 | `apps/adai-app/lib/pages/profit_calendar_page.dart#EquityCurveDto,getEquityCurve` | — |

@@ -874,237 +874,77 @@ class _TradingPageState extends State<TradingPage> {
             ? const Center(child: CircularProgressIndicator())
             : _error != null
                 ? Center(child: Text('加载失败\n$_error', style: const TextStyle(color: AppColors.darkGrey5)))
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-                    children: [
-                      // v3.41（2026-09-04）：活跃市值区间（用户手动判定）——一切的前提，放最顶
-                      if (_marketStageLoaded) ...[
-                        _buildMarketStageBar(),
-                        const SizedBox(height: 10),
-                      ],
-                      // RFC 20260923：行情链路横幅放对账之上——它是上游根因（行情拿不到 → 曲线/信号/案例
-                      // 都会不全），先让用户看到「为什么今天数据可能不对劲」，再看下面的具体对账差异
-                      if (_marketHealth != null && _marketHealth!.shouldWarn) ...[
-                        _buildMarketHealthBanner(_marketHealth!),
-                        const SizedBox(height: 10),
-                      ],
-                      // RFC 20260912 账实不符横幅（2026-10-08 账三合一迁移）：断点明细改到账区自证条
-                      // 「当场指出」（导入就在旁边，不用回头往上找）；跨区状态由下方状态条「账实」格承担
-                      // ——与自证条叠在一起的第三份噪音撤除（设计稿：上方=状态条，账=三合一）
-                      _buildSnapshotRow(),
-                      if (_hasPositionRatioLine) ...[
-                        const SizedBox(height: 8),
-                        _buildPositionRatioLine(),
-                      ],
-                      // P2-交易58 前端侧（2026-10-04）：本地数据包止于哪天——滞后才说一句，
-                      // 今天 / 拿不到 → 零显示（与对账闸门同一「无异常不刷存在感」口径）
-                      if (_tdxLag != null) ...[
+                : LayoutBuilder(builder: (ctx, cons) {
+                    // m5（2026-10-07 · 原型 .wd-rail）：右栏（阿呆说 / 今天 / 三条口径）固定在最右。
+                    // 窄视窗（< 1080）不显示右栏——它是锦上添花，主表可用宽优先。
+                    final hasRail = cons.maxWidth >= 1080;
+                    final main = ListView(
+                      padding: EdgeInsets.fromLTRB(20, 16, hasRail ? 12 : 20, 20),
+                      children: [
+                        // v3.41（2026-09-04）：活跃市值区间（用户手动判定）——一切的前提，放最顶
+                        if (_marketStageLoaded) ...[
+                          _buildMarketStageBar(),
+                          const SizedBox(height: 10),
+                        ],
+                        // RFC 20260923：行情链路横幅放对账之上——它是上游根因（行情拿不到 → 曲线/信号/案例
+                        // 都会不全），先让用户看到「为什么今天数据可能不对劲」，再看下面的具体对账差异
+                        if (_marketHealth != null && _marketHealth!.shouldWarn) ...[
+                          _buildMarketHealthBanner(_marketHealth!),
+                          const SizedBox(height: 10),
+                        ],
+                        // m5：6 格状态条（总资产 · 当日 · 总盈亏 · 持仓市值 · 到线 · 账实）——
+                        // 原「上方三坨」收敛成的一条；账实明细仍在账区自证条（跨区状态由这里承担）
+                        _buildStatusStrip(),
+                        if (_hasPositionRatioLine) ...[
+                          const SizedBox(height: 8),
+                          _buildPositionRatioLine(),
+                        ],
+                        // P2-交易58 前端侧（2026-10-04）：本地数据包止于哪天——滞后才说一句，
+                        // 今天 / 拿不到 → 零显示（与对账闸门同一「无异常不刷存在感」口径）
+                        if (_tdxLag != null) ...[
+                          const SizedBox(height: 6),
+                          _buildTdxLagLine(_tdxLag!),
+                        ],
+                        if (_dailyNotes.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          _buildDailyNotesLine(),
+                        ],
                         const SizedBox(height: 6),
-                        _buildTdxLagLine(_tdxLag!),
+                        Row(children: [
+                          Text(_lastUpdated != null
+                              ? '上次更新 $_lastUpdated · 每 30 分钟自动刷新 · 账户快照 ${_account?.snapshotDate ?? '-'}'
+                              : '数据加载中…',
+                              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+                          const Spacer(),
+                          TextButton.icon(
+                            onPressed: _loadAll,
+                            icon: const Icon(Icons.refresh, size: 14),
+                            label: const Text('点击更新', style: TextStyle(fontSize: 11)),
+                            style: TextButton.styleFrom(
+                                foregroundColor: AppColors.darkGrey4,
+                                padding: const EdgeInsets.symmetric(horizontal: 6),
+                                minimumSize: const Size(0, 28)),
+                          ),
+                        ]),
+                        const SizedBox(height: 12),
+                        // E1（2026-08-16）：Tab 工作区替代纵向堆叠（UI/UX 审查方案）
+                        _buildTabWorkspace(),
                       ],
-                      if (_dailyNotes.isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        _buildDailyNotesLine(),
-                      ],
-                      if (_dailySummary != null) ...[
-                        const SizedBox(height: 4),
-                        _buildDailySummaryRow(),
-                      ],
-                      const SizedBox(height: 6),
-                      Row(children: [
-                        Text(_lastUpdated != null
-                            ? '上次更新 $_lastUpdated · 每 30 分钟自动刷新 · 账户快照 ${_account?.snapshotDate ?? '-'}'
-                            : '数据加载中…',
-                            style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
-                        const Spacer(),
-                        TextButton.icon(
-                          onPressed: _loadAll,
-                          icon: const Icon(Icons.refresh, size: 14),
-                          label: const Text('点击更新', style: TextStyle(fontSize: 11)),
-                          style: TextButton.styleFrom(
-                              foregroundColor: AppColors.darkGrey4,
-                              padding: const EdgeInsets.symmetric(horizontal: 6),
-                              minimumSize: const Size(0, 28)),
+                    );
+                    if (!hasRail) return main;
+                    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Expanded(child: main),
+                      SizedBox(
+                        width: 208,
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.fromLTRB(0, 16, 20, 20),
+                          child: _buildRightRail(),
                         ),
-                      ]),
-                      const SizedBox(height: 12),
-                      // P2-交易72：今天的状态盘点（首屏不折叠——最短路径，他打开交易页就看得见）
-                      _buildDayStatusRow(),
-                      const SizedBox(height: 12),
-                      // 减法（2026-10-08）：状态条 + 阿呆说并成一条 —— 上面每省一行，工作区就多一行
-                      _buildStatusStrip(),
-                      const SizedBox(height: 12),
-                      // E1（2026-08-16）：Tab 工作区替代纵向堆叠（UI/UX 审查方案）
-                      _buildTabWorkspace(),
-                    ],
-                  ),
+                      ),
+                    ]);
+                  }),
       ),
     ]);
-  }
-
-  /// RFC 20260822：当日交易复盘行（纯客观数字）——今日 N 笔 · 买/卖 · 时段分布 · 首末笔时间。
-  Widget _buildDailySummaryRow() {
-    final d = _dailySummary!;
-    final sessionText = d.sessions
-        .where((s) => s.count > 0)
-        .map((s) => '${s.name} ${s.count} 笔')
-        .join(' · ');
-    final timeText = (d.firstTradeTime != null && d.lastTradeTime != null)
-        ? '${d.firstTradeTime!.substring(0, 5)}-${d.lastTradeTime!.substring(0, 5)}'
-        : '';
-    return Row(children: [
-      Icon(Icons.schedule, size: 12, color: AppColors.darkGreen),
-      const SizedBox(width: 6),
-      Flexible(
-        child: Text(
-          '今日 ${d.count} 笔 · 买 ${d.buyCount} / 卖 ${d.sellCount}'
-          '${sessionText.isEmpty ? '' : ' · $sessionText'}'
-          '${timeText.isEmpty ? '' : ' · $timeText'}',
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 11, color: AppColors.darkGrey3),
-        ),
-      ),
-    ]);
-  }
-
-  /// 账户总览卡（RFC 20260816：资金股份查询导入的券商口径 + 组合快照）。
-  /// 展示：总资产（主）/ 可用资金 / 可取 / 参考市值 / 当日盈亏 / 盈亏 / 快照日期。
-  Widget _buildSnapshotRow() {
-    final a = _account;
-    final p = _portfolio;
-    final hasAccount = a != null && a.assets > 0;
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Row(children: [
-      _statCard('总资产', hasAccount ? a.assets : (p?.totalValue ?? 0) + (p?.cashBalance ?? 0),
-          format: '¥', color: AppColors.darkBlue, big: true),
-      const SizedBox(width: 12),
-      _statCard('可用资金', hasAccount ? a.available : (p?.cashBalance ?? 0), format: '¥', color: AppColors.darkGrey3),
-      const SizedBox(width: 12),
-      _statCard('可取', hasAccount ? a.withdrawable : 0, format: '¥', color: AppColors.darkGrey5),
-      const SizedBox(width: 12),
-      _statCard('参考市值', hasAccount ? a.marketValue : (p?.totalValue ?? 0), format: '¥', color: AppColors.darkPurple),
-      const SizedBox(width: 12),
-      // #132 红涨绿亏（A股）：盈=红、亏=绿
-      // P2-交易48（2026-09-14）：当日盈亏标来源与日期（券商口径 / 系统计算），
-      // 0 / 来源未知 → 不标（宁可不说，也不编造）。
-      _statCard('当日盈亏', hasAccount ? a.todayPnl : 0,
-          color: (hasAccount ? a.todayPnl : 0) >= 0 ? AppColors.darkRed : AppColors.darkGreen,
-          note: hasAccount && a.todayPnl != 0
-              ? todayPnlSourceNote(a.todayPnlSource, a.snapshotDate)
-              : null),
-      const SizedBox(width: 12),
-      // 总盈亏 = 资产 - 本金（用户确认：累计投入 15 万，当前亏 3.9 万——券商浮盈不是总盈亏）
-      // P2-交易31（2026-08-29，U32）：本金未设（principal=0）→ totalPnl null → 「—」不给误导数值
-      // （旧回落浮盈漏已实现盈亏：清仓后显示 0 盈亏仍是误导）
-      // 2026-10-08：本金手填入口已退役（后端 410）——本金由转入/转出自动推，引导语跟着改口径
-      _statCard('总盈亏', hasAccount ? a.totalPnl : (p?.totalPnl ?? 0),
-          color: ((hasAccount ? a.totalPnl : (p?.totalPnl ?? 0)) ?? 0) >= 0 ? AppColors.darkRed : AppColors.darkGreen,
-          sub: hasAccount && a.principal > 0 ? '本金 ¥${_thousands(a.principal)}' : (hasAccount ? '还没记过转入/转出' : null)),
-      const SizedBox(width: 12),
-      _statCard('持仓浮盈', hasAccount ? a.pnl : 0,
-          color: (hasAccount ? a.pnl : 0) >= 0 ? AppColors.darkRed : AppColors.darkGreen),
-      const SizedBox(width: 12),
-      _statCard('持仓数', (p?.positionCount ?? 0).toDouble(), format: '', color: AppColors.darkGrey2),
-      ]),
-      // 2026-09-15（用户要求「券商 App 那样的日/周/月盈亏」）——独立一行，不让 8 张卡更挤
-      if (_pnlPeriods != null) ...[
-        const SizedBox(height: 12),
-        _buildPeriodRow(),
-      ],
-    ]);
-  }
-
-  /// 今日 / 本周 / 本月盈亏条：金额 + 比例（比例 null → 只给金额，绝不编造 0%）。
-  Widget _buildPeriodRow() {
-    final p = _pnlPeriods;
-    if (p == null) return const SizedBox.shrink();
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppColors.darkSurface,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(children: [
-        Text('盈亏', style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
-        const SizedBox(width: 18),
-        _periodCell('今日', p.today),
-        const SizedBox(width: 26),
-        _periodCell('本周', p.week),
-        const SizedBox(width: 26),
-        _periodCell('本月', p.month),
-        const Spacer(),
-        if (p.month?.partial == true)
-          Text(p.anchorDate != null ? '本月自券商快照 ${p.anchorDate} 起可追溯' : '本月只有部分区间可追溯',
-              style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
-      ]),
-    );
-  }
-
-  Widget _periodCell(String label, PeriodPnlDto? d) {
-    if (d == null || d.pnl == null) {
-      return Row(mainAxisSize: MainAxisSize.min, children: [
-        Text('—', style: TextStyle(fontSize: 14, color: AppColors.darkGrey5)),
-        const SizedBox(width: 6),
-        Text(label, style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
-      ]);
-    }
-    final v = d.pnl!;
-    // #132 红涨绿亏（A股）
-    final color = v >= 0 ? AppColors.darkRed : AppColors.darkGreen;
-    final pct = d.pct == null ? '' : ' (${d.pct! >= 0 ? '+' : ''}${d.pct!.toStringAsFixed(2)}%)';
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      Text('${v >= 0 ? '+' : ''}¥${_thousands(v)}$pct',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: color)),
-      const SizedBox(width: 6),
-      Text(label, style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
-    ]);
-  }
-
-  Widget _statCard(String label, double? value, {String format = '¥', required Color color, bool big = false, String? sub, String? note}) {
-    final isCount = format.isEmpty;
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-        decoration: BoxDecoration(
-          color: AppColors.darkSurface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.6)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
-            const SizedBox(height: 8),
-            if (sub != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 2),
-                child: Text(sub, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
-              ),
-            // P2-交易14（2026-08-17）：大数值（如 ¥-39495.12 22px 粗体）在窄卡溢出 → FittedBox 缩放 + 千分位
-            // P2-交易31（2026-08-29）：value null（本金未设）→ 灰色「—」，不给误导数值
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                value == null
-                    ? '—'
-                    : isCount ? value.toInt().toString() : '$format${_thousands(value)}',
-                style: TextStyle(fontSize: big ? 22 : 16, fontWeight: big ? FontWeight.w700 : FontWeight.w600,
-                    color: value == null ? AppColors.darkGrey5 : color),
-              ),
-            ),
-            // P2-交易48：数值下方小字注（当日盈亏来源与日期；11px 项目下限）
-            if (note != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text(note,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
-              ),
-          ],
-        ),
-      ),
-    );
   }
 
   /// 顶部总仓位/现金比例：有其一即显示（「仓位 62.24% · 现金 37.76%」）；
@@ -1749,45 +1589,124 @@ class _TradingPageState extends State<TradingPage> {
     );
   }
 
-  /// 「今天」这一行：一句轻说明 + 两个一键盘点。放在首屏（不折叠）——他打开交易页就看得见。
-  Widget _buildDayStatusRow() {
+  /// 「今天」卡（m5 · 原型 .wd-rail 第二块）：原首屏「今天」行（P2-交易72 的一键盘点，
+  /// 不折叠——他打开交易页就看得见）收进右栏；今日交易摘要（原 _buildDailySummaryRow）
+  /// 也并进这里（mock 无数据时零显示——不刷存在感）。
+  Widget _buildTodayCard() {
     final recorded = _todayDayStatus;
     final msg = _dayStatusMsg;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.darkSurface,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
+    final d = _dailySummary;
+    String? summaryText;
+    if (d != null) {
+      final sessionText = d.sessions
+          .where((s) => s.count > 0)
+          .map((s) => '${s.name} ${s.count} 笔')
+          .join(' · ');
+      final timeText = (d.firstTradeTime != null && d.lastTradeTime != null)
+          ? '${d.firstTradeTime!.substring(0, 5)}-${d.lastTradeTime!.substring(0, 5)}'
+          : '';
+      summaryText = '今日 ${d.count} 笔 · 买 ${d.buyCount} / 卖 ${d.sellCount}'
+          '${sessionText.isEmpty ? '' : ' · $sessionText'}'
+          '${timeText.isEmpty ? '' : ' · $timeText'}';
+    }
+    return _railCard(children: [
+      const Text('今天',
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+      const SizedBox(height: 8),
+      Text(
+        recorded.isEmpty
+            ? '今天没买卖的话，点一下就行——没动也是一天的完整记录。'
+            : '今天记的是：${_dayStatusHuman(recorded)}',
+        style: const TextStyle(fontSize: 11.5, height: 1.5, color: AppColors.darkGrey5),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          const Text('今天', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              recorded.isEmpty
-                  ? '今天没买卖的话，点一下就行——没动也是一天的完整记录。'
-                  : '今天记的是：${_dayStatusHuman(recorded)}',
-              style: const TextStyle(fontSize: 12, color: AppColors.darkGrey5),
-            ),
-          ),
-        ]),
-        const SizedBox(height: 6),
-        Row(children: [
-          _dayStatusChip(ApiService.dayStatusNoTrade, '今天没动'),
-          const SizedBox(width: 8),
-          _dayStatusChip(ApiService.dayStatusWantedNotActed, '想动，没动'),
-          if (msg != null) ...[
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(msg, style: const TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
-            ),
-          ],
-        ]),
+      const SizedBox(height: 8),
+      Wrap(spacing: 6, runSpacing: 6, children: [
+        _dayStatusChip(ApiService.dayStatusNoTrade, '今天没动'),
+        _dayStatusChip(ApiService.dayStatusWantedNotActed, '想动，没动'),
       ]),
-    );
+      if (msg != null) ...[
+        const SizedBox(height: 6),
+        Text(msg, style: const TextStyle(fontSize: 11, height: 1.45, color: AppColors.darkGrey5)),
+      ],
+      if (summaryText != null) ...[
+        const SizedBox(height: 6),
+        Text(summaryText,
+            style: const TextStyle(fontSize: 11, height: 1.45, color: AppColors.darkGrey3)),
+      ],
+    ]);
   }
+
+  /// 阿呆说（m5 · 原型 .wd-rail 第一块 .wd-say）：只陈述 + 用你自己的线对照（B1：无系统视角标签）。
+  /// 三段：① 账句（对上了 / 有一处对不上 / 还没取到——拿不到不编「对上了」）；
+  /// ② 到线点名（原型句式`601899 现价 16.55，破了你的 16.80`——破止损 ↓ / 到放飞 ↑ 分开措辞）；
+  /// ③ 收尾（其它没有要动的 / N 只都没有到线 / 还没有持仓）。
+  Widget _buildAdeptSay() {
+    final ir = _integrity;
+    final clean = ir != null && !ir.hasIssue;
+    final accountSentence = ir == null ? '对账还没取到。' : (clean ? '账对上了。' : '账有一处对不上。');
+    final hitLines = <String>[];
+    for (final it in _positions) {
+      final sl = it.effectiveStopLoss;
+      if (sl != null && sl > 0 && it.currentPrice <= sl) {
+        hitLines.add('${it.symbol} 现价 ${it.currentPrice.toStringAsFixed(2)}，'
+            '破了你的 ${sl.toStringAsFixed(2)}');
+        continue;
+      }
+      final tp = it.targetPrice;
+      if (tp != null && tp > 0 && it.currentPrice >= tp) {
+        hitLines.add('${it.symbol} 现价 ${it.currentPrice.toStringAsFixed(2)}，'
+            '到了你的 ${tp.toStringAsFixed(2)}');
+      }
+    }
+    final tail = hitLines.isNotEmpty
+        ? '其它没有要动的。'
+        : (_positions.isEmpty ? '还没有持仓。' : '${_positions.length} 只都没有到线。');
+    return _railCard(children: [
+      const Text('阿呆说',
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+      const SizedBox(height: 8),
+      Text(accountSentence,
+          style: const TextStyle(fontSize: 12.5, height: 1.55, color: AppColors.darkGrey3)),
+      if (hitLines.isNotEmpty) ...[
+        const SizedBox(height: 6),
+        Text(hitLines.join('；'),
+            style: const TextStyle(fontSize: 12.5, height: 1.55, color: AppColors.darkGrey3)),
+      ],
+      const SizedBox(height: 6),
+      Text(tail, style: const TextStyle(fontSize: 12, height: 1.5, color: AppColors.darkGrey5)),
+    ]);
+  }
+
+  /// 三条口径（m5 · 原型 .wd-rail 第三块）：展示规则与交互的一句话。
+  /// ⚠️ 第三条「每个数字点得进去」按原型全文放置——数字钻取交互属后续批次，m5/m6 先兑现前两条。
+  Widget _buildCaliberCard() => _railCard(children: const [
+        Text('三条口径',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+        SizedBox(height: 8),
+        Text('数量与成本打码 · 现价与线不打码 · 每个数字点得进去',
+            style: TextStyle(fontSize: 11, height: 1.5, color: AppColors.darkGrey5)),
+      ]);
+
+  /// 右栏容器（原型 .wd-rail 宽 208）：阿呆说 / 今天 / 三条口径三卡纵排。
+  Widget _buildRightRail() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _buildAdeptSay(),
+        const SizedBox(height: 10),
+        _buildTodayCard(),
+        const SizedBox(height: 10),
+        _buildCaliberCard(),
+      ]);
+
+  /// 右栏卡片（原型 .wd-card：surface 底 + 圆角 + 细边框）。
+  Widget _railCard({required List<Widget> children}) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
+        decoration: BoxDecoration(
+          color: AppColors.darkSurface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
+      );
 
   // ── 次日操作计划（§二~四）：前晚写 → 当日守 → 收盘对账。系统不生成计划、不给建议。 ──
 
@@ -2130,13 +2049,14 @@ class _TradingPageState extends State<TradingPage> {
   //      目标被挤到屏幕外），留作单独一批连着测试一起改，不混在这里。
   // ══════════════════════════════════════════════════════════════════════════
 
-  /// 到线几只：现价已经到了（或破了）**你自己定的**止损。
+  /// 到线几只：现价已经到了（或破了）**你自己定的**线。
   /// 这是首屏最该被看见的那件事 —— 所以它不是列表里的一个细节，而是状态条上的一格。
+  /// m5（2026-10-07）：口径与表格行标 [_onLine] 对齐——**破止损 ↓ / 到放飞 ↑ 都算**
+  /// （设计稿「正向（放飞）与反向（止损）都提醒」；此前只算止损一个方向）。
   int _positionsOnLineCount() {
     var n = 0;
     for (final it in _positions) {
-      final sl = it.effectiveStopLoss;
-      if (sl != null && sl > 0 && it.currentPrice <= sl) n++;
+      if (_onLine(it)) n++;
     }
     return n;
   }
@@ -2168,22 +2088,26 @@ class _TradingPageState extends State<TradingPage> {
     return false;
   }
 
-  /// 状态条：资金与涨跌是**基础数据**（都在场），到线才是**重点**（抢主位）。
+  /// m5（2026-10-07 · 原型 .wd-strip「主屏形态」）：**6 格一条**——总资产 · 当日 · 总盈亏 ·
+  /// 持仓市值 · 到线 · 账实。由「上方三坨」收敛而来（账户卡 8 张 / 盈亏条 / 旧 3 格状态条）：
+  ///   · 可用 / 可取 / 现金 → 账区（自证条 + 现金区，那儿才是资金的家）；
+  ///   · 持仓浮盈 / 持仓数 → 持仓表（逐行盈亏 + 表头「持仓 N 只」——不重复占主位）；
+  ///   · 到线的票 + 账句 → 右栏「阿呆说」卡（点名式：`600123 现价 26.10，破了你的 27.00`）。
+  /// 诚实口径照旧：本金为 0 → 总盈亏「—」不给误导数值；账实拿不到 → 「—」不编「对上了」。
   Widget _buildStatusStrip() {
+    final a = _account;
+    final p = _portfolio;
+    final hasAccount = a != null && a.assets > 0;
     final onLine = _positionsOnLineCount();
     final ir = _integrity;
-    final clean = ir != null && !ir.hasIssue; // 2026-10-08 账三合一：拿不到对账（null）≠ 已经对上
-    // 阿呆口吻的对账短语（拿不到就说拿不到——不编「对上了」，与账区自证条同口径）
-    final accountPhrase = ir == null ? '对账还没取到' : (clean ? '账对上了' : '账有一处对不上');
-    Widget cell(String label, String value, {Color? color}) => Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(label, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
-            const SizedBox(height: 3),
-            Text(value,
-                style: TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.w600, color: color ?? AppColors.darkGrey1)),
-          ]),
-        );
+    final clean = ir != null && !ir.hasIssue; // 拿不到对账（null）≠ 已经对上
+    // 当日：金额 + 比例（比例与「当日盈亏」同源 pnl/periods；拿不到比例就不给——不编 0%）
+    final todayPnl = hasAccount ? a.todayPnl : 0.0;
+    final todayPct = _pnlPeriods?.today?.pct;
+    final todayText = '¥${_thousands(todayPnl)}'
+        '${todayPct == null ? '' : ' ${todayPct >= 0 ? '+' : ''}${todayPct.toStringAsFixed(2)}%'}';
+    // 总盈亏 = 资产 − 本金（principal=0 → null → 「—」+ 引导语，不编数）
+    final totalPnl = hasAccount ? a.totalPnl : (p?.totalPnl ?? 0);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
       decoration: BoxDecoration(
@@ -2191,44 +2115,45 @@ class _TradingPageState extends State<TradingPage> {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          // 资金类基础数据在紧邻的「账户卡」里已经全都在场（总资产/可用/可取/参考市值/当日盈亏），
-          // 这里**不重复** —— 只放账户卡没有、又是重点的那两格：你自己的线 + 账实。
-          cell('到线', '$onLine 只', color: onLine > 0 ? AppColors.darkOrange : AppColors.darkGrey3),
-          cell('到线的票',
-              onLine > 0
-                  ? _positions
-                      .where((it) {
-                        final sl = it.effectiveStopLoss;
-                        return sl != null && sl > 0 && it.currentPrice <= sl;
-                      })
-                      .map((it) => it.name)
-                      .join('、')
-                  : '没有',
-              color: onLine > 0 ? AppColors.darkGrey1 : AppColors.darkGrey5),
-          // 2026-10-08 账三合一：拿不到对账显示「—」（不编「对上了」）——与账区自证条同口径
-          cell('账实',
-              ir == null ? '—' : (clean ? '✓ 对上了' : '⚠ 有差异'),
-              color: ir == null
-                  ? AppColors.darkGrey4
-                  : (clean ? AppColors.darkGreen : AppColors.darkOrange)),
-        ]),
-        // 阿呆说压成同一条里的一句话（原先是独立一块）：只陈述 + 用你自己的线对照
-        const SizedBox(height: 8),
-        Text(
-          onLine > 0
-              ? '阿呆说：$accountPhrase；上面的票到了你定的止损下面。'
-              : '阿呆说：$accountPhrase；${_positions.isEmpty ? '还没有持仓' : '${_positions.length} 只都没有到线'}。',
-          style: const TextStyle(fontSize: 12.5, height: 1.5, color: AppColors.darkGrey3),
-        ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _stripCell('总资产',
+            '¥${_thousands(hasAccount ? a.assets : (p?.totalValue ?? 0) + (p?.cashBalance ?? 0))}',
+            valueKey: const Key('stripAssets')),
+        _stripCell('当日', todayText,
+            color: todayPnl >= 0 ? AppColors.darkRed : AppColors.darkGreen,
+            valueKey: const Key('stripToday'),
+            note: hasAccount && todayPnl != 0
+                ? todayPnlSourceNote(a.todayPnlSource, a.snapshotDate)
+                : null),
+        _stripCell('总盈亏', totalPnl == null ? '—' : '¥${_thousands(totalPnl)}',
+            color: totalPnl == null
+                ? AppColors.darkGrey5
+                : (totalPnl >= 0 ? AppColors.darkRed : AppColors.darkGreen),
+            valueKey: const Key('stripTotalPnl'),
+            note: hasAccount
+                ? (a.principal > 0 ? '本金 ¥${_thousands(a.principal)}' : '还没记过转入/转出')
+                : null),
+        _stripCell('持仓市值', '¥${_thousands(hasAccount ? a.marketValue : (p?.totalValue ?? 0))}',
+            valueKey: const Key('stripMarketValue')),
+        _stripCell('到线', '$onLine 只',
+            color: onLine > 0 ? AppColors.darkOrange : AppColors.darkGrey3,
+            valueKey: const Key('stripOnline')),
+        // 拿不到对账显示「—」（不编「对上了」）——与账区自证条同口径
+        _stripCell('账实', ir == null ? '—' : (clean ? '✓ 对上了' : '⚠ 有差异'),
+            color: ir == null
+                ? AppColors.darkGrey4
+                : (clean ? AppColors.darkGreen : AppColors.darkOrange),
+            valueKey: const Key('stripIntegrity')),
       ]),
     );
   }
 
   /// m3b（2026-10-07 · 原型 .wd-strip 屏条）：label 上（11px 灰）/ 值下（15px w600）——与状态条格子同型。
   /// `valueKey` 供测试锚定「值」文本（标题文字不锚，防两处 strip 撞文案）。
-  Widget _stripCell(String label, String value, {Color? color, Key? valueKey}) => Expanded(
+  /// m5：加 `note`（第三行小字：口径来源 / 本金 / 引导——6 格状态条用；默认 null 不影响既有调用）。
+  Widget _stripCell(String label, String value,
+          {Color? color, Key? valueKey, String? note}) =>
+      Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(label, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
           const SizedBox(height: 3),
@@ -2238,6 +2163,13 @@ class _TradingPageState extends State<TradingPage> {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                   fontSize: 15, fontWeight: FontWeight.w600, color: color ?? AppColors.darkGrey1)),
+          if (note != null) ...[
+            const SizedBox(height: 2),
+            Text(note,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+          ],
         ]),
       );
 
@@ -2388,6 +2320,13 @@ class _TradingPageState extends State<TradingPage> {
                       style: TextStyle(
                           fontSize: 11,
                           color: cashDate.isNotEmpty ? AppColors.darkGreen : AppColors.darkGrey5))),
+          // m5：账户卡退役后「可用 / 可取」在账区安家（贴原型账屏状态条的语义——
+          // 资金侧基础数据，旁边就是转入/转出操作；主屏 6 格不再重复）
+          cell('可用', a == null ? '—' : '¥${_thousands(a.available)}',
+              sub: Text(a == null ? '' : '可取 ¥${_thousands(a.withdrawable)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5))),
           // 本金从数据推：= 转入 − 转出（后端含存量迁移调整）；总盈亏 = 资产 − 本金
           cell('本金（转入/转出自动算）', principal > 0 ? '¥${_thousands(principal)}' : '—',
               sub: principal > 0 && totalPnl != null

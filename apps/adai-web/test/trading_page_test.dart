@@ -655,6 +655,9 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
+      // m5：右栏入驻后主区变窄 → 表格横滚，操作列按钮可能滚出视口——先滚到它再点
+      await tester.ensureVisible(find.text('编辑'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('编辑'));
       await tester.pumpAndSettle();
       expect(find.textContaining('编辑持仓'), findsOneWidget);
@@ -701,6 +704,9 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
+      // m5：右栏入驻后主区变窄 → 表格横滚，操作列按钮可能滚出视口——先滚到它再点
+      await tester.ensureVisible(find.text('编辑'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('编辑'));
       await tester.pumpAndSettle();
       await tester.enterText(_field('止损位'), '0');
@@ -2033,7 +2039,7 @@ void main() {
     expect(find.textContaining('总盈亏 ¥110,504.88'), findsNothing);
     expect(find.textContaining('设置本金后显示'), findsNothing);
     // 本金口径统一为「转入/转出自动算」：自证条本金格 '—' +「还没记过转入/转出」；
-    // 账户卡 statCard 同一文案——共 2 处
+    // 顶部状态条总盈亏格 note 同一文案（m5 把原账户卡 statCard 收回状态条）——共 2 处
     expect(find.text('还没记过转入/转出'), findsNWidgets(2));
     expect(find.text('—'), findsWidgets);
   });
@@ -2282,6 +2288,9 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
+      // m5：右栏入驻后主区变窄 → 表格横滚，操作列按钮可能滚出视口——先滚到它再点
+      await tester.ensureVisible(find.text('批次'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('批次'));
       await tester.pumpAndSettle();
 
@@ -2346,6 +2355,9 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
+      // m5：右栏入驻后主区变窄 → 表格横滚，操作列按钮可能滚出视口——先滚到它再点
+      await tester.ensureVisible(find.text('批次'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('批次'));
       await tester.pumpAndSettle();
       // 弹窗仍在（不整页白屏），失败透出
@@ -3919,9 +3931,9 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      // 一致性呈现：状态条「账实 ✓ 对上了」+ 一句阿呆说（跨区一行）——无横幅、无摘要噪音
+      // 一致性呈现：状态条「账实 ✓ 对上了」+ 右栏阿呆说「账对上了。」（m5：卡头即「阿呆说」，句子无前缀）——无横幅、无摘要噪音
       expect(find.text('✓ 对上了'), findsOneWidget);
-      expect(find.textContaining('阿呆说：账对上了'), findsOneWidget);
+      expect(find.text('账对上了。'), findsOneWidget);
       expect(find.textContaining('阿呆发现账对不上'), findsNothing);
       expect(find.textContaining('账实一致'), findsNothing, reason: '一致时不刷存在感');
       // 页面正常（持仓表在）
@@ -3943,8 +3955,8 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      // 拿不到对账 → 不编「对上了」：阿呆说「对账还没取到」（与账区自证条同口径）
-      expect(find.textContaining('阿呆说：对账还没取到'), findsOneWidget);
+      // 拿不到对账 → 不编「对上了」：右栏阿呆说「对账还没取到。」（m5 卡头即「阿呆说」；带句号与账区自证条 sub 区分）
+      expect(find.text('对账还没取到。'), findsOneWidget);
       expect(find.textContaining('阿呆发现账对不上'), findsNothing);
       expect(find.textContaining('加载失败'), findsNothing, reason: '可降级请求失败不整页错误态');
       expect(find.textContaining('持仓 1 只'), findsOneWidget);
@@ -5495,6 +5507,78 @@ void _marketStageGroup() {
       await tester.tap(find.byKey(const Key('posFilter1')));
       await tester.pumpAndSettle();
       expect(find.text('招商银行'), findsNothing);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // m5（2026-10-07 · 原型 .wd-strip + .wd-rail）：上方三坨（账户卡 / 盈亏条 /
+  // 今天没动）收成一条 6 格状态条（总资产 · 当日 · 总盈亏 · 市值 · 到线 · 账实）
+  // + 右栏固定三卡（阿呆说 / 今天 / 三条口径）。
+  // ══════════════════════════════════════════════════════════════════════
+  group('m5 状态条 6 格 + 右栏三卡', () {
+    testWidgets('六格值（Key 锚）：总资产/当日/总盈亏/市值/到线/账实 + 本金引导 note', (tester) async {
+      await _pumpTrading(tester, ApiService(baseUrl: 'http://test', client: _tradingMock()));
+
+      String cell(String key) => tester.widget<Text>(find.byKey(Key(key))).data!;
+      expect(cell('stripAssets'), '¥110,504.88');
+      expect(cell('stripToday'), '¥0.00', reason: 'mock todayPnl=0 且无 pnl/periods → 不给比例后缀（不编 0%）');
+      expect(cell('stripTotalPnl'), '—', reason: 'principal 缺省 = 0 → 不给误导数值');
+      expect(find.text('还没记过转入/转出'), findsOneWidget, reason: '总盈亏格 note 把「本金从哪来」说清楚');
+      expect(cell('stripMarketValue'), '¥110,212.00');
+      expect(cell('stripOnline'), '0 只', reason: 'mock 持仓未到线');
+      expect(cell('stripIntegrity'), '—', reason: 'integrity 404（mock 无路由）→ 不编「对上了」');
+    });
+
+    testWidgets('右栏三卡在场：阿呆说（账句 + tail）· 今天 · 三条口径', (tester) async {
+      await _pumpTrading(tester, ApiService(baseUrl: 'http://test', client: _tradingMock()));
+
+      expect(find.text('阿呆说'), findsOneWidget);
+      expect(find.text('今天'), findsOneWidget);
+      expect(find.text('三条口径'), findsOneWidget);
+      // 阿呆说：integrity 拿不到 → 账句不编「对上了」；1 只持仓未到线 → tail 数出来
+      expect(find.text('对账还没取到。'), findsOneWidget);
+      expect(find.text('1 只都没有到线。'), findsOneWidget);
+      // 今天卡：没记过 → 引导句 + 两个回填 chips（P2-交易72 数据在右栏照常渲染）
+      expect(find.text('今天没买卖的话，点一下就行——没动也是一天的完整记录。'), findsOneWidget);
+      expect(find.text('今天没动'), findsOneWidget);
+      // 三条口径（原型全文；「每个数字点得进去」的钻取交互属后续批次）
+      expect(find.text('数量与成本打码 · 现价与线不打码 · 每个数字点得进去'), findsOneWidget);
+    });
+
+    testWidgets('到线点名（破止损）：阿呆说指名 + 状态条计数 + 行首橙条同源', (tester) async {
+      final api = ApiService(
+          baseUrl: 'http://test',
+          client: MockClient((request) async {
+            if (request.url.path == '/api/v1/trading/positions') {
+              return _json([_positionJson(extra: {'effectiveStopLoss': 27.0})]);
+            }
+            return _tradingHandler(request);
+          }));
+      await _pumpTrading(tester, api);
+
+      // 点名句（原型句式「代码 现价 X，破了你的 Y」）；tail 换成「其它没有要动的。」
+      expect(find.text('600123 现价 26.10，破了你的 27.00'), findsOneWidget);
+      expect(find.text('其它没有要动的。'), findsOneWidget);
+      expect(find.text('1 只都没有到线。'), findsNothing);
+      expect(tester.widget<Text>(find.byKey(const Key('stripOnline'))).data, '1 只');
+      expect(find.byKey(const Key('online_600123')), findsOneWidget, reason: '表格行标与到线计数同源（_onLine）');
+    });
+
+    testWidgets('到线点名（到放飞）：现价 ≥ 目标价 → 「到了你的 X」', (tester) async {
+      final api = ApiService(
+          baseUrl: 'http://test',
+          client: MockClient((request) async {
+            if (request.url.path == '/api/v1/trading/positions') {
+              return _json([_positionJson(extra: {'targetPrice': 25.0})]);
+            }
+            return _tradingHandler(request);
+          }));
+      await _pumpTrading(tester, api);
+
+      expect(find.text('600123 现价 26.10，到了你的 25.00'), findsOneWidget);
+      expect(find.text('其它没有要动的。'), findsOneWidget);
+      expect(tester.widget<Text>(find.byKey(const Key('stripOnline'))).data, '1 只',
+          reason: '到放飞也算到线（m5 双向口径）');
     });
   });
 }
