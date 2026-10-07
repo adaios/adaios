@@ -164,6 +164,55 @@ Future<http.Response> _tradingHandler(http.Request request) async {
     });
   }
 
+  // 批 5（2026-10-08）：分析屏「这只票」进屏即带当前持仓第一只 → 会自动发这两个请求。
+  // 数据形状对齐后端（TradingAnalysisService.symbol：label = 代码 + " · 做完 N 笔"）。
+  if (path == '/api/v1/trading/analysis/symbol') {
+    return _json({
+      'scope': 'symbol',
+      'label': '600123 · 做完 0 笔',
+      'description': [
+        {
+          'key': 'symbol-rounds',
+          'label': '这只票做完的笔',
+          'value': 0,
+          'unit': '笔',
+          'trace': {'note': '600123'},
+        },
+        {
+          'key': 'symbol-invested',
+          'label': '累计投入',
+          'value': 5060.0,
+          'unit': '元',
+          'trace': {'note': '全部买入金额（含费）之和'},
+        },
+      ],
+      'contrast': {'hasRules': false, 'reason': '我还没有你的规则，判不了守没守'},
+      'summary': {'fact': '这只票还没做完一笔——现在 200 股还拿着。'},
+    });
+  }
+  if (path == '/api/v1/trading/kline') {
+    return _json({
+      'symbol': '600123',
+      'window': 90,
+      'candles': [
+        for (var i = 0; i < 20; i++)
+          {
+            'date': '2026-09-${(i + 1).toString().padLeft(2, '0')}',
+            'open': 20.0 + i * 0.3,
+            'high': 20.4 + i * 0.3,
+            'low': 19.6 + i * 0.3,
+            'close': 20.0 + i * 0.3,
+            'volume': 10000.0 + i * 100,
+          },
+      ],
+      'marks': [
+        {'date': '2026-09-05', 'type': 'B', 'price': 21.2, 'note': '建仓'},
+      ],
+      'stopLine': {'price': 18.8},
+      'context': {'held': true},
+    });
+  }
+
   if (path == '/api/v1/trading/trades') return _json([]);
   if (path == '/api/v1/trading/reviews') return _json([]);
   return http.Response('not found', 404);
@@ -7404,9 +7453,17 @@ void _marketStageGroup() {
     testWidgets('近 20 日：拿不到（旧后端 404）→ 不渲染走势、不编形状；表格照常', (tester) async {
       // 必须独立成条：若在同一 testWidgets 里先有后无地重 pump，State 会复用、
       // 拿到过的走势留在缓存里继续渲染（这恰是产品要的：缓存的是真实数据，404 只是没重拉）。
+      // 批 5（2026-10-08）后 _tradingHandler 默认带 kline 路由（分析屏进屏要图）——
+      // 这一条显式盖回 404，保住「旧后端没 K 线」场景的语义。
+      final client = MockClient((request) async {
+        if (request.url.path == '/api/v1/trading/kline') {
+          return http.Response('not found', 404);
+        }
+        return _tradingHandler(request);
+      });
       await _pumpTrading(
         tester,
-        ApiService(baseUrl: 'http://test', client: _tradingMock()),
+        ApiService(baseUrl: 'http://test', client: client),
       );
       expect(find.byKey(const Key('spark_600123')), findsNothing);
       expect(find.textContaining('持仓 1 只'), findsOneWidget);
@@ -7813,7 +7870,7 @@ void _marketStageGroup() {
         reason: '横 Tab 常驻不随区卸载',
       );
 
-      // 分析（5）：默认「这只票」→ 代码输入框出现（C1-1）
+      // 分析（5）：默认「这只票」+ 自动带持仓第一只（批 5）→ 输入框在、进屏即出结果
       await tester.tap(find.byKey(const Key('tabItem5')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('analysisSymbol')), findsOneWidget);
@@ -7867,16 +7924,22 @@ void _marketStageGroup() {
 
       await tester.tap(find.byKey(const Key('tabItem5')));
       await tester.pumpAndSettle();
-      // C1-1（2026-10-07 批 4）：默认「这只票」（symbol）——还没填代码 → 不空拉，出提示句
+      // 批 5（R1 · 2026-10-08）：默认「这只票」+ 自动带当前持仓第一只（600123）——
+      // 进屏即见图 + 统计（mock 有 analysis/kline 路由）
       expect(find.byKey(const Key('analysisSymbol')), findsOneWidget);
       expect(find.byKey(const Key('analysisRound')), findsNothing);
       expect(
-        find.textContaining('也可以切「这一笔 / 这一段」'),
+        find.text('600123 · 做完 0 笔'),
         findsOneWidget,
-        reason: '未填代码时的空态说明',
+        reason: 'R1：进屏自动带持仓第一只（600123）出统计',
+      );
+      expect(
+        find.byKey(const Key('analysisKlineCard')),
+        findsOneWidget,
+        reason: 'R2：这只票视图嵌统一 K 线组件（买卖点图）',
       );
 
-      // 「这一笔」= 单笔粒度 → 单笔目标输入框出现
+      // 「这一笔」= 单笔粒度 → 单笔目标输入框出现；旧图不挂着（避免看错对象）
       await tester.tap(find.text('这一笔'));
       await tester.pumpAndSettle();
       expect(
@@ -7884,8 +7947,13 @@ void _marketStageGroup() {
         findsOneWidget,
         reason: '「这一笔」= 单笔粒度 → 单笔目标输入框出现',
       );
+      expect(
+        find.byKey(const Key('analysisKlineCard')),
+        findsNothing,
+        reason: '换粒度旧图不再挂着',
+      );
 
-      // 「这只票」= 单标的粒度
+      // 「这只票」= 单标的粒度——输入框里还留着 600123 → 切回即接着看（R1）
       await tester.tap(find.text('这只票'));
       await tester.pumpAndSettle();
       expect(
@@ -7894,6 +7962,11 @@ void _marketStageGroup() {
         reason: '「这只票」= 单标的粒度',
       );
       expect(find.byKey(const Key('analysisRound')), findsNothing);
+      expect(
+        find.byKey(const Key('analysisKlineCard')),
+        findsOneWidget,
+        reason: 'R1：切回这只票接着看（图 + 统计回来）',
+      );
 
       // 「这一段」= 全局粒度
       await tester.tap(find.text('这一段'));
@@ -7936,6 +8009,59 @@ void _marketStageGroup() {
       await tester.tap(find.byKey(const Key('tabItem1')));
       await tester.pumpAndSettle();
       expect(find.text('招商银行'), findsOneWidget);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // 批 5（R1+R2 · 2026-10-08）：进「分析」默认带当前持仓第一只——进屏即见图 + 统计；
+  // 「这只票」视图嵌统一 K 线组件（原型 web-3 的视觉主体）；无持仓 / 图拉不到都给
+  // 人话、不编数据。用例内 mock 见文件头 _tradingHandler 的 analysis/kline 路由。
+  // ══════════════════════════════════════════════════════════════════════
+  group('批 5 分析屏默认带持仓第一只（2026-10-08）', () {
+    testWidgets('无持仓：空态人话（不逼着手输代码）', (tester) async {
+      final api = ApiService(
+        baseUrl: 'http://test',
+        client: MockClient((request) async {
+          if (request.url.path == '/api/v1/trading/positions') return _json([]);
+          return _tradingHandler(request);
+        }),
+      );
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.byKey(const Key('tabItem5')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('还没有持仓——先导入持仓股，或者直接填个代码（如 600206），我按这只票给你看'),
+        findsOneWidget,
+        reason: '无持仓：空态给人话，不空拉',
+      );
+      expect(find.byKey(const Key('analysisKlineCard')), findsNothing);
+    });
+
+    testWidgets('图拉不到（无 kline 路由）：统计照出、不画假图', (tester) async {
+      final api = ApiService(
+        baseUrl: 'http://test',
+        client: MockClient((request) async {
+          if (request.url.path == '/api/v1/trading/kline') {
+            return http.Response('not found', 404);
+          }
+          return _tradingHandler(request);
+        }),
+      );
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.byKey(const Key('tabItem5')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('600123 · 做完 0 笔'),
+        findsOneWidget,
+        reason: '统计到了照常显示',
+      );
+      expect(
+        find.byKey(const Key('analysisKlineCard')),
+        findsNothing,
+        reason: '图拉不到就不出图卡（不编一个假图）',
+      );
     });
   });
 

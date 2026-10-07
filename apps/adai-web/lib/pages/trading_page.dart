@@ -3354,6 +3354,11 @@ class _TradingPageState extends State<TradingPage>
                       // m6：分析列表项里的金额（回合盈亏/分桶盈亏）默认掩码
                       revealed: _amountsRevealed,
                       requestedScope: _analysisScope,
+                      // 批 5（R1 · 2026-10-08）：进屏默认带当前持仓第一只——进屏即见图 + 统计；
+                      // 无持仓 → defaultSymbol=null → 空态给人话（不逼着手输代码）
+                      defaultSymbol: _positions.isNotEmpty
+                          ? _positions.first.symbol
+                          : null,
                       onScopeChanged: (s) {
                         if (s != _analysisScope && mounted)
                           setState(() => _analysisScope = s);
@@ -9690,11 +9695,15 @@ class _AnalysisSection extends StatefulWidget {
   /// m4：粒度变化的回调——让导航子项高亮跟随（与内部 chips 双向同步）。
   final ValueChanged<String>? onScopeChanged;
 
+  /// 批 5（R1 · 2026-10-08）：进屏默认带的那只（当前持仓第一只）；null = 没有持仓。
+  final String? defaultSymbol;
+
   const _AnalysisSection({
     required this.api,
     required this.revealed,
     this.requestedScope,
     this.onScopeChanged,
+    this.defaultSymbol,
   });
 
   @override
@@ -9706,6 +9715,9 @@ class _AnalysisSectionState extends State<_AnalysisSection> {
   final _symbolCtl = TextEditingController();
   final _roundCtl = TextEditingController();
   TradingAnalysisDto? _data;
+  /// 批 5（R2 · 2026-10-08）：「这只票」视图嵌的走势（统一 K 线组件的数据源）。
+  /// 与统计分开拉——图拉不到就不出图卡（不编），统计照常。
+  TradingKlineDto? _kline;
   // C1-1（2026-10-07 差异决算批 4）：默认「这只票」还没填代码 → 不空拉（初始即空态提示，不转圈）
   bool _loading = false;
   String? _error;
@@ -9716,7 +9728,14 @@ class _AnalysisSectionState extends State<_AnalysisSection> {
     // m4：粒度提父页后，切区重建时按父页记住的粒度恢复——与上次看到的一致
     _scope = widget.requestedScope ?? 'symbol';
     // C1-1（批 4）：「这一段」（global）零输入即出结果；「这只票 / 这一笔」要先填目标，不空拉
-    if (_scope == 'global') _load();
+    // 批 5（R1）：「这只票」有默认带的那只 → 预填进输入框再拉——进屏即见图 + 统计
+    final ds = widget.defaultSymbol;
+    if (_scope == 'symbol' && ds != null && ds.isNotEmpty) {
+      _symbolCtl.text = ds;
+      _load();
+    } else if (_scope == 'global') {
+      _load();
+    }
   }
 
   /// m4：导航子项改了粒度 → 这里跟着切（父子双向同步的「父→子」边）。
@@ -9726,12 +9745,38 @@ class _AnalysisSectionState extends State<_AnalysisSection> {
   void didUpdateWidget(covariant _AnalysisSection oldWidget) {
     super.didUpdateWidget(oldWidget);
     final req = widget.requestedScope;
-    if (req != null && req != oldWidget.requestedScope && req != _scope) {
+    final switched =
+        req != null && req != oldWidget.requestedScope && req != _scope;
+    if (switched) {
       _scope = req;
       _error = null;
       _data = null; // 换粒度旧结果不再挂着（避免看错对象）
+      _kline = null; // 批 5：旧图同弃（避免把上一只的走势挂到新对象名下）
       if (req == 'global') scheduleMicrotask(_load); // 本次 build 后再发请求
+      // 批 5（R1）：切回「这只票」——输入里有就直接看；空则补默认那只（当前持仓第一只）
+      if (req == 'symbol') _resumeSymbol();
+      return;
     }
+    // 批 5（R1）：默认那只晚到（持仓数据后到）→ 输入还空、没有结果在看 → 补上再看
+    if (_scope == 'symbol' &&
+        widget.defaultSymbol != oldWidget.defaultSymbol &&
+        (widget.defaultSymbol ?? '').isNotEmpty &&
+        _symbolCtl.text.trim().isEmpty &&
+        _data == null &&
+        !_loading) {
+      _symbolCtl.text = widget.defaultSymbol!;
+      scheduleMicrotask(_load);
+    }
+  }
+
+  /// 批 5（R1）：切回「这只票」时的接续——输入里有就直接看；空则补上默认那只
+  /// （当前持仓第一只）再看；都没有就保持空态（不空拉）。
+  void _resumeSymbol() {
+    final ds = widget.defaultSymbol;
+    if (_symbolCtl.text.trim().isEmpty && ds != null && ds.isNotEmpty) {
+      _symbolCtl.text = ds;
+    }
+    if (_symbolCtl.text.trim().isNotEmpty) scheduleMicrotask(_load);
   }
 
   @override
@@ -9747,9 +9792,12 @@ class _AnalysisSectionState extends State<_AnalysisSection> {
       _scope = s;
       _error = null;
       _data = null; // 换粒度旧结果不再挂着（避免看错对象）
+      _kline = null; // 批 5：旧图同弃（避免把上一只的走势挂到新对象名下）
     });
     widget.onScopeChanged?.call(s); // m4：内部 chips 点了 → 父页导航子项高亮跟上
     if (s == 'global') _load(); // 全局无需输入，切换即出
+    // 批 5（R1）：切回「这只票」——输入里有就直接看；空则补默认那只再看
+    if (s == 'symbol') _resumeSymbol();
   }
 
   /// 取分析：空输入不发请求（先把要什么说清，不猜、不拿后端 400 当提示）。
@@ -9767,6 +9815,7 @@ class _AnalysisSectionState extends State<_AnalysisSection> {
     setState(() {
       _loading = true;
       _error = null;
+      if (_scope == 'symbol') _kline = null; // 批 5：重查即弃旧图（避免看错对象）
     });
     try {
       final d = await widget.api.fetchTradingAnalysis(
@@ -9779,12 +9828,29 @@ class _AnalysisSectionState extends State<_AnalysisSection> {
         _data = d;
         _loading = false;
       });
+      // 批 5（R2）：「这只票」统计到了 → 顺手把走势拉上（分开拉：图慢不挡统计）
+      if (_scope == 'symbol') _loadKline(symbol);
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _error = extractApiErrorMessage(e);
         _loading = false;
       });
+    }
+  }
+
+  /// 批 5（R2 · 2026-10-08）：「这只票」视图嵌统一 K 线组件——原型 web-3 的视觉主体
+  /// （图上 B/T/S = 我在这儿的买卖点，图例由组件自带）。拉不到就静默不出图卡
+  /// （不编一个假图，统计已够用，不为图再报一次错）。
+  Future<void> _loadKline(String symbol) async {
+    try {
+      final k = await widget.api.fetchTradingKline(symbol);
+      if (!mounted) return;
+      // 防陈旧：期间换了粒度 / 改了代码 → 这张图不作数，丢弃
+      if (_scope != 'symbol' || _symbolCtl.text.trim() != symbol) return;
+      setState(() => _kline = k);
+    } catch (_) {
+      // 行情取不到 → 不出图卡（如实）
     }
   }
 
@@ -9907,6 +9973,35 @@ class _AnalysisSectionState extends State<_AnalysisSection> {
               color: AppColors.darkGrey1,
             ),
           ),
+          // 批 5（R2）：「这只票」的走势 = 统一 K 线组件（原型 web-3 视觉主体）——
+          // 图卡在统计之前；拉不到就不出（不编），图例行由组件自带、动态不列没有的
+          if (_scope == 'symbol' && _kline != null && _kline!.hasData) ...[
+            const SizedBox(height: 8),
+            _card(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '这只票 · 我在这儿的买卖点',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.darkGrey2,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  CaseKlineChart(
+                    key: const Key('analysisKlineCard'),
+                    kline: _kline!.candles,
+                    marks: _kline!.marks,
+                    stopLine: _kline!.stopLine,
+                    peakLine: _kline!.peakLine,
+                    height: 320,
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 8),
           if (_data!.description.isNotEmpty) _descriptionCard(_data!),
           if (_hasContrast(_data!)) ...[
@@ -9918,9 +10013,13 @@ class _AnalysisSectionState extends State<_AnalysisSection> {
             _summaryCard(_data!),
           ],
         ] else
-          const Text(
-            '先填个代码（如 600206）点「看分析」——我按这只票给你看；也可以切「这一笔 / 这一段」',
-            style: TextStyle(fontSize: 12, color: AppColors.darkGrey5),
+          Text(
+            _scope == 'round'
+                ? '先填那一笔的编号（如 600206_2026-08-05），我再看这一笔——历史成交里能看到编号'
+                : (widget.defaultSymbol ?? '').isEmpty
+                    ? '还没有持仓——先导入持仓股，或者直接填个代码（如 600206），我按这只票给你看'
+                    : '先填个代码（如 600206）点「看分析」——我按这只票给你看；也可以切「这一笔 / 这一段」',
+            style: const TextStyle(fontSize: 12, color: AppColors.darkGrey5),
           ),
       ],
     );
