@@ -5,7 +5,7 @@ version: 2
 created: 2026-10-04
 updated: 2026-10-07
 status: active
-lines: 126
+lines: 135
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index, workspace]
@@ -27,7 +27,7 @@ tags: [meta, index, workspace]
 
 > **规则**：**一个分支 = 一个目录 = 一个任务**（主键唯一 ⇒ **零冲突**）；目录里**需要什么才有什么**（轻活就一个 `LEDGER.md`）。
 
-## 文件清单（87 项）
+## 文件清单（96 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -52,6 +52,14 @@ tags: [meta, index, workspace]
 | `_templates/review-design.md` | 审核文件模板（设计 / 需求共用）：审核对象 · 结论 · 问题清单（P0–P3）· 收敛判定；每轮一份，与稿成… | active |
 | `_templates/scope.md` | 编码段「本批范围声明 → 交付声明」的模板——开工从设计 §6 逐条抄、填「计划」列（无表不开工）；收尾填「状态… | active |
 | `trading-plugin/LEDGER.md` | ② 交易线的分支账本——本批目标 + 并行作业纪律 + 待交接；一个分支一个目录（feat/trading-pl… | active |
+| `trading-plugin/audit-shots-20261007/10-holding.png` | — | active |
+| `trading-plugin/audit-shots-20261007/11-cleared.png` | — | active |
+| `trading-plugin/audit-shots-20261007/12-account.png` | — | active |
+| `trading-plugin/audit-shots-20261007/13-analysis.png` | — | active |
+| `trading-plugin/audit-shots-20261007/15-cases.png` | — | active |
+| `trading-plugin/audit-shots-20261007/16-plan.png` | — | active |
+| `trading-plugin/audit-shots-20261007/17-import.png` | — | active |
+| `trading-plugin/audit-shots-20261007/20-kline.png` | — | active |
 | `trading-plugin/blueprint.md` | 交易插件的概念与流程，按我们逐步讨论的顺序记录——定位 · 规则 · 没有规则怎么办 · 清仓股+历史成交 · … | active |
 | `trading-plugin/decisions.md` | 设计 v1 的 6 项未决（U1–U6）+ 审核 v1 的战略级 2 条（S1/S2）+ 设计 v2 的 3 项… | active |
 | `trading-plugin/design-final-20261006.md` | 交易线设计 final 稿——以 v2 正文为底合并 v3 增量与两份 v3 审核的整改，收 4 类阻塞项（§9… | draft |
@@ -115,6 +123,7 @@ tags: [meta, index, workspace]
 | `trading-plugin/review-v3-product-20261006.md` | 只判 3 点——S2 落点是否闭环 / 增量稿与正文是否自相矛盾 / 数量声明是否属实 | draft |
 | `trading-plugin/review-v4-20261006.md` | 产品面收敛性审核——只判上轮战略 S2 + 产品 P1-1 / P1-2 + 三点复核（新引 2 条）是否真闭环… | draft |
 | `trading-plugin/review-v4-backend-20261006.md` | 后端面收敛性审核——只判上轮 2 条战略（S1 闸门 / S2 §9 基线）+ 6 条 P1 是否真闭环 + 本… | active |
+| `trading-plugin/review-web-uiux-20261007.md` | 以「本地真机渲染 + 原型可点稿逐屏比对」审核 web 端重构——8 屏对照结论、与护栏口径的核对（涨红跌绿/打… | active |
 | `trading-plugin/scope-frontend-20261006.md` | 交付完备性机制首跑——设计 §6「三端呈现」逐条对照：本批= R-12 统一导入 + R-05 web 三粒度分… | active |
 | `trading-plugin/thinking-log.md` | 本分支 AI 的思考过程落盘——每轮写「看到什么 → 怎么判断 → 为什么这么选 → 放弃了什么」；与产物（re… | active |
 | `trading-plugin/uiux-discovery-20261007.md` | 双端 UI/UX 重构的当前方向总稿——背景 · 组织原则 · 已定约束（护栏）· 三问（场景/痛点/第一眼）·… | draft |
