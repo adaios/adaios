@@ -1712,7 +1712,7 @@ void main() {
 
   // ── B2-2（2026-08-23）：资金区块总盈亏 principal=0 不把全部资产当总盈亏 ──
 
-  testWidgets('B2-2+P2-交易31 本金未设（principal=0）资金区块总盈亏不给误导数值（显示设本金提示）', (tester) async {
+  testWidgets('B2-2+P2-交易31 本金未设（principal=0）不给误导数值（自证条本金格「—」+ 还没记过转入/转出）', (tester) async {
     final client = MockClient((request) async {
       final path = request.url.path;
       if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
@@ -1734,13 +1734,14 @@ void main() {
 
     await tester.tap(find.text('账'));
     await tester.pumpAndSettle();
-    // P2-交易31（2026-08-29，U32）：principal=0 → 总盈亏 null → 显示「—（设置本金后显示）」，
-    // 不再回落浮盈（漏已实现盈亏误导）；也不把全部资产当总盈亏
-    expect(find.textContaining('总盈亏 —（设置本金后显示）'), findsOneWidget);
+    // P2-交易31（2026-08-29，U32）+ 2026-10-08 账三合一：principal=0 → 总盈亏 null →
+    // 不给误导数值（不回落浮盈、不把全部资产当总盈亏）；旧「设置本金」入口随后端 410 退役已撤。
     expect(find.textContaining('总盈亏 ¥15,235.55'), findsNothing);
     expect(find.textContaining('总盈亏 ¥110,504.88'), findsNothing);
-    // 账户卡总盈亏同样不给误导数值：statCard 显示 '—' + 「未设本金，设后显示」小字
-    expect(find.text('未设本金，设后显示'), findsOneWidget);
+    expect(find.textContaining('设置本金后显示'), findsNothing);
+    // 本金口径统一为「转入/转出自动算」：自证条本金格 '—' +「还没记过转入/转出」；
+    // 账户卡 statCard 同一文案——共 2 处
+    expect(find.text('还没记过转入/转出'), findsNWidgets(2));
     expect(find.text('—'), findsWidgets);
   });
 
@@ -3356,12 +3357,117 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(integrityCalls, greaterThan(1), reason: '落盘后重算对账闸门');
-      expect(find.text('阿呆发现账对不上：1 只标的持仓不一致'), findsOneWidget);
+      // 2026-10-08 账三合一：横幅已撤，断点改在账区自证条当场指出（状态条 + 自证条同屏两份状态）
+      expect(find.text('⚠ 有差异'), findsNWidgets(2), reason: '状态条 + 账区自证条各一份');
+      expect(find.textContaining('1 只持仓不一致 · 看明细'), findsOneWidget);
     });
   });
 
-  group('RFC 20260912 账实不符闸门横幅（GET /trading/integrity）', () {
-    testWidgets('drift/gaps 非空 → 顶部橙色横幅（可展开明细，文案第一原则）', (tester) async {
+  group('RFC 20260912 账实一致性（GET /trading/integrity · 状态条呈现）', () {
+    // 2026-10-08 账三合一：原「顶部橙色横幅」已撤（与状态条+自证条叠在一起的第三份噪音）——
+    // 断点明细改在账区自证条「当场指出」（见上面「账三合一 自证条」组）。
+
+    testWidgets('无差异 → 状态条说「✓ 对上了」·不显示异常文案；接口失败静默降级不打断页面', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/integrity') {
+          return _json({
+            'anchor': {'positionsReplace': '2026-09-09', 'cashImport': null,
+                       'known': true, 'holdingsKnown': true, 'anchorDate': '2026-09-09'},
+            'holdingsKnown': true, 'drift': [], 'gaps': [],
+            'note': '账实一致：派生持仓与落地持仓逐标的相符（锚定日 2026-09-09）',
+          });
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      // 一致性呈现：状态条「账实 ✓ 对上了」+ 一句阿呆说（跨区一行）——无横幅、无摘要噪音
+      expect(find.text('✓ 对上了'), findsOneWidget);
+      expect(find.textContaining('阿呆说：账对上了'), findsOneWidget);
+      expect(find.textContaining('阿呆发现账对不上'), findsNothing);
+      expect(find.textContaining('账实一致'), findsNothing, reason: '一致时不刷存在感');
+      // 页面正常（持仓表在）
+      expect(find.textContaining('持仓 1 只'), findsOneWidget);
+    });
+
+    testWidgets('integrity 404（旧后端）→ 静默降级，页面正常', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        return http.Response('not found', 404); // /integrity 也 404
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      // 拿不到对账 → 不编「对上了」：阿呆说「对账还没取到」（与账区自证条同口径）
+      expect(find.textContaining('阿呆说：对账还没取到'), findsOneWidget);
+      expect(find.textContaining('阿呆发现账对不上'), findsNothing);
+      expect(find.textContaining('加载失败'), findsNothing, reason: '可降级请求失败不整页错误态');
+      expect(find.textContaining('持仓 1 只'), findsOneWidget);
+    });
+  });
+
+  // ── 2026-10-08 账三合一：账区自证条（现金自证 · 本金从数据推 · 断点当场指出）──
+  // 顶部横幅（RFC 20260912）仍跨区可见；账区自证条是账内常驻的详细呈现，两者共用同一份明细渲染。
+
+  group('账三合一 自证条（现金/本金/账实三格）', () {
+    testWidgets('健康态：现金标券商日期 · 本金金额+总盈亏 · 账实对上了+锚定日', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') {
+          return _json({'assets': 110504.88, 'cash': 292.88, 'available': 292.88,
+            'withdrawable': 292.88, 'marketValue': 110212.0, 'pnl': 15235.55,
+            'todayPnl': 0.0, 'principal': 150000.0, 'snapshotDate': '2026-09-16',
+            'cashDate': '2026-09-16'});
+        }
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/integrity') {
+          return _json({
+            'anchor': {'positionsReplace': '2026-09-09', 'cashImport': '2026-09-16',
+                       'known': true, 'holdingsKnown': true, 'anchorDate': '2026-09-16'},
+            'holdingsKnown': true, 'drift': [], 'gaps': [],
+            'note': '账实一致：派生持仓与落地持仓逐标的相符（锚定日 2026-09-16）',
+          });
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('账'));
+      await tester.pumpAndSettle();
+
+      // 现金格：数是券商导进来的 → 标出对应快照日期（P2-交易69 同口径）
+      expect(find.text('✓ 券商 2026-09-16 的余额'), findsOneWidget);
+      // 本金格：转入/转出自动算 → 金额 + 总盈亏（资产 − 本金 = -39495.12）
+      expect(find.text('¥150,000.00'), findsOneWidget);
+      expect(find.text('总盈亏 -¥39,495.12'), findsOneWidget);
+      // 账实格：对上了 + 锚定日（账内常驻状态，不是告警）——状态条 + 自证条同说「对上了」
+      expect(find.text('✓ 对上了'), findsNWidgets(2), reason: '状态条 + 账区自证条各一份');
+      expect(find.text('锚定日 2026-09-16'), findsOneWidget);
+    });
+
+    testWidgets('断点态：账实格当场指出（摘要可展开/收起，明细与旧横幅同口径）', (tester) async {
       final client = MockClient((request) async {
         final path = request.url.path;
         if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
@@ -3392,66 +3498,59 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      expect(find.text('阿呆发现账对不上：1 只标的持仓不一致 / 1 笔回放缺口'), findsOneWidget);
-      expect(find.text('看明细'), findsOneWidget);
+      await tester.tap(find.text('账'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('⚠ 有差异'), findsNWidgets(2), reason: '状态条 + 账区自证条各一份');
+      final summary = find.textContaining('1 只持仓不一致 · 1 笔回放缺口 · 看明细');
+      expect(summary, findsOneWidget);
       // 未展开 → 明细不显示（不制造噪音）
       expect(find.textContaining('应有 100 股'), findsNothing);
 
-      await tester.tap(find.text('看明细'));
+      await tester.tap(summary);
       await tester.pumpAndSettle();
       expect(find.text('600123 立昂微：应有 100 股（快照基线 200 + 锚点后流水 -100），落地 200 股，差 +100'),
           findsOneWidget);
       expect(find.textContaining('回放缺口 · 卖出 贵州茅台（600519）100 股 @ 1500.00'), findsOneWidget);
       expect(find.text('先导一次「持仓股」或「资金股份查询」快照，我就能重新对上了。'), findsOneWidget);
+
+      await tester.tap(find.textContaining('· 收起'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('应有 100 股'), findsNothing);
     });
 
-    testWidgets('无差异 → 不显示任何横幅；接口失败静默降级不打断页面', (tester) async {
+    testWidgets('信息如实：现金异常文案 + 本金置信度说明 · integrity 拿不到 → 「对账还没取到」', (tester) async {
+      const cashNote = '现金余额还是券商 08-16 的快照（已 31 天没更新）——先导一次「资金股份查询」';
+      const principalNote = '本金含存量迁移调整（历史出入金无流水）——转账记录补全后自动校正';
       final client = MockClient((request) async {
         final path = request.url.path;
         if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
         if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
-        if (path == '/api/v1/trading/account') return _json(_accountJson());
-        if (path == '/api/v1/trading/watchlist') return _json([]);
-        if (path == '/api/v1/trading/sold') return _json([]);
-        if (path == '/api/v1/trading/buy-points') return _json([]);
-        if (path == '/api/v1/trading/sold/score') return _json([]);
-        if (path == '/api/v1/trading/integrity') {
-          return _json({
-            'anchor': {'positionsReplace': '2026-09-09', 'cashImport': null,
-                       'known': true, 'holdingsKnown': true, 'anchorDate': '2026-09-09'},
-            'holdingsKnown': true, 'drift': [], 'gaps': [],
-            'note': '账实一致：派生持仓与落地持仓逐标的相符（锚定日 2026-09-09）',
-          });
+        if (path == '/api/v1/trading/account') {
+          return _json({'assets': 110504.88, 'cash': -686.88, 'available': 0.0,
+            'withdrawable': 0.0, 'marketValue': 110212.0, 'pnl': 15235.55,
+            'todayPnl': 0.0, 'principal': 150000.0, 'snapshotDate': '2026-08-16',
+            'cashDate': '2026-08-16', 'cashNote': cashNote, 'principalNote': principalNote});
         }
-        return http.Response('not found', 404);
-      });
-      final api = ApiService(baseUrl: 'http://test', client: client);
-      await _pumpTrading(tester, api);
-
-      expect(find.textContaining('阿呆发现账对不上'), findsNothing);
-      expect(find.textContaining('账实一致'), findsNothing, reason: '一致时不刷存在感');
-      // 页面正常（持仓表在）
-      expect(find.textContaining('持仓 1 只'), findsOneWidget);
-    });
-
-    testWidgets('integrity 404（旧后端）→ 静默降级，页面正常', (tester) async {
-      final client = MockClient((request) async {
-        final path = request.url.path;
-        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
-        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
-        if (path == '/api/v1/trading/account') return _json(_accountJson());
         if (path == '/api/v1/trading/watchlist') return _json([]);
         if (path == '/api/v1/trading/sold') return _json([]);
         if (path == '/api/v1/trading/buy-points') return _json([]);
         if (path == '/api/v1/trading/sold/score') return _json([]);
-        return http.Response('not found', 404); // /integrity 也 404
+        return http.Response('not found', 404); // /integrity 404（旧后端）
       });
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      expect(find.textContaining('阿呆发现账对不上'), findsNothing);
-      expect(find.textContaining('加载失败'), findsNothing, reason: '可降级请求失败不整页错误态');
-      expect(find.textContaining('持仓 1 只'), findsOneWidget);
+      await tester.tap(find.text('账'));
+      await tester.pumpAndSettle();
+
+      // 现金格：有异常 → 「⚠ 有异常」+ 条下橙色人话行（后端文案只渲染不加工）
+      expect(find.text('⚠ 有异常'), findsOneWidget);
+      expect(find.text(cashNote), findsOneWidget);
+      // 本金置信度说明：中性灰，是说明不是告警
+      expect(find.text(principalNote), findsOneWidget);
+      // 对账拿不到 → 不编造：账实格「—」+「对账还没取到」（诚实原则）
+      expect(find.text('对账还没取到'), findsOneWidget);
     });
   });
 

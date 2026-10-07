@@ -175,8 +175,6 @@ class _TradingPageState extends State<TradingPage> {
   AccountSnapshotDto? _account;
   // 2026-09-15（用户要求）：今日 / 本周 / 本月盈亏（金额 + 比例）；null = 拉取失败/旧后端 → 整行不显示
   PnlPeriodsDto? _pnlPeriods;
-  double? _cash;
-  double? _assets;
   String? _lastUpdated; // 顶部「上次更新」时间戳
   DailyTradeSummaryDto? _dailySummary;
   // ── 次日操作计划（RFC 20261003-trading-plan-and-review-loop §二~四，2026-10-03）──
@@ -214,9 +212,11 @@ class _TradingPageState extends State<TradingPage> {
   String? _error;
   bool _reviewing = false; // 复盘生成中（#102 交易系统反哺入口）
   bool _lotsDialogOpen = false; // P2-批次1：批次弹窗在途守卫——连点/双击防叠两层 dialog
-  // RFC 20260912 账实一致性：对账闸门（GET /trading/integrity）——drift/gaps 非空才显示横幅（无差异零噪音）
+  // RFC 20260912 账实一致性对账（GET /trading/integrity）——呈现落两处：状态条「账实」格（跨区一行）
+  // + 账区自证条（断点明细当场展开）；无差异零噪音
   IntegrityReportDto? _integrity;
-  bool _integrityExpanded = false;
+  // 2026-10-08 账三合一：账区自证条的「断点明细」展开开关
+  bool _accountProofExpanded = false;
   // RFC 20260923 D 批：行情（K 线）链路可用性（GET /trading/market-data/health）——ok=false 才显示横幅
   // （ok=true 或拿不到信息 = 零显示；三源全挂时用户本来只会看到资金曲线平了，毫无提示）
   MarketDataHealthDto? _marketHealth;
@@ -297,9 +297,6 @@ class _TradingPageState extends State<TradingPage> {
         _cashRatio = pos.daily?.cashRatio;
         _dailyNotes = pos.daily?.notes ?? const [];
         _account = results[2] as AccountSnapshotDto;
-        // 资金区块：账户快照（资金股份查询导入，券商口径）
-        _cash = _account?.cash;
-        _assets = _account?.assets;
         _lastUpdated = DateTime.now().toString().substring(11, 19);
         _loading = false;
       });
@@ -800,11 +797,9 @@ class _TradingPageState extends State<TradingPage> {
                         _buildMarketHealthBanner(_marketHealth!),
                         const SizedBox(height: 10),
                       ],
-                      // RFC 20260912：账实不符闸门（drift/gaps 非空才出现，无差异零噪音）
-                      if (_integrity != null && _integrity!.hasIssue) ...[
-                        _buildIntegrityBanner(_integrity!),
-                        const SizedBox(height: 10),
-                      ],
+                      // RFC 20260912 账实不符横幅（2026-10-08 账三合一迁移）：断点明细改到账区自证条
+                      // 「当场指出」（导入就在旁边，不用回头往上找）；跨区状态由下方状态条「账实」格承担
+                      // ——与自证条叠在一起的第三份噪音撤除（设计稿：上方=状态条，账=三合一）
                       _buildSnapshotRow(),
                       if (_hasPositionRatioLine) ...[
                         const SizedBox(height: 8),
@@ -910,9 +905,10 @@ class _TradingPageState extends State<TradingPage> {
       // 总盈亏 = 资产 - 本金（用户确认：累计投入 15 万，当前亏 3.9 万——券商浮盈不是总盈亏）
       // P2-交易31（2026-08-29，U32）：本金未设（principal=0）→ totalPnl null → 「—」不给误导数值
       // （旧回落浮盈漏已实现盈亏：清仓后显示 0 盈亏仍是误导）
+      // 2026-10-08：本金手填入口已退役（后端 410）——本金由转入/转出自动推，引导语跟着改口径
       _statCard('总盈亏', hasAccount ? a.totalPnl : (p?.totalPnl ?? 0),
           color: ((hasAccount ? a.totalPnl : (p?.totalPnl ?? 0)) ?? 0) >= 0 ? AppColors.darkRed : AppColors.darkGreen,
-          sub: hasAccount && a.principal > 0 ? '本金 ¥${_thousands(a.principal)}' : (hasAccount ? '未设本金，设后显示' : null)),
+          sub: hasAccount && a.principal > 0 ? '本金 ¥${_thousands(a.principal)}' : (hasAccount ? '还没记过转入/转出' : null)),
       const SizedBox(width: 12),
       _statCard('持仓浮盈', hasAccount ? a.pnl : 0,
           color: (hasAccount ? a.pnl : 0) >= 0 ? AppColors.darkRed : AppColors.darkGreen),
@@ -1925,7 +1921,10 @@ class _TradingPageState extends State<TradingPage> {
   /// 状态条：资金与涨跌是**基础数据**（都在场），到线才是**重点**（抢主位）。
   Widget _buildStatusStrip() {
     final onLine = _positionsOnLineCount();
-    final clean = _integrity == null || !_integrity!.hasIssue;
+    final ir = _integrity;
+    final clean = ir != null && !ir.hasIssue; // 2026-10-08 账三合一：拿不到对账（null）≠ 已经对上
+    // 阿呆口吻的对账短语（拿不到就说拿不到——不编「对上了」，与账区自证条同口径）
+    final accountPhrase = ir == null ? '对账还没取到' : (clean ? '账对上了' : '账有一处对不上');
     Widget cell(String label, String value, {Color? color}) => Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(label, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
@@ -1958,15 +1957,19 @@ class _TradingPageState extends State<TradingPage> {
                       .join('、')
                   : '没有',
               color: onLine > 0 ? AppColors.darkGrey1 : AppColors.darkGrey5),
-          cell('账实', clean ? '✓ 对上了' : '⚠ 有差异',
-              color: clean ? AppColors.darkGreen : AppColors.darkOrange),
+          // 2026-10-08 账三合一：拿不到对账显示「—」（不编「对上了」）——与账区自证条同口径
+          cell('账实',
+              ir == null ? '—' : (clean ? '✓ 对上了' : '⚠ 有差异'),
+              color: ir == null
+                  ? AppColors.darkGrey4
+                  : (clean ? AppColors.darkGreen : AppColors.darkOrange)),
         ]),
         // 阿呆说压成同一条里的一句话（原先是独立一块）：只陈述 + 用你自己的线对照
         const SizedBox(height: 8),
         Text(
           onLine > 0
-              ? '阿呆说：账${clean ? '对上了' : '有一处对不上'}；上面的票到了你定的止损下面。'
-              : '阿呆说：账${clean ? '对上了' : '有一处对不上'}；${_positions.isEmpty ? '还没有持仓' : '${_positions.length} 只都没有到线'}。',
+              ? '阿呆说：$accountPhrase；上面的票到了你定的止损下面。'
+              : '阿呆说：$accountPhrase；${_positions.isEmpty ? '还没有持仓' : '${_positions.length} 只都没有到线'}。',
           style: const TextStyle(fontSize: 12.5, height: 1.5, color: AppColors.darkGrey3),
         ),
       ]),
@@ -2009,20 +2012,23 @@ class _TradingPageState extends State<TradingPage> {
     ]);
   }
 
-  /// 账区：资金在上、流水在下（设计口径 §十一「三合一」）—— 对账不用来回跳 Tab。
+  /// 账区：**三合一**（设计口径 §十一）—— 顶部自证条（现金自证 · 本金从数据推 · 断点当场指出）
+  /// + 资金在上、流水在下，对账不用来回跳 Tab。
   /// ⚠️ 合并后内容变高：承载它的视窗必须跟着变高（下面 `_workspaceHeight`），
   /// 否则下半个区块连人带测试都点不到 —— 前两次失败的正是这一点，不是布局方向。
   Widget _buildAccountZone() {
     // ⚠️ 两块都拿 **Expanded 分到的有界高度** —— `_HistorySection` 内部用了 Expanded，
     // 把它放进 SingleChildScrollView（高度无界）会当场抛
     // 「non-zero flex but incoming height constraints are unbounded」，每帧一条异常。
-    // 高度按需分配：资金约 160 / 流水约 384 —— 流水那半原本就要 380+ 才不溢出，
-    // 同时两块的「顶」都要落在视窗内（否则测试与人点不到）。
+    // 高度按需分配：自证条定高在上，其余按 20:36 分给资金/流水（流水那半原本就要 380+ 才不溢出，
+    // 2026-10-08 加自证条后压到 ~330 —— 跑测试实测无溢出，同时各块的「顶」都落在视窗内）。
     return Column(children: [
-      Expanded(flex: 22, child: SingleChildScrollView(child: _buildCashSection())),
+      _buildAccountProofStrip(),
+      const SizedBox(height: 10),
+      Expanded(flex: 20, child: SingleChildScrollView(child: _buildCashSection())),
       const SizedBox(height: 14),
       Expanded(
-        flex: 38,
+        flex: 36,
         child: _HistorySection(
           key: _historyKey,
           api: widget.api,
@@ -2031,6 +2037,130 @@ class _TradingPageState extends State<TradingPage> {
         ),
       ),
     ]);
+  }
+
+  /// 账区顶部「自证条」（2026-10-08 · 账三合一）：**现金自证 · 本金从数据推 · 断点当场指出**。
+  /// 与持仓状态条同型（label 上 / 值下 / 副行）：正常也给结论（「✓ 对上了」「✓ 券商 x 的余额」），
+  /// 异常说人话（cashNote / principalNote 文案由后端给，前端只渲染）；断点可当场展开明细——
+  /// 对账不必再回页面顶部找横幅。
+  Widget _buildAccountProofStrip() {
+    final a = _account;
+    final ir = _integrity;
+    final cashNote = a?.cashNote ?? '';
+    final cashDate = a?.cashDate ?? '';
+    final principal = a?.principal ?? 0;
+    final totalPnl = a?.totalPnl;
+    final hasIssue = ir?.hasIssue ?? false;
+    final holdingsKnown = ir?.holdingsKnown ?? false;
+    final driftCount = ir?.drift.length ?? 0;
+    final gapCount = ir?.gaps.length ?? 0;
+    final degradedWarnCount = ir?.degraded.where((d) => d.inferred).length ?? 0;
+
+    Widget cell(String label, String value, {Color? color, required Widget sub}) => Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+            const SizedBox(height: 3),
+            Text(value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 15, fontWeight: FontWeight.w600, color: color ?? AppColors.darkGrey1)),
+            const SizedBox(height: 2),
+            sub,
+          ]),
+        );
+
+    // 断点摘要：当场说清是哪种（drift / gaps / 被推断锚定日的降级流水），点「看明细」展开逐行
+    final breakParts = <String>[
+      if (driftCount > 0) '$driftCount 只持仓不一致',
+      if (gapCount > 0) '$gapCount 笔回放缺口',
+      if (degradedWarnCount > 0) '$degradedWarnCount 笔没进持仓',
+    ];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // 现金自证：数是券商导进来的（cashDate），健康度人话由后端给（空 = 正常）
+          cell('现金', a == null ? '—' : '¥${_thousands(a.cash)}',
+              sub: cashNote.isNotEmpty
+                  ? const Text('⚠ 有异常',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 11, color: AppColors.darkOrange))
+                  : Text(cashDate.isNotEmpty ? '✓ 券商 $cashDate 的余额' : '券商来源未记',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: cashDate.isNotEmpty ? AppColors.darkGreen : AppColors.darkGrey5))),
+          // 本金从数据推：= 转入 − 转出（后端含存量迁移调整）；总盈亏 = 资产 − 本金
+          cell('本金（转入/转出自动算）', principal > 0 ? '¥${_thousands(principal)}' : '—',
+              sub: principal > 0 && totalPnl != null
+                  ? Text('总盈亏 ${totalPnl >= 0 ? '+' : '-'}¥${_thousands(totalPnl.abs())}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: totalPnl >= 0 ? AppColors.darkRed : AppColors.darkGreen))
+                  : const Text('还没记过转入/转出',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 11, color: AppColors.darkGrey5))),
+          // 断点当场指出：账实结论 + 摘要（有断点时可展开明细；无差异不打扰）
+          cell('账实',
+              ir == null ? '—' : (hasIssue ? '⚠ 有差异' : (holdingsKnown ? '✓ 对上了' : '—')),
+              color: ir == null
+                  ? AppColors.darkGrey4
+                  : (hasIssue
+                      ? AppColors.darkOrange
+                      : (holdingsKnown ? AppColors.darkGreen : AppColors.darkGrey4)),
+              sub: ir == null
+                  ? const Text('对账还没取到',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 11, color: AppColors.darkGrey5))
+                  : hasIssue
+                      ? InkWell(
+                          onTap: () =>
+                              setState(() => _accountProofExpanded = !_accountProofExpanded),
+                          child: Text(
+                              '${breakParts.join(' · ')} · ${_accountProofExpanded ? '收起' : '看明细'}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 11, color: AppColors.darkOrange)))
+                      : Text(holdingsKnown ? '锚定日 ${ir.anchor?.anchorDate ?? '—'}' : '还没法判定 · 先导持仓快照',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5))),
+        ]),
+        // 现金人话（后端文案，前端只渲染；空 = 不打扰）
+        if (cashNote.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Icon(Icons.warning_amber_rounded, size: 14, color: AppColors.darkOrange),
+            const SizedBox(width: 6),
+            Expanded(
+                child: Text(cashNote,
+                    style: const TextStyle(fontSize: 11, color: AppColors.darkOrange))),
+          ]),
+        ],
+        // 本金置信度说明（后端文案；中性灰——是说明不是告警）
+        if (a != null && a.principalNote.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(a.principalNote, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+        ],
+        // 断点当场指出：展开逐行明细（与顶部横幅同一份渲染）
+        if (_accountProofExpanded && ir != null && hasIssue) ...[
+          const SizedBox(height: 6),
+          ..._integrityDetailLines(ir),
+        ],
+      ]),
+    );
   }
 
   /// 工作区视窗高度：合并后的「账」比原来任何单个 Tab 都高 → 跟着放大（原来的 380 只够一屏）。
@@ -2564,79 +2694,42 @@ class _TradingPageState extends State<TradingPage> {
     );
   }
 
-  /// RFC 20260912 账实不符闸门横幅（橙色，可展开）：
-  /// drift = 应有持仓（快照基线 + 锚点后流水净增减）≠ 落地持仓；gaps = 卖超/未持有的重放缺口。
-  /// 无差异 → 调用方不渲染（绝不制造噪音）；锚定/基线缺失时不误报（后端已降级为空 + note 说明）。
-  Widget _buildIntegrityBanner(IntegrityReportDto r) {
-    final drift = r.drift;
-    final gaps = r.gaps;
-    // 2026-10-03（用户反馈「不应该提示」）：**只有「无据的归一化」才报警**——
-    // 后端已把 `inferred` 收窄为「文件日期本身是交易日、却被归一化到别的日子」（真可能是推错，
-    // 且该场景 drift 会假绿，这条是唯一旁路，见 P1-交易61）；而**休市日导出**（如 10-01 → 09-30）
-    // 归一化有据 → `inferred=false` → 这里不再触发横幅（用户导入快照就是修正数据，快照即真相）。
+  /// 对账断点明细（账区自证条展开时渲染，2026-10-08 账三合一）：drift 逐标的 /
+  /// gaps 逐笔 / 被推断锚定日的降级流水 + 指路句。调用方负责「展开时才显示」。
+  /// ⚠️ 降级流水只列 `inferred=true`（无据归一化，2026-10-03 用户反馈）——休市日导出归一化有据，
+  /// 不在此列（快照即真相）；口径不因搬家（旧顶部横幅 → 账区自证条）而改变。
+  List<Widget> _integrityDetailLines(IntegrityReportDto r) {
     final degradedWarn = r.degraded.where((d) => d.inferred).toList();
-    final parts = <String>[
-      if (drift.isNotEmpty) '${drift.length} 只标的持仓不一致',
-      if (gaps.isNotEmpty) '${gaps.length} 笔回放缺口',
-      if (degradedWarn.isNotEmpty) '${degradedWarn.length} 笔成交没进持仓',
-    ];
-    if (parts.isEmpty) return const SizedBox.shrink(); // 无差异 → 不渲染（绝不制造噪音）
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.darkOrange.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.darkOrange.withValues(alpha: 0.55)),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        InkWell(
-          onTap: () => setState(() => _integrityExpanded = !_integrityExpanded),
-          child: Row(children: [
-            const Icon(Icons.warning_amber_rounded, size: 16, color: AppColors.darkOrange),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text('阿呆发现账对不上：${parts.join(' / ')}',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkOrange)),
-            ),
-            Text(_integrityExpanded ? '收起' : '看明细',
-                style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
-            Icon(_integrityExpanded ? Icons.expand_less : Icons.expand_more,
-                size: 16, color: AppColors.darkGrey4),
-          ]),
+    return [
+      for (final d in r.drift)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 3),
+          child: Text(
+              '${d.symbol} ${d.name}：应有 ${d.derived} 股'
+              '（快照基线 ${d.snapshotQty ?? 0} + 锚点后流水 ${d.ledgerDelta > 0 ? '+' : ''}${d.ledgerDelta}），'
+              '落地 ${d.holdings ?? 0} 股，差 ${d.diff > 0 ? '+' : ''}${d.diff}',
+              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
         ),
-        if (_integrityExpanded) ...[
-          const SizedBox(height: 6),
-          for (final d in drift)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 3),
-              child: Text(
-                  '${d.symbol} ${d.name}：应有 ${d.derived} 股'
-                  '（快照基线 ${d.snapshotQty ?? 0} + 锚点后流水 ${d.ledgerDelta > 0 ? '+' : ''}${d.ledgerDelta}），'
-                  '落地 ${d.holdings ?? 0} 股，差 ${d.diff > 0 ? '+' : ''}${d.diff}',
-                  style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
-            ),
-          for (final g in gaps)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 3),
-              child: Text('回放缺口 · ${g.display}',
-                  style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
-            ),
-          // 锚定日归一化**没有依据**（文件日期是交易日却被归一化）→ 快照基准日可能不是这天，必须让人看见
-          for (final d in degradedWarn)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 3),
-              child: Text(
-                  '只记了流水、没进持仓 · ${d.name}(${d.symbol}) '
-                  '${d.direction == 'BUY' ? '买' : '卖'} ${d.volume} 股'
-                  '${d.price != null ? ' @${d.price}' : ''}（${d.entryDate ?? '—'}）',
-                  style: const TextStyle(fontSize: 11, color: AppColors.darkOrange)),
-            ),
-          const SizedBox(height: 2),
-          const Text('先导一次「持仓股」或「资金股份查询」快照，我就能重新对上了。',
-              style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
-        ],
-      ]),
-    );
+      for (final g in r.gaps)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 3),
+          child: Text('回放缺口 · ${g.display}',
+              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
+        ),
+      // 锚定日归一化**没有依据**（文件日期是交易日却被归一化）→ 快照基准日可能不是这天，必须让人看见
+      for (final d in degradedWarn)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 3),
+          child: Text(
+              '只记了流水、没进持仓 · ${d.name}(${d.symbol}) '
+              '${d.direction == 'BUY' ? '买' : '卖'} ${d.volume} 股'
+              '${d.price != null ? ' @${d.price}' : ''}（${d.entryDate ?? '—'}）',
+              style: const TextStyle(fontSize: 11, color: AppColors.darkOrange)),
+        ),
+      const SizedBox(height: 2),
+      const Text('先导一次「持仓股」或「资金股份查询」快照，我就能重新对上了。',
+          style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+    ];
   }
 
   Future<void> _markPsychology(SoldTradeDto s) async {
@@ -2674,15 +2767,11 @@ class _TradingPageState extends State<TradingPage> {
 
   Widget _buildCashSection() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      // 2026-09-04 资金曲线（决策方案 A）：净值 + 回撤迷你图
-      _EquityCurveCard(api: widget.api),
-      const SizedBox(height: 10),
+      // 2026-10-08 账三合一：操作行（转入/转出/导入资金）提到区块最顶部常驻可点——
+      // 自证条占用账区顶部高度后，曲线卡若在上会把按钮挤出滚动视口（人点不到·测试 hit-test 也失败）；
+      // 曲线卡无交互，随内容滚动即可。
       Row(children: [
         const Text('资金股份查询', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
-        const SizedBox(width: 8),
-        if (_cash != null)
-          Text('现金 ¥${_cash!.toStringAsFixed(2)} · 总资产 ¥${_assets?.toStringAsFixed(2) ?? '-'}',
-              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
         const Spacer(),
         OutlinedButton.icon(
           onPressed: () => _openTransferDialog(true),
@@ -2717,62 +2806,14 @@ class _TradingPageState extends State<TradingPage> {
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
         ),
       ]),
-      const SizedBox(height: 10),
-      // 2026-08-18：本金独立行（此前塞在按钮行最右，窄窗口被挤出看不到）——
-      // 本金 = 累计净投入（历史事实，只写本金不动现金）；充值/提现走上方「转入/转出」
-      Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: AppColors.darkSurface,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppColors.darkGrey4, width: 0.5),
-        ),
-        child: Row(children: [
-          const Icon(Icons.savings_outlined, size: 16, color: AppColors.darkGreen),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              '本金（累计净投入）¥${_thousands(_account?.principal ?? 0)}'
-              // B2-2（2026-08-23）+ P2-交易31（2026-08-29，U32）：总盈亏 = 资产 - 本金；
-              // 本金未设（principal=0）→ 不给误导数值（旧回落浮盈漏已实现盈亏），显示「—（设本金后显示）」
-              ' · 总盈亏 ${_account != null ? (_account!.totalPnl == null ? '—（设置本金后显示）' : '¥${_thousands(_account!.totalPnl!)}') : '-'}',
-              style: const TextStyle(fontSize: 12, color: AppColors.darkGrey2),
-            ),
-          ),
-          OutlinedButton(
-            onPressed: _openPrincipalDialog,
-            style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.darkGreen,
-                side: const BorderSide(color: AppColors.darkGrey4),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4)),
-            child: const Text('设置本金', style: TextStyle(fontSize: 12)),
-          ),
-        ]),
-      ),
       const SizedBox(height: 6),
       const Text('现金余额是 R81 仓位判定的分母（总资产=持仓+现金）——资金查询导入后占比判定更准',
           style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
-      // P2-交易69（2026-09-23）：现金「会漂且过期无提示」——负现金（自证失败）/ 无券商来源 / 过期时
-      // 由后端给一句人话，这里只负责显示。文案不在前端拼（单一真相源），空 = 不打扰。
-      if ((_account?.cashNote ?? '').isNotEmpty) ...[
-        const SizedBox(height: 6),
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Icon(Icons.warning_amber_rounded, size: 14, color: AppColors.darkOrange),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(_account!.cashNote,
-                style: const TextStyle(fontSize: 11, color: AppColors.darkOrange)),
-          ),
-        ]),
-      ],
-      // P2-交易66（2026-09-23）：本金置信度——手填本金 + 历史出入金零记录时，说明这行总盈亏的基准。
-      // 中性灰（是说明不是告警），文案同样由后端给。
-      if ((_account?.principalNote ?? '').isNotEmpty) ...[
-        const SizedBox(height: 4),
-        Text(_account!.principalNote,
-            style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
-      ],
+      const SizedBox(height: 10),
+      // 2026-09-04 资金曲线（决策方案 A）：净值 + 回撤迷你图
+      _EquityCurveCard(api: widget.api),
+      // 2026-10-08 账三合一：本金行（原「设置本金」入口——后端已退役为 410，撤）/ cashNote /
+      // principalNote 全部收进账区顶部「自证条」，这里不再重复渲染。
     ]);
   }
 
@@ -2841,64 +2882,6 @@ class _TradingPageState extends State<TradingPage> {
       if (mounted) _toast('${isIn ? '转入' : '转出'} ¥${v.toStringAsFixed(2)} 已记录');
     } catch (e) {
       if (mounted) _toast('转账记录失败');
-    }
-  }
-
-  /// 本金设置 Dialog（2026-08-18）：累计净投入——只改本金（总盈亏 = 资产 - 本金），不动现金。
-  Future<void> _openPrincipalDialog() async {
-    final amount = TextEditingController(
-        text: _account != null && _account!.principal > 0
-            ? _account!.principal.toStringAsFixed(0)
-            : '');
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: AppColors.darkSurface2,
-        title: const Text('设置本金（累计净投入）', style: TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(
-            controller: amount,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            autofocus: true,
-            decoration: const InputDecoration(labelText: '本金（元）'),
-            style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
-          ),
-          const SizedBox(height: 8),
-          const Text('总盈亏 = 资产 − 本金。本金是历史累计投入，只写本金字段，不影响现金/持仓。',
-              style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(
-            onPressed: () {
-              final v = double.tryParse(amount.text.trim());
-              if (v == null || !v.isFinite || v <= 0) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                  content: Text('请输入大于 0 的有效金额', style: TextStyle(fontSize: 13)),
-                  backgroundColor: AppColors.darkSurface2,
-                ));
-                return;
-              }
-              Navigator.pop(context, true);
-            },
-            style: FilledButton.styleFrom(backgroundColor: AppColors.darkGreen),
-            child: const Text('保存'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    final v = double.tryParse(amount.text.trim());
-    if (v == null || v <= 0) {
-      _toast('请输入有效金额');
-      return;
-    }
-    try {
-      await widget.api.setPrincipal(v);
-      await _loadAll();
-      if (mounted) _toast('本金已设为 ¥${v.toStringAsFixed(0)}');
-    } catch (e) {
-      if (mounted) _toast('本金设置失败，请检查网络后重试');
     }
   }
 
