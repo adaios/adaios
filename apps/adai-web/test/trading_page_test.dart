@@ -7108,8 +7108,9 @@ void _marketStageGroup() {
           );
     }
 
-    // 列序（批 1 差异决算 2026-10-07，16→9 列）：0 名称+代码 / 1 数量 / 2 成本 / 3 现价 /
-    //       4 涨跌 / 5 盈亏（金额主行+比例副行） / 6 最近的那条线 / 7 近 20 日 / 8 操作。
+    // 列序（批 1 差异决算 2026-10-07，16→9 列；批 3 操作列拆出后 = 8 列内容表 + 单列操作表）：
+    //       0 名称+代码 / 1 数量 / 2 成本 / 3 现价 / 4 涨跌 / 5 盈亏（金额主行+比例副行） /
+    //       6 最近的那条线 / 7 近 20 日；操作（图/批次/编辑）在独立固定表。
     // cellText/cellColor 取「主行」：Text 直取；Column（盈亏等合并列）取 children[0]。
     String cellText(DataTable t, int i) {
       final c = t.rows.first.cells[i].child;
@@ -7489,6 +7490,144 @@ void _marketStageGroup() {
     });
   });
 
+  // ── 批 3（2026-10-07 · D3 表格自适应）：窄窗降列 + 操作列冻结在右 ──
+  //
+  // 阈值按「表格容器可用宽」（非视口宽）：1280 视口 ~1038 / 1440 ~998 / 1600 ~1158——
+  // W ≥ 1150 全列；W < 1150 收「近 20 日」；W < 1000 再把「最近的那条线」并进「盈亏」副行。
+  // 操作列（图/批次/编辑）拆右侧固定表（_frozenActionTable）：横滚内容时不被推走。
+  group('批 3 表格自适应（2026-10-07）', () {
+    Future<void> pumpAt(WidgetTester tester, ApiService api, Size size) async {
+      await tester.binding.setSurfaceSize(size);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: TradingPage(api: api)),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    /// 找「单列操作表」（列头 = 给定文案）——拆表冻结的直接证据。
+    List<DataTable> actionTables(WidgetTester tester, String label) => tester
+        .widgetList<DataTable>(find.byType(DataTable))
+        .where(
+          (t) =>
+              t.columns.length == 1 &&
+              ((t.columns.single.label) as Text).data == label,
+        )
+        .toList();
+
+    testWidgets('宽窗 1800：全列在位 + 操作列拆出成独立表（图/批次/编辑可见）', (tester) async {
+      await _pumpTrading(
+        tester,
+        ApiService(baseUrl: 'http://test', client: _tradingMock()),
+      );
+      expect(
+        find.text('近 20 日'),
+        findsOneWidget,
+        reason: '1600 档容器 ~1358 ≥ 1150：列在',
+      );
+      expect(find.text('最近的那条线'), findsOneWidget, reason: '≥ 1000：线单列在');
+      expect(
+        actionTables(tester, '操作'),
+        hasLength(1),
+        reason: '操作列已拆出为右侧独立固定表（宽窗同样拆——各窗宽行为一致）',
+      );
+      expect(find.byTooltip('图'), findsOneWidget);
+      expect(find.byTooltip('批次'), findsOneWidget);
+      expect(find.byTooltip('编辑'), findsOneWidget);
+    });
+
+    testWidgets('窄窗 900：收「近 20 日」+「最近的那条线」并进盈亏副行（数据不丢）', (tester) async {
+      // 有效止损由后端直接下发（effectiveStopLoss 字段）；mock 缺它会退化成「—」（另有用例锁该降级）
+      final client = MockClient((request) async {
+        if (request.url.path == '/api/v1/trading/positions') {
+          return _json([
+            _positionJson(extra: {'effectiveStopLoss': 22.80}),
+          ]);
+        }
+        return _tradingHandler(request);
+      });
+      await pumpAt(
+        tester,
+        ApiService(baseUrl: 'http://test', client: client),
+        const Size(900, 900),
+      );
+      expect(find.text('近 20 日'), findsNothing, reason: 'W ~658 < 1150：收列');
+      expect(find.text('最近的那条线'), findsNothing, reason: 'W ~658 < 1000：并线');
+      // 并线不等于丢数据：线状态（现价 26.10 vs 止损 22.80 → 离止损 12.6%）搬进盈亏副行
+      expect(find.text('3.16%'), findsOneWidget, reason: '盈亏比例副行照在（明文）');
+      expect(
+        find.text('离止损 12.6%'),
+        findsOneWidget,
+        reason: '线状态并进副行——数据不丢（止损数值走「图」弹窗 K 线查）',
+      );
+    });
+
+    testWidgets('窄窗横滚：长名称撑爆内容区时，操作图标仍可点（冻结不被横滚推走）', (tester) async {
+      final client = MockClient((request) async {
+        if (request.url.path == '/api/v1/trading/positions') {
+          return _json([
+            _positionJson(extra: {'name': '东方财富证券股份有限公司超长名称压测'}),
+          ]);
+        }
+        return _tradingHandler(request);
+      });
+      await pumpAt(
+        tester,
+        ApiService(baseUrl: 'http://test', client: client),
+        const Size(900, 900),
+      );
+      await tester.ensureVisible(find.byTooltip('图'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byTooltip('图').hitTestable(),
+        findsOneWidget,
+        reason: '内容列超宽（横滚）时，操作列不在横滚里、恒可命中',
+      );
+      expect(find.byTooltip('批次').hitTestable(), findsOneWidget);
+      expect(find.byTooltip('编辑').hitTestable(), findsOneWidget);
+    });
+
+    testWidgets('清仓表：「图」同样拆出固定（内容表 + 单列「图」表并排）', (tester) async {
+      final client = MockClient((request) async {
+        if (request.url.path == '/api/v1/trading/sold') {
+          return _json([
+            {
+              'symbol': '603993',
+              'name': '洛阳钼业',
+              'buyDate': '2026-07-20',
+              'sellDate': '2026-08-19',
+              'holdDays': 30,
+              'tradeCount': '1+1',
+              'holdPnlPct': 18.4,
+              'verdict': '盈利了结',
+              'psychology': '',
+            },
+          ]);
+        }
+        return _tradingHandler(request);
+      });
+      await pumpAt(
+        tester,
+        ApiService(baseUrl: 'http://test', client: client),
+        const Size(900, 900),
+      );
+      await tester.tap(find.byKey(const Key('tabItem2')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('清仓股复盘'), findsOneWidget, reason: '清仓区在');
+      expect(actionTables(tester, '图'), hasLength(1), reason: '「图」列已拆出为独立固定表');
+      await tester.ensureVisible(find.widgetWithText(TextButton, '图'));
+      await tester.pumpAndSettle();
+      expect(
+        find.widgetWithText(TextButton, '图').hitTestable(),
+        findsOneWidget,
+        reason: '窄窗下「图」按钮恒可点',
+      );
+    });
+  });
+
   // ── P2-交易72（2026-10-05）：今天没买卖也有落点（「今天没动」/「想动，没动」）──
   //
   // 用户原话：「那我今天没有买卖 怎么告诉你呢 你还在等我的数据」——系统在等一个他**没有地方填**的状态。
@@ -7668,7 +7807,11 @@ void _marketStageGroup() {
       await tester.tap(find.byKey(const Key('tabItem4')));
       await tester.pumpAndSettle();
       expect(find.text('规则加载失败，请检查后端连接'), findsOneWidget);
-      expect(find.byKey(const Key('tabItem3')), findsOneWidget, reason: '横 Tab 常驻不随区卸载');
+      expect(
+        find.byKey(const Key('tabItem3')),
+        findsOneWidget,
+        reason: '横 Tab 常驻不随区卸载',
+      );
 
       // 分析（5）：默认「这只票」→ 代码输入框出现（C1-1）
       await tester.tap(find.byKey(const Key('tabItem5')));
@@ -8287,9 +8430,7 @@ void _marketStageGroup() {
 
       await tester.tap(find.byKey(const Key('tabItem5')));
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.text('这一段'),
-      ); // 「这一段」= global，零输入即出
+      await tester.tap(find.text('这一段')); // 「这一段」= global，零输入即出
       await tester.pumpAndSettle();
 
       // 掩码态：三处金额 ••••

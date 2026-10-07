@@ -266,6 +266,14 @@ class _TradingPageState extends State<TradingPage>
   // 原 1080 偏低：本机全局侧栏 200px，1280 视口下内容区仅 ~1079——右栏一常驻
   // 持仓表就被挤掉一列；1200 对应「视口 ≥ ~1440 才常驻」（验收口径）。
   static const double _wideBreakpoint = 1200;
+  // 批 3（2026-10-07 · D3 表格自适应）：降列阈值——按「表格容器可用宽」而非视口宽
+  //（同视口下宽窗右栏常驻、内容区反而更窄；按容器宽算三档才自洽）。含侧栏/右栏/padding：
+  //   1280 视口 → 窄窗，容器 ~1038；1440 → 宽窗（右栏常驻），~998；1600 → ~1158。
+  //   W ≥ _sparkBreakpoint（1150，1600 档起）：保留「近 20 日」迷你走势列；
+  //   W < _lineBreakpoint（1000，1440 档起）：「最近的那条线」并入「盈亏」副行——
+  //   线状态照常看，止损数值走「图」弹窗 K 线查。
+  static const double _sparkBreakpoint = 1150;
+  static const double _lineBreakpoint = 1000;
   // P3-6（2026-10-07 拍板「抽屉式」）：窄窗（< _wideBreakpoint，右栏不渲染）的「阿呆说」页内抽屉开关——
   // 顶栏入口点开，右侧滑入装下原右栏三卡；点外部 / X 关闭。宽窗不用（右栏常驻）。
   bool _adeptDrawerOpen = false;
@@ -1284,6 +1292,62 @@ class _TradingPageState extends State<TradingPage>
     );
   }
 
+  /// 批 3（2026-10-07 · D3 操作列冻结）：内容列（可横滚）+ 操作列（固定右侧）拆两张并排
+  /// DataTable——表再窄，图/批次/编辑也不被横滚推走（原操作列在表尾，一滚即失踪）。
+  /// 约定（调用方）：dataRowMinHeight = dataRowMaxHeight——行高恒定是两表逐行对齐的前提；
+  /// 行底色（到线浅橙）从 DataRow.color 原样搬到左右两表，视觉不断层。
+  Widget _frozenActionTable({required DataTable table}) {
+    final cols = table.columns;
+    if (cols.length < 2) return table; // 兜底：没有可拆的操作列 → 原样渲染
+    DataRow splitRow(DataRow r, List<DataCell> cells) =>
+        DataRow(color: r.color, cells: cells);
+    DataTable half(List<DataColumn> columns, List<DataRow> rows) => DataTable(
+      headingRowColor: table.headingRowColor,
+      dataRowColor: table.dataRowColor,
+      headingTextStyle: table.headingTextStyle,
+      columnSpacing: table.columnSpacing,
+      horizontalMargin: table.horizontalMargin,
+      headingRowHeight: table.headingRowHeight,
+      dataRowMinHeight: table.dataRowMinHeight,
+      dataRowMaxHeight: table.dataRowMaxHeight,
+      columns: columns,
+      rows: rows,
+    );
+    return Row(
+      // 2026-10-07 批 3 修复：原用 CrossAxisAlignment.stretch——表格在滚动列里**高无界**，
+      // stretch 会把子项约束成 h=Infinity（BoxConstraints forces an infinite height），
+      // 一帧抛海量异常（实测单测 6000+ 异常风暴、全量跑不完）；两表行高恒定（Min=Max）
+      // + 行数相同，用 start 顶部对齐即可逐行对齐，不需要拉伸。
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: _scrollableTable(
+            table: half(cols.sublist(0, cols.length - 1), [
+              for (final r in table.rows)
+                splitRow(r, r.cells.sublist(0, r.cells.length - 1)),
+            ]),
+          ),
+        ),
+        // 1px 分隔线 = 操作表左缘边框（随表高而行；无 stretch 时裸 Container(width:1) 会变 0 高）
+        Container(
+          decoration: BoxDecoration(
+            border: Border(
+              left: BorderSide(
+                color: AppColors.darkBorder.withValues(alpha: 0.6),
+              ),
+            ),
+          ),
+          child: half(
+            [cols.last],
+            [
+              for (final r in table.rows) splitRow(r, [r.cells.last]),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   /// 持仓表（D2 拍板 2026-10-07 · 甲方案）：**只含持仓中**——自选 / 清仓各自独立成区。
   /// 原「全部」混合视图（持仓行 + 自选轻行）随二级导航退役：看自选去自选区、看清仓去清仓区。
   Widget _buildPositionTable() {
@@ -1353,267 +1417,312 @@ class _TradingPageState extends State<TradingPage>
               color: AppColors.darkBorder.withValues(alpha: 0.6),
             ),
           ),
-          child: _scrollableTable(
-            // m4d：旧 minWidth: 1520 是经验阈值——数据一变宽（当日盈亏 '-321.50'）
-            // 自然需求超过阈值即被压穿；新实现按「可用宽」自适应，不再需要。
-            table: DataTable(
-              headingRowColor: WidgetStatePropertyAll(
-                AppColors.darkSurface2.withValues(alpha: 0.5),
-              ),
-              dataRowColor: WidgetStatePropertyAll(Colors.transparent),
-              headingTextStyle: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: AppColors.darkGrey5,
-              ),
-              columnSpacing: 28,
-              horizontalMargin: 16,
-              // 2026-10-07（差异决算批 1 · diff-decisions A1）：16 → 9 列——
-              // 删 市值/仓位占比/当日盈亏/角色；盈亏% 并入「盈亏」、止损并入「最近的那条线」；
-              // 买点收进「自选」筛选（自选视图自带买点信号列）；「今日涨跌幅」对齐原型改名「涨跌」。
-              columns: const [
-                // m3（2026-10-07 · 原型 .wd-name/.wd-code）：名称与代码合并一列（名在前、代码小号灰在后）
-                DataColumn(label: Text('代码 / 名称')),
-                DataColumn(label: Text('数量'), numeric: true),
-                DataColumn(label: Text('成本'), numeric: true),
-                DataColumn(label: Text('现价'), numeric: true),
-                // A1-9（2026-10-07）：「今日涨跌幅」→「涨跌」（对齐原型；当日口径 GET /positions/daily）
-                DataColumn(label: Text('涨跌'), numeric: true),
-                // A1-4：金额打码 + 比例明文（比例不含金额，V3 拍板「比例可出」）——两行一列
-                DataColumn(label: Text('盈亏'), numeric: true),
-                // A1-5：止损值并入本列主行；副行 = 离你更近的那条线状态（破止损 / 离止损 x% / 到放飞）
-                DataColumn(label: Text('最近的那条线')),
-                // m3：近 20 日迷你走势（54×14，走红跌绿＝首尾比较；拿不到「—」）
-                // m4d：压穿根因已由 _scrollableTable 兜底（表按自然宽溢出到横滚）；
-                // softWrap/maxLines 改不了 TextPainter.minIntrinsicWidth（=paragraph 值），实证无效。
-                DataColumn(label: Text('近 20 日')),
-                DataColumn(label: Text('操作')),
-              ],
-              rows: <DataRow>[
-                ..._positions.map((p) {
-                  // #132 红涨绿亏（A股）：盈=红、亏=绿
-                  final pnlColor = p.pnl >= 0
-                      ? AppColors.darkRed
-                      : AppColors.darkGreen;
-                  // 当日口径：该票缺条目（端点降级/新票）→ d 为 null → 三列全「—」
-                  final d = _dailyItems[p.symbol];
-                  // 双止损位（trading-risk-plan）：主值 = 生效止损 = max(人工, 计算)；
-                  // 人工/计算有差异时副行标注非生效来源（系统 xx / 人工 xx）
-                  final slEffective = p.effectiveStopLoss;
-                  final slManual = p.stopLossPrice;
-                  final slComputed = p.computedStopLossPrice;
-                  final slSecondary = <String>[];
-                  if (slManual != null &&
-                      slComputed != null &&
-                      (slManual - slComputed).abs() > 0.0005) {
-                    final effectiveIsManual =
-                        slEffective != null &&
-                        (slEffective - slManual).abs() < 0.0005;
-                    slSecondary.add(
-                      effectiveIsManual
-                          ? '系统 ${slComputed.toStringAsFixed(3)}'
-                          : '人工 ${slManual.toStringAsFixed(3)}',
-                    );
-                  }
-                  // m3（2026-10-07 · 原型 tr.on）：到线行标——破止损 / 到放飞（整行浅橙）
-                  final onLine = _onLine(p);
-                  final rowColor = onLine
-                      ? WidgetStatePropertyAll<Color>(
-                          AppColors.darkOrange.withValues(alpha: 0.08),
-                        )
-                      : null;
-                  // m3：首列合并「名称 代码」（名在前＝主色，代码小号灰在后）
-                  final nameCode = Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        p.name,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: AppColors.darkGrey1,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        p.symbol,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: AppColors.darkGrey5,
-                        ),
-                      ),
-                    ],
-                  );
-                  return DataRow(
-                    color: rowColor,
-                    cells: [
-                      // m3：到线行首橙条（原型 inset box-shadow 3px；Key 只在到线时存在＝测试锚）
-                      DataCell(
-                        onLine
-                            ? Container(
-                                key: Key('online_${p.symbol}'),
-                                padding: const EdgeInsets.only(left: 6),
-                                decoration: const BoxDecoration(
-                                  border: Border(
-                                    left: BorderSide(
-                                      color: AppColors.darkOrange,
-                                      width: 3,
+          child: LayoutBuilder(
+            builder: (ctx, cons) {
+              // 批 3（2026-10-07 · D3 表格自适应）：按**表格容器可用宽**降列（非视口宽）——
+              // 1280 视口（窄窗）容器 ~1038 收「近 20 日」；1440（宽窗右栏常驻）~998 并线；
+              // 1600 ~1158 全列。三档验算见 [_sparkBreakpoint]/[_lineBreakpoint]。
+              final showSpark = cons.maxWidth >= _sparkBreakpoint;
+              final showLine = cons.maxWidth >= _lineBreakpoint;
+              // m4d：旧 minWidth: 1520 是经验阈值——数据一变宽（当日盈亏 '-321.50'）
+              // 自然需求超过阈值即被压穿；新实现按「可用宽」自适应（内层仍走 _scrollableTable），不再需要。
+              // 批 3：操作列（图/批次/编辑）拆右侧固定；行高恒定（Min=Max）——两表逐行对齐。
+              return _frozenActionTable(
+                table: DataTable(
+                  dataRowMinHeight: 48,
+                  dataRowMaxHeight: 48,
+                  headingRowColor: WidgetStatePropertyAll(
+                    AppColors.darkSurface2.withValues(alpha: 0.5),
+                  ),
+                  dataRowColor: WidgetStatePropertyAll(Colors.transparent),
+                  headingTextStyle: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.darkGrey5,
+                  ),
+                  columnSpacing: 28,
+                  horizontalMargin: 16,
+                  // 2026-10-07（差异决算批 1 · diff-decisions A1）：16 → 9 列——
+                  // 删 市值/仓位占比/当日盈亏/角色；盈亏% 并入「盈亏」、止损并入「最近的那条线」；
+                  // 买点收进「自选」筛选（自选视图自带买点信号列）；「今日涨跌幅」对齐原型改名「涨跌」。
+                  // 批 3（2026-10-07 · D3）：宽窄自适应降列——W < _sparkBreakpoint 收「近 20 日」，
+                  // W < _lineBreakpoint 再把「最近的那条线」并入「盈亏」副行。
+                  columns: [
+                    // m3（2026-10-07 · 原型 .wd-name/.wd-code）：名称与代码合并一列（名在前、代码小号灰在后）
+                    const DataColumn(label: Text('代码 / 名称')),
+                    const DataColumn(label: Text('数量'), numeric: true),
+                    const DataColumn(label: Text('成本'), numeric: true),
+                    const DataColumn(label: Text('现价'), numeric: true),
+                    // A1-9（2026-10-07）：「今日涨跌幅」→「涨跌」（对齐原型；当日口径 GET /positions/daily）
+                    const DataColumn(label: Text('涨跌'), numeric: true),
+                    // A1-4：金额打码 + 比例明文（比例不含金额，V3 拍板「比例可出」）——两行一列
+                    const DataColumn(label: Text('盈亏'), numeric: true),
+                    // A1-5：止损值并入本列主行；副行 = 离你更近的那条线状态（破止损 / 离止损 x% / 到放飞）
+                    if (showLine) const DataColumn(label: Text('最近的那条线')),
+                    // m3：近 20 日迷你走势（54×14，走红跌绿＝首尾比较；拿不到「—」）
+                    // m4d：压穿根因已由 _scrollableTable 兜底（表按自然宽溢出到横滚）；
+                    // softWrap/maxLines 改不了 TextPainter.minIntrinsicWidth（=paragraph 值），实证无效。
+                    if (showSpark) const DataColumn(label: Text('近 20 日')),
+                    const DataColumn(label: Text('操作')),
+                  ],
+                  rows: <DataRow>[
+                    ..._positions.map((p) {
+                      // #132 红涨绿亏（A股）：盈=红、亏=绿
+                      final pnlColor = p.pnl >= 0
+                          ? AppColors.darkRed
+                          : AppColors.darkGreen;
+                      // 当日口径：该票缺条目（端点降级/新票）→ d 为 null → 三列全「—」
+                      final d = _dailyItems[p.symbol];
+                      // 双止损位（trading-risk-plan）：主值 = 生效止损 = max(人工, 计算)；
+                      // 人工/计算有差异时副行标注非生效来源（系统 xx / 人工 xx）
+                      final slEffective = p.effectiveStopLoss;
+                      final slManual = p.stopLossPrice;
+                      final slComputed = p.computedStopLossPrice;
+                      final slSecondary = <String>[];
+                      if (slManual != null &&
+                          slComputed != null &&
+                          (slManual - slComputed).abs() > 0.0005) {
+                        final effectiveIsManual =
+                            slEffective != null &&
+                            (slEffective - slManual).abs() < 0.0005;
+                        slSecondary.add(
+                          effectiveIsManual
+                              ? '系统 ${slComputed.toStringAsFixed(3)}'
+                              : '人工 ${slManual.toStringAsFixed(3)}',
+                        );
+                      }
+                      // m3（2026-10-07 · 原型 tr.on）：到线行标——破止损 / 到放飞（整行浅橙）
+                      final onLine = _onLine(p);
+                      // 批 3（2026-10-07 · D3）：线状态/止损值上提到行级——「最近的那条线」单列
+                      // （宽窗）与「盈亏」副行并线（窄窗）两处共用；原先只在列内 Builder 里算。
+                      final nl = _nearestLine(p);
+                      final slText = slEffective ?? slManual;
+                      final rowColor = onLine
+                          ? WidgetStatePropertyAll<Color>(
+                              AppColors.darkOrange.withValues(alpha: 0.08),
+                            )
+                          : null;
+                      // m3：首列合并「名称 代码」（名在前＝主色，代码小号灰在后）
+                      final nameCode = Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            p.name,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: AppColors.darkGrey1,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            p.symbol,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.darkGrey5,
+                            ),
+                          ),
+                        ],
+                      );
+                      return DataRow(
+                        color: rowColor,
+                        cells: [
+                          // m3：到线行首橙条（原型 inset box-shadow 3px；Key 只在到线时存在＝测试锚）
+                          DataCell(
+                            onLine
+                                ? Container(
+                                    key: Key('online_${p.symbol}'),
+                                    padding: const EdgeInsets.only(left: 6),
+                                    decoration: const BoxDecoration(
+                                      border: Border(
+                                        left: BorderSide(
+                                          color: AppColors.darkOrange,
+                                          width: 3,
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                ),
-                                child: nameCode,
-                              )
-                            : nameCode,
-                      ),
-                      // m6：数量/成本打码（现价保留——口径「数量与成本打码，现价与止损保留」）
-                      DataCell(
-                        Text(
-                          maskIf('${p.quantity}', _amountsRevealed),
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: AppColors.darkGrey3,
+                                    child: nameCode,
+                                  )
+                                : nameCode,
                           ),
-                        ),
-                      ),
-                      DataCell(
-                        Text(
-                          maskIf(
-                            p.avgCost.toStringAsFixed(3),
-                            _amountsRevealed,
+                          // m6：数量/成本打码（现价保留——口径「数量与成本打码，现价与止损保留」）
+                          DataCell(
+                            Text(
+                              maskIf('${p.quantity}', _amountsRevealed),
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: AppColors.darkGrey3,
+                              ),
+                            ),
                           ),
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: AppColors.darkGrey3,
-                          ),
-                        ),
-                      ),
-                      DataCell(
-                        Text(
-                          p.currentPrice.toStringAsFixed(3),
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: AppColors.darkGrey1,
-                          ),
-                        ),
-                      ),
-                      // A1-9（2026-10-07）：「涨跌」（当日口径 GET /positions/daily）：正红负绿；null → 灰「—」
-                      DataCell(
-                        Text(
-                          _fmtDailyPct(d?.dayChangePct),
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: _dailyUpDownColor(d?.dayChangePct),
-                          ),
-                        ),
-                      ),
-                      // A1-4：盈亏 = 金额（打码）主行 + 比例（明文）副行；
-                      // 负/零成本 → pnlPercent null → 「—」（不给 0.00%，那是谎报「不赚不亏」）
-                      DataCell(
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
+                          DataCell(
                             Text(
                               maskIf(
-                                p.pnl.toStringAsFixed(2),
+                                p.avgCost.toStringAsFixed(3),
                                 _amountsRevealed,
                               ),
-                              style: TextStyle(
+                              style: const TextStyle(
                                 fontSize: 13,
-                                color: pnlColor,
-                                fontWeight: FontWeight.w600,
+                                color: AppColors.darkGrey3,
                               ),
                             ),
+                          ),
+                          DataCell(
                             Text(
-                              p.pnlPercent == null
-                                  ? '—'
-                                  : '${p.pnlPercent!.toStringAsFixed(2)}%',
-                              style: TextStyle(fontSize: 11, color: pnlColor),
+                              p.currentPrice.toStringAsFixed(3),
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: AppColors.darkGrey1,
+                              ),
                             ),
-                          ],
-                        ),
-                      ),
-                      // A1-5：「最近的那条线」= 止损值（主行；生效止损优先，仅人工时常规字重）+ 线状态（副行：
-                      // 破了止损 / 到了放飞 / 离止损还有多少；双止损位差异「系统/人工 xx」缀尾）
-                      DataCell(
-                        Builder(
-                          builder: (_) {
-                            final nl = _nearestLine(p);
-                            final slText = slEffective ?? slManual;
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                          ),
+                          // A1-9（2026-10-07）：「涨跌」（当日口径 GET /positions/daily）：正红负绿；null → 灰「—」
+                          DataCell(
+                            Text(
+                              _fmtDailyPct(d?.dayChangePct),
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: _dailyUpDownColor(d?.dayChangePct),
+                              ),
+                            ),
+                          ),
+                          // A1-4：盈亏 = 金额（打码）主行 + 比例（明文）副行；
+                          // 负/零成本 → pnlPercent null → 「—」（不给 0.00%，那是谎报「不赚不亏」）
+                          DataCell(
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
-                                  slText?.toStringAsFixed(3) ?? '—',
+                                  maskIf(
+                                    p.pnl.toStringAsFixed(2),
+                                    _amountsRevealed,
+                                  ),
                                   style: TextStyle(
                                     fontSize: 13,
-                                    color: slText == null
-                                        ? AppColors.darkGrey3
-                                        : AppColors.darkGrey1,
-                                    fontWeight: slEffective != null
-                                        ? FontWeight.w600
-                                        : FontWeight.w400,
+                                    color: pnlColor,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
+                                // 批 3（2026-10-07 · D3）：窄窗（W < _lineBreakpoint）「最近的那条线」
+                                // 并进本副行——「比例 · 线状态」同行；线状态保持语义色（止损数值走「图」弹窗查）
                                 Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Text(
-                                      nl.text,
+                                      p.pnlPercent == null
+                                          ? '—'
+                                          : '${p.pnlPercent!.toStringAsFixed(2)}%',
                                       style: TextStyle(
-                                        fontSize: 12.5,
-                                        color: nl.color,
+                                        fontSize: 11,
+                                        color: pnlColor,
                                       ),
                                     ),
-                                    if (slSecondary.isNotEmpty)
-                                      Text(
-                                        ' · ${slSecondary.join(' · ')}',
-                                        style: const TextStyle(
+                                    // 批 3（2026-10-07 · D3）：「比例 · 线状态」同行；没线状态（—）就不缀，
+                                    // 保持原型「3.16%」的干净形态。
+                                    if (!showLine && nl.text != '—') ...[
+                                      const Text(
+                                        ' · ',
+                                        style: TextStyle(
                                           fontSize: 11,
                                           color: AppColors.darkGrey5,
                                         ),
                                       ),
+                                      Text(
+                                        nl.text,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: nl.color,
+                                        ),
+                                      ),
+                                    ],
                                   ],
                                 ),
                               ],
-                            );
-                          },
-                        ),
-                      ),
-                      // m3：近 20 日迷你走势（54×14；拿不到「—」）
-                      DataCell(_sparkCell(p.symbol)),
-                      // A1-8（2026-10-07）：操作收窄为图标（Tooltip 保语义）——图 / 批次 / 编辑
-                      DataCell(
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _iconAction(
-                              Icons.show_chart,
-                              '图',
-                              AppColors.darkOrange,
-                              () => _openKline(p.symbol, p.name),
                             ),
-                            _iconAction(
-                              Icons.layers_outlined,
-                              '批次',
-                              AppColors.darkBlue,
-                              () => _showLots(p),
+                          ),
+                          // A1-5：「最近的那条线」= 止损值（主行；生效止损优先，仅人工时常规字重）+ 线状态（副行：
+                          // 破了止损 / 到了放飞 / 离止损还有多少；双止损位差异「系统/人工 xx」缀尾）
+                          // 批 3（2026-10-07 · D3）：W < _lineBreakpoint 时本列收掉——线状态并进盈亏副行
+                          // （数据不丢）；止损数值仍可点「图」弹窗 K 线查。
+                          if (showLine)
+                            DataCell(
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    slText?.toStringAsFixed(3) ?? '—',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: slText == null
+                                          ? AppColors.darkGrey3
+                                          : AppColors.darkGrey1,
+                                      fontWeight: slEffective != null
+                                          ? FontWeight.w600
+                                          : FontWeight.w400,
+                                    ),
+                                  ),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        nl.text,
+                                        style: TextStyle(
+                                          fontSize: 12.5,
+                                          color: nl.color,
+                                        ),
+                                      ),
+                                      if (slSecondary.isNotEmpty)
+                                        Text(
+                                          ' · ${slSecondary.join(' · ')}',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: AppColors.darkGrey5,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ],
+                              ),
                             ),
-                            _iconAction(
-                              Icons.edit_outlined,
-                              '编辑',
-                              AppColors.darkGreen,
-                              () => _editPosition(p),
+                          // m3：近 20 日迷你走势（54×14；拿不到「—」）
+                          // 批 3：W < _sparkBreakpoint 时本列收掉（窄窗优先保住名字与数字）
+                          if (showSpark) DataCell(_sparkCell(p.symbol)),
+                          // A1-8（2026-10-07）：操作收窄为图标（Tooltip 保语义）——图 / 批次 / 编辑
+                          // 批 3：拆到右侧固定表（_frozenActionTable）——横滚内容时不被推走
+                          DataCell(
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _iconAction(
+                                  Icons.show_chart,
+                                  '图',
+                                  AppColors.darkOrange,
+                                  () => _openKline(p.symbol, p.name),
+                                ),
+                                _iconAction(
+                                  Icons.layers_outlined,
+                                  '批次',
+                                  AppColors.darkBlue,
+                                  () => _showLots(p),
+                                ),
+                                _iconAction(
+                                  Icons.edit_outlined,
+                                  '编辑',
+                                  AppColors.darkGreen,
+                                  () => _editPosition(p),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  );
-                }),
-              ],
-            ),
+                          ),
+                        ],
+                      );
+                    }),
+                  ],
+                ),
+              );
+            },
           ),
         ),
       ],
@@ -3849,7 +3958,8 @@ class _TradingPageState extends State<TradingPage>
             style: TextStyle(fontSize: 12, color: AppColors.darkGrey5),
           )
         else
-          _scrollableTable(
+          // 批 3（2026-10-07 · D3）：「图」操作列拆右侧固定（同持仓表；行高 Min=Max=32 已恒定）
+          _frozenActionTable(
             table: DataTable(
               headingRowHeight: 30,
               dataRowMinHeight: 32,
