@@ -3,9 +3,9 @@ title: AdaiOS AI 上下文工程体系
 description: 项目级 AI 上下文工程的总览——分层模型（L0 入口 / L1 任务 / L2 约束 / L3 事实 + 横跨的工具层）、完整的目录与文件定位表、层间关系与单一权威来源原则、六张流程图（mermaid：开工 / 改动 / 合并传播 / 发布 / 知识回流 / 全景）、触发词工作流表、个人与团队两种配置、保障体系不腐的机制与守卫、判断依据（企业实践 + 实证数据）、以及现状与目标的落地缺口、**审核驱动开发主链**（需求→设计→编码，含人的 4 个介入点）。机制部分**已生效**；仍缺的项见 §九。
 version: 1
 created: 2026-10-03
-updated: 2026-10-07
+updated: 2026-10-08
 status: active
-lines: 411
+lines: 412
 depends-on:
   - ../../knowledge/reference/status.md
 related:
@@ -84,6 +84,7 @@ flowchart TB
 | 工程约定（C1–C8…）| `.agents/rules/assets/conventions.md` | `ai-guard-meta` |
 | 原则边界（B1–B9）| `.agents/rules/assets/boundaries.md` | `ai-guard-meta` |
 | 已知坑 + 复发信号（**37 章**）| `.agents/rules/assets/pitfalls.md` | `ai-guard-meta` |
+| 设计与体验术语（阶段词 / 专业词对照，跨工具统一口径）| `.agents/rules/assets/design-lexicon.md` | `ai-guard-meta` |
 | 架构决策 ADR（**append-only**：改动写新记录 + superseded 链）| `.agents/rules/assets/adr/*.md` | `ai-guard-meta`（图谱）|
 | 方案决策 RFC（**68 份**，含未采纳的备选与理由；另有 3 份 superseded 在 `docs/archive/`）| `.agents/direction/rfc/*.md` | `ai-guard-feature`（status 枚举）|
 | 业务方向（**唯一蓝图**）| `.agents/direction/VISION.md` · `.agents/direction/product-roadmap.md` | `ai-guard-roadmap` |

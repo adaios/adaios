@@ -3,9 +3,9 @@ title: rules/ 目录索引
 description: .agents/rules/ 的文件清单与过期判断；目录的职责边界与依赖契约见 ./_directory.md
 version: 1
 created: 2026-10-04
-updated: 2026-10-06
+updated: 2026-10-08
 status: active
-lines: 83
+lines: 84
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index]
@@ -17,7 +17,7 @@ tags: [meta, index]
 
 **职责**：见 [`_directory.md`](./_directory.md)（此处不重复——S5 判据：同一知识只在一处详述）
 
-## 文件清单（44 项）
+## 文件清单（45 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -32,6 +32,7 @@ tags: [meta, index]
 | `assets/ai-context-layer-spec.md` | AdaiOS 项目级 AI 上下文的中间层规范——定义 AI 资产**放在哪**（真相源）、**怎么被各工具发现… | active |
 | `assets/boundaries.md` | AdaiOS「不做什么」的集中声明——原则级（不可违反）与功能级（当前不做）；任何新功能先查边界再定方案 | active |
 | `assets/conventions.md` | 代码/文档/协作三组规范集中声明——从原根 CLAUDE.md（2026-08-19 删除）与 AI 工程层归集… | active |
+| `assets/design-lexicon.md` | 阶段词（探索→定义→原型→设计→实施→走查→发布）与专业术语（信息架构/交互设计/视觉设计/可用性/体验走查）的… | active |
 | `assets/naming-spec.md` | skill / subagent / 脚本的统一命名体系——六个域 + 封闭角色词表 + 硬规则；含本项目的历史… | active |
 | `assets/pitfalls.md` | 跨 checklists 归集的「踩过的坑」索引——症状/根因/修复/复发信号，按域分组；完整逐条在 check… | active |
 | `assets/projects/adai-admin.md` | 从管理员使用角度，具体到每个页面每个功能地描述 adai-admin——四区模块/每个 tab 能做什么/职责边… | active |
@@ -49,7 +50,7 @@ tags: [meta, index]
 | `guides/git-workflow.md` | 分支怎么开、怎么合、怎么推、怎么发——为「单人但并行（同日多会话 + worktree）」这一形态定规矩。与 w… | active |
 | `guides/qoder-parallel-workflow.md` | 把「一条分支 = 一次只能干一件事」改成「多条任务线并行、人只在卡住处出场」的实操手册——Qoder CN CL… | active |
 | `guides/routine.md` | AdaiOS 的周期性人肉工作总清单——哪些系统已自动（只需看）、哪些必须你亲自做（生产日报/盘后导入/备份/审… | active |
-| `guides/skills-usage.md` | 人看的技能使用说明——AdaiOS 能力体系是什么、4 个技能包 + 16 个角色各何时用、怎么触发、怎么维护 | active |
+| `guides/skills-usage.md` | 人看的技能使用说明——AdaiOS 能力体系是什么——**4 个技能包**（走 skill 出口）+ **16 … | active |
 | `guides/worktree-workflow.md` | 在本项目用 git worktree 开并行线时的全部额外动作——worktree 是「空壳」（data/.en… | active |
 | `method/README.md` | 方法论放回仓库——AI 工程切入点图谱：流程机制替人记得（流程约定 > 内容编写）；新项目 = 搭一条流水线 | active |
 | `method/pipeline-sequence.mmd` | — | active |

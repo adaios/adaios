@@ -5,7 +5,7 @@ version: 6
 created: 2026-10-07
 updated: 2026-10-08
 status: draft
-lines: 343
+lines: 346
 depends-on:
   - ./requirement.md
 related:
@@ -17,6 +17,9 @@ tags: [workspace, task, trading, uiux]
 ---
 
 # 交易插件 UI/UX 重构 · 方向稿
+
+> **本文档所属阶段**：**概念探索与设计决策**（方向稿）——链条位置＝探索 → 定义 → **原型** → 设计…；术语口径见 [`.agents/rules/assets/design-lexicon.md`](../../rules/assets/design-lexicon.md)。
+> **标题里的「UI/UX」是历史叫法**：本稿实际覆盖的以**信息架构（IA）**为主（一级分区 / 二级存废 / 编排），兼交互与视觉；正式对外表述建议用 **「体验重构 · 方向稿」**。
 
 > **这份稿给谁看**：adai 在**其它 AI 工具**讨论「app/web 交易插件 UI/UX 重构」细节时的**单一入口**——自包含，不依赖任何会话上下文；任何工具读完即可参与讨论。
 > **状态**（2026-10-08 更新）：方向已圈选（web A 专业终端 · app 甲 清单优先）· **web 全量 IA 已定稿并实施**（§十一：**9 → 8 · 无二级 · 横 Tab**；批 1–7 已落地）；三问为从素材草拟的 v1，**待 adai 增删**。

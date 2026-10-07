@@ -5,7 +5,7 @@ version: 3
 created: 2026-10-07
 updated: 2026-10-08
 status: active
-lines: 304
+lines: 306
 depends-on:
   - ./uiux-discovery-20261007.md
 related:
@@ -15,6 +15,8 @@ tags: [trading, uiux, review, web]
 ---
 
 # 交易插件 Web 端 UI/UX 与原型比对审核
+
+> **本文档所属阶段**：**Web 端体验走查**（UX Audit）——链条位置＝…实施 → **走查** → 发布；覆盖三层＝**信息架构**（逐屏对照 · 列预算）· **交互设计**（打码 · 抽屉 · 冻结列）· **视觉设计**（标记 · 图例）。术语口径见 [`.agents/rules/assets/design-lexicon.md`](../../rules/assets/design-lexicon.md)。
 
 > **范围**：web 端交易插件（`apps/adai-web/lib/pages/trading_page.dart`，HEAD `179617e8`）与原型 `mockups/trading-web-full.html` 的**形态与交互一致性**。
 > **纪律**：**只报告不改**（AGENTS.md 规则 6）。每条附实测证据；无证据的推测已剔除。
