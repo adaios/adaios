@@ -1176,24 +1176,34 @@ class _TradingPageState extends State<TradingPage> {
 
   /// 2026-09-07（用户反馈「web 宽度足够却挤」）：DataTable 直接放进横向滚动容器会
   /// 收缩到列内容最小宽 → 宽屏右边留白、列被最长内容绑架。
-  /// 可用宽足够（≥ minWidth）时直出，DataTable 自动把富余宽度分给各列；
-  /// 不足才包横向滚动兜底防溢出。
-  Widget _scrollableTable({required DataTable table, required double minWidth}) {
+  /// 2026-10-07（m4d 修复「近 20 日」列被压穿 3.3px）：改「横滚容器 + minWidth=可用宽」——
+  /// Table 无上界时以 minWidth 为目标铺满（flex 列吸富余），自然宽超出可用宽时
+  /// 表按自然宽溢出到横滚，**任何列都不再被压穿**。旧法靠经验阈值（1520）直出，
+  /// 数据一变宽（当日盈亏 '-321.50'）自然需求 1626 > 可用 1623 即被压穿。
+  Widget _scrollableTable({required DataTable table}) {
     return LayoutBuilder(builder: (ctx, cons) {
-      if (cons.maxWidth < minWidth) {
-        return SingleChildScrollView(scrollDirection: Axis.horizontal, child: table);
-      }
-      return table;
+      if (!cons.maxWidth.isFinite) return table;
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minWidth: cons.maxWidth),
+          child: table,
+        ),
+      );
     });
   }
 
-  Widget _buildPositionTable() {
+  /// 持仓表（m4：`mixed` = 「全部」视图——持仓行 + 自选轻行合成一张表，原型主屏形态）。
+  /// 自选轻行缺的列一律「—」（我们没有自选的行情源；原型自选行的现价/涨跌是 mock，诚实降级不编数）；
+  /// 自选表结构不同（行业/长中短/指标）→「自选」筛选下仍是完整自选表，不硬混。
+  Widget _buildPositionTable({bool mixed = false}) {
     // 2026-08-23：持仓 Tab 内导入入口（通达信持仓导出，全量覆盖）——页头「批量导入」已移除，
     // 持仓导入不再与清仓/资金/交易 CSV 混在一个对话框（此前清仓/资金文本被交易 CSV 校验「买点」拦截）
     // 2026-10-06（R-12 落定 · 入口归各 Tab）：本入口「选择文件（可多选，通达信导出）」选 ≥2 份时
     // 转统一批量对话框（逐份识别 + 先看计划）；选 1 份仍走原文本框路径。
     final header = Row(children: [
-      Text('持仓 ${_positions.length} 只', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+      Text(mixed ? '持仓 ${_positions.length} 只 · 自选 ${_watchlist.length} 只' : '持仓 ${_positions.length} 只',
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
       const SizedBox(width: 8),
       Text('通达信持仓导出 · 全量覆盖 · 止损需导入后补设', style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
       const Spacer(),
@@ -1207,14 +1217,16 @@ class _TradingPageState extends State<TradingPage> {
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
       ),
     ]);
-    if (_positions.isEmpty) {
+    final isEmpty = mixed ? (_positions.isEmpty && _watchlist.isEmpty) : _positions.isEmpty;
+    if (isEmpty) {
       return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         header,
         const SizedBox(height: 12),
-        const Center(
+        Center(
           child: Padding(
-            padding: EdgeInsets.only(top: 40),
-            child: Text('暂无持仓', style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
+            padding: const EdgeInsets.only(top: 40),
+            child: Text(mixed ? '暂无持仓或自选' : '暂无持仓',
+                style: const TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
           ),
         ),
       ]);
@@ -1229,7 +1241,8 @@ class _TradingPageState extends State<TradingPage> {
           border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.6)),
         ),
         child: _scrollableTable(
-          minWidth: 1520,
+          // m4d：旧 minWidth: 1520 是经验阈值——数据一变宽（当日盈亏 '-321.50'）
+          // 自然需求超过阈值即被压穿；新实现按「可用宽」自适应，不再需要。
           table: DataTable(
           headingRowColor: WidgetStatePropertyAll(AppColors.darkSurface2.withValues(alpha: 0.5)),
           dataRowColor: WidgetStatePropertyAll(Colors.transparent),
@@ -1253,12 +1266,15 @@ class _TradingPageState extends State<TradingPage> {
             // 批 A（2026-10-08）：只显示**离你更近的那一条线**（全给会变成一堵墙）
             DataColumn(label: Text('最近的那条线')),
             // m3：近 20 日迷你走势（54×14，走红跌绿＝首尾比较；拿不到「—」）
+            // m4d：压穿根因已由 _scrollableTable 兜底（表按自然宽溢出到横滚）；
+            // softWrap/maxLines 改不了 TextPainter.minIntrinsicWidth（=paragraph 值），实证无效。
             DataColumn(label: Text('近 20 日')),
             DataColumn(label: Text('买点')),
             DataColumn(label: Text('角色')),
             DataColumn(label: Text('操作')),
           ],
-          rows: _positions.map((p) {
+          rows: <DataRow>[
+            ..._positions.map((p) {
             // #132 红涨绿亏（A股）：盈=红、亏=绿
             final pnlColor = p.pnl >= 0 ? AppColors.darkRed : AppColors.darkGreen;
             // 当日口径：该票缺条目（端点降级/新票）→ d 为 null → 三列全「—」
@@ -1370,11 +1386,103 @@ class _TradingPageState extends State<TradingPage> {
                 ),
               ])),
             ]);
-          }).toList(),
+            }),
+            // m4「全部」：自选轻行接在持仓行后面（原型：9 行 = 5 持仓 + 4 自选）
+            if (mixed) ..._watchlist.map(_watchlistMixRow),
+          ],
           ),
         ),
       ),
     ]);
+  }
+
+  /// 「全部」视图里的自选轻行（原型持仓屏底部自选行）：只有名字/近 20 日/买点/操作有内容，
+  /// 缺失列一律「—」（数量/成本/线在原型也是「—」；现价在原型是 mock，我们没有自选行情源）。
+  DataRow _watchlistMixRow(WatchlistItemDto w) {
+    final bp = _buyPoints.where((b) => b.symbol == w.symbol).toList();
+    return DataRow(cells: [
+      DataCell(Row(mainAxisSize: MainAxisSize.min, children: [
+        Text(w.name, style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1, fontWeight: FontWeight.w600)),
+        const SizedBox(width: 6),
+        Text(w.symbol, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+        const SizedBox(width: 6),
+        // 原型 <span class="quiet">自选</span>——一眼分清这行不是持仓
+        const Text('自选', style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+      ])),
+      // 数量/成本/现价/市值/仓位占比/当日盈亏/今日涨跌幅/盈亏/盈亏%/止损——自选没有这些口径
+      _dashCell(), _dashCell(), _dashCell(), _dashCell(), _dashCell(),
+      _dashCell(), _dashCell(), _dashCell(), _dashCell(), _dashCell(),
+      // 最近的那条线（自选没有线）
+      _dashCell(),
+      // 近 20 日：自选有 spark（与自选表同一个渲染）
+      DataCell(_sparkCell(w.symbol)),
+      // 买点：自选的价值列——命中 B1/B2 显示（判定是提示不是指令）
+      DataCell(bp.isEmpty
+          ? const Text('—', style: TextStyle(fontSize: 12, color: AppColors.darkGrey5))
+          : ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 170),
+              child: Text(bp.map(_buyPointLabel).join('、'),
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: bp.first.buyPoint == 'case' ? AppColors.darkOrange : AppColors.darkRed)))),
+      // 角色
+      _dashCell(),
+      // 操作：图 + 删（批次/编辑是持仓动作，自选轻行不给）
+      DataCell(Row(mainAxisSize: MainAxisSize.min, children: [
+        TextButton(
+          onPressed: () => _openKline(w.symbol, w.name),
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: const Text('图', style: TextStyle(fontSize: 12, color: AppColors.darkOrange)),
+        ),
+        TextButton(
+          onPressed: () => _removeWatchlist(w),
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: const Text('删', style: TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
+        ),
+      ])),
+    ]);
+  }
+
+  /// 「全部」表的空列「—」（每次新建实例——同一 Widget 实例不复用多处）。
+  DataCell _dashCell() =>
+      DataCell(const Text('—', style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)));
+
+  /// m4（2026-10-07）：自选删除——原内联在自选表行内，抽出给「全部」混合表的自选轻行复用。
+  Future<void> _removeWatchlist(WatchlistItemDto w) async {
+    // P2-13 + P3（2026-08-17）：删除带确认 + 失败反馈
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.darkSurface2,
+        title: Text('删除自选 ${w.name}？', style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+        content: const Text('删除后不再盯这只票的买点', style: TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.darkOrange),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await widget.api.removeWatchlist(w.symbol);
+      await _loadAll();
+    } catch (e) {
+      _toast('删除失败：${extractApiErrorMessage(e)}');
+    }
   }
 
   /// #102 复盘入口：生成今日复盘 → 弹窗展示（交易系统反哺可达）。
@@ -2149,14 +2257,26 @@ class _TradingPageState extends State<TradingPage> {
   //   ⚠️ 这一批**连测试一起改** —— 围着旧 9 Tab 写的用例按新结构重写，不退回。
   // ══════════════════════════════════════════════════════════════════════════
 
-  /// 持仓区筛选：0=持仓 1=自选 2=清仓（原为三个并列 Tab）。
+  /// 持仓区筛选：0=全部 1=持仓 2=自选 3=清仓（原为三个并列 Tab）。
+  /// m4（2026-10-07 · 原型主屏默认「全部」）：默认值改 0——「全部」= 持仓 + 自选混合表
+  /// （原型持仓屏表格实锤：自选行轻量（数量/成本…填「—」+「自选」标），5+4=「全部 9」；
+  /// 清仓表结构不同（了结日/拿了多久…）不进混合——清仓屏「全部 21」是 mock 自相矛盾，不采用）。
   int _positionFilter = 0;
 
-  /// 持仓区：三个持仓态收成一条筛选。
+  /// m4：分析区粒度（global/symbol/round）——提在父页，供左侧导航子项（这一笔/这只票/这一段）
+  /// 与分析区内部粒度 chips 双向同步。
+  String _analysisScope = 'global';
+
+  /// 持仓区：四个持仓态收成一条筛选（m4：补「全部」第 4 项——原型 chips 就是四项）。
   Widget _buildPositionZone() {
-    // m3（2026-10-07 · 原型 .wd-chips）：带计数 + Key 锚（测试不再依赖文案）；
-    // 「全部」混合视图不在本批（自选/清仓表列结构不同，硬混会换列）——留单独一批评估。
-    final labels = ['持仓 ${_positions.length}', '自选 ${_watchlist.length}', '清仓 ${_sold.length}'];
+    // m3（2026-10-07 · 原型 .wd-chips）：带计数 + Key 锚（测试不再依赖文案）。
+    // m4：「全部」（原型主屏默认 on）= 持仓 + 自选混合表，见 _buildPositionTable(mixed:)。
+    final labels = [
+      '全部 ${_positions.length + _watchlist.length}',
+      '持仓 ${_positions.length}',
+      '自选 ${_watchlist.length}',
+      '清仓 ${_sold.length}',
+    ];
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Wrap(spacing: 8, runSpacing: 8, children: [
         for (var i = 0; i < labels.length; i++)
@@ -2175,9 +2295,10 @@ class _TradingPageState extends State<TradingPage> {
           ),
       ]),
       const SizedBox(height: 10),
-      if (_positionFilter == 0) _buildPositionTable(),
-      if (_positionFilter == 1) _buildWatchlistSection(),
-      if (_positionFilter == 2) _buildSoldSection(),
+      if (_positionFilter == 0) _buildPositionTable(mixed: true),
+      if (_positionFilter == 1) _buildPositionTable(),
+      if (_positionFilter == 2) _buildWatchlistSection(),
+      if (_positionFilter == 3) _buildSoldSection(),
     ]);
   }
 
@@ -2335,52 +2456,220 @@ class _TradingPageState extends State<TradingPage> {
   /// 工作区视窗高度：合并后的「账」比原来任何单个 Tab 都高 → 跟着放大（原来的 380 只够一屏）。
   static const double _workspaceHeight = 620;
 
+  /// m4（2026-10-07 · 原型 .wd 骨架）：顶部横 Tab → **左侧竖导航 + 右内容**。
+  /// 切区由 `_buildSideNav` 驱 TabController（index 语义不变：0 持仓 1 账 2 分析 3 规则 4 案例 5 计划）。
   Widget _buildTabWorkspace() {
     return DefaultTabController(
       length: 6,
       child: _TabHistoryRefreshListener(
         onHistorySelected: () => _historyKey.currentState?.refreshSilently(),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(
+        child: Builder(builder: (context) {
+          final controller = DefaultTabController.of(context);
+          return Container(
             decoration: BoxDecoration(
               color: AppColors.darkSurface,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
             ),
-            child: const TabBar(
-              isScrollable: true,
-              tabAlignment: TabAlignment.start,
-              indicatorColor: AppColors.darkGreen,
-              labelColor: AppColors.darkGrey1,
-              unselectedLabelColor: AppColors.darkGrey5,
-              labelStyle: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-              tabs: [
-                Tab(text: '持仓'),
-                Tab(text: '账'),
-                Tab(text: '分析'),
-                Tab(text: '规则'),
-                Tab(text: '案例'),
-                Tab(text: '计划'),
-              ],
+            clipBehavior: Clip.antiAlias,
+            child: SizedBox(
+              height: _workspaceHeight,
+              child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                _buildSideNav(controller),
+                // 分隔线（原型 .wd-nav 的 border-right）
+                Container(width: 1, color: AppColors.darkBorder.withValues(alpha: 0.6)),
+                Expanded(
+                  child: TabBarView(controller: controller, children: [
+                    SingleChildScrollView(child: _buildPositionZone()),
+                    // 账区自己管高度（内含两个 Expanded）→ 不能再套一层无界滚动
+                    _buildAccountZone(),
+                    // 2026-10-06（R-05）：三粒度「分析」——全局 / 单标的 / 单笔
+                    // m4：粒度提父页（requestedScope），导航子项与区内部双向同步
+                    SingleChildScrollView(
+                        child: _AnalysisSection(
+                      api: widget.api,
+                      requestedScope: _analysisScope,
+                      onScopeChanged: (s) {
+                        if (s != _analysisScope && mounted) setState(() => _analysisScope = s);
+                      },
+                    )),
+                    SingleChildScrollView(child: _buildRuleSection()),
+                    SingleChildScrollView(child: _buildCaseSection()),
+                    SingleChildScrollView(child: _buildPlanSection()),
+                  ]),
+                ),
+              ]),
             ),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            height: _workspaceHeight,
-            child: TabBarView(children: [
-              SingleChildScrollView(child: _buildPositionZone()),
-              // 账区自己管高度（内含两个 Expanded）→ 不能再套一层无界滚动
-              _buildAccountZone(),
-              // 2026-10-06（R-05）：三粒度「分析」——全局 / 单标的 / 单笔
-              SingleChildScrollView(child: _AnalysisSection(api: widget.api)),
-              SingleChildScrollView(child: _buildRuleSection()),
-              SingleChildScrollView(child: _buildCaseSection()),
-              SingleChildScrollView(child: _buildPlanSection()),
-            ]),
-          ),
-        ]),
+          );
+        }),
       ),
     );
+  }
+
+  /// m4（2026-10-07 · 原型 .wd-nav）：左侧竖导航——品牌 / 六个分区 /（激活区的）子项 / 左下脚注。
+  /// 子项交互规则：**可点 ⇔ 该区有真实视图切换**（持仓=切筛选、分析=切粒度）；
+  /// 账（资金/流水/对账）与案例（等你认/已收下）是目录型标注——对应内容屏内同屏，无切换目标。
+  Widget _buildSideNav(TabController controller) {
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final idx = controller.index;
+        return Container(
+          width: 132,
+          padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            // 品牌（原型 .wd-brand：交易 / AdaiOS 两行）
+            const Padding(
+              padding: EdgeInsets.fromLTRB(8, 0, 8, 10),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('交易',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+                Text('AdaiOS', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+              ]),
+            ),
+            ..._navItem(controller, idx, 0, '持仓'),
+            if (idx == 0) ..._positionNavSubs(),
+            ..._navItem(controller, idx, 1, '账'),
+            if (idx == 1) ..._accountNavSubs(),
+            ..._navItem(controller, idx, 2, '分析'),
+            if (idx == 2) ..._analysisNavSubs(),
+            ..._navItem(controller, idx, 3, '规则'),
+            ..._navItem(controller, idx, 4, '案例'),
+            if (idx == 4) ..._caseNavSubs(),
+            ..._navItem(controller, idx, 5, '计划'),
+            const Spacer(),
+            _navFoot(idx),
+          ]),
+        );
+      },
+    );
+  }
+
+  /// 导航项（原型 .wd-navitem）：12.5px；选中 = 淡绿底 + 亮字 w500。
+  List<Widget> _navItem(TabController controller, int current, int index, String label) {
+    final on = current == index;
+    return [
+      InkWell(
+        key: Key('navItem$index'),
+        onTap: on ? null : () => controller.animateTo(index),
+        borderRadius: BorderRadius.circular(7),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+          decoration: BoxDecoration(
+            color: on ? AppColors.darkGreen.withValues(alpha: 0.13) : null,
+            borderRadius: BorderRadius.circular(7),
+          ),
+          child: Text(label,
+              style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: on ? FontWeight.w500 : FontWeight.w400,
+                  color: on ? AppColors.darkGrey1 : AppColors.darkGrey5)),
+        ),
+      ),
+      const SizedBox(height: 1),
+    ];
+  }
+
+  /// 子项（原型 .wd-sub）：11.5px、左缩进 20；on = 亮一档。无 onTap 即目录型（不可点、无高亮）。
+  Widget _navSub({required Key key, required String label, required bool on, VoidCallback? onTap}) {
+    return InkWell(
+      key: key,
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 4, 8, 4),
+        child: Text(label,
+            style: TextStyle(fontSize: 11.5, color: on ? AppColors.darkGrey2 : AppColors.darkGrey5)),
+      ),
+    );
+  }
+
+  /// 持仓子项（原型「全部 9 / 持仓 5 / 自选 4 / 清仓 12」）：可点——就是持仓区的筛选开关。
+  List<Widget> _positionNavSubs() {
+    final labels = [
+      '全部 ${_positions.length + _watchlist.length}',
+      '持仓 ${_positions.length}',
+      '自选 ${_watchlist.length}',
+      '清仓 ${_sold.length}',
+    ];
+    return [
+      for (var i = 0; i < labels.length; i++)
+        _navSub(
+            key: Key('navSub_pos$i'),
+            label: labels[i],
+            on: _positionFilter == i,
+            onTap: () => setState(() => _positionFilter = i)),
+    ];
+  }
+
+  /// 账子项（原型「资金 / 流水 / 对账」）：目录型——账区三块同屏（资金/流水/对账），无切换目标。
+  List<Widget> _accountNavSubs() => [
+        _navSub(key: const Key('navSub_acc0'), label: '资金', on: false),
+        _navSub(key: const Key('navSub_acc1'), label: '流水', on: false),
+        _navSub(key: const Key('navSub_acc2'), label: '对账', on: false),
+      ];
+
+  /// 分析子项（原型「这一笔 / 这只票 / 这一段」）：可点——与分析区粒度双向同步。
+  List<Widget> _analysisNavSubs() => [
+        _navSub(
+            key: const Key('navSub_ana0'),
+            label: '这一笔',
+            on: _analysisScope == 'round',
+            onTap: () => setState(() => _analysisScope = 'round')),
+        _navSub(
+            key: const Key('navSub_ana1'),
+            label: '这只票',
+            on: _analysisScope == 'symbol',
+            onTap: () => setState(() => _analysisScope = 'symbol')),
+        _navSub(
+            key: const Key('navSub_ana2'),
+            label: '这一段',
+            on: _analysisScope == 'global',
+            onTap: () => setState(() => _analysisScope = 'global')),
+      ];
+
+  /// 案例子项（原型「等你认 3 / 已收下 27」）：目录型 + 实时计数（候选/已收下同屏）。
+  List<Widget> _caseNavSubs() => [
+        _navSub(key: const Key('navSub_case0'), label: '等你认 ${_caseCandidates.length}', on: false),
+        _navSub(key: const Key('navSub_case1'), label: '已收下 ${_cases.length}', on: false),
+      ];
+
+  /// 左下脚注（原型 .wd-navfoot）：持仓/账给实况（最近导入日期 + 账实结论），
+  /// 其余给屏相关文案（分析/案例句来自原型；规则/计划原型无屏——复用「看的是事实」这句全局精神）。
+  Widget _navFoot(int tabIndex) {
+    final parts = <Widget>[];
+    Widget line(String text, {Color? color}) => Padding(
+          padding: const EdgeInsets.only(bottom: 2),
+          child: Text(text,
+              style: TextStyle(fontSize: 11, height: 1.6, color: color ?? AppColors.darkGrey5)),
+        );
+    if (tabIndex == 0 || tabIndex == 1) {
+      // 「最近导入」= 锚定日（有）→ 账户快照日（兜底）；只有日期粒度（原型带时分是 mock）
+      final raw = _integrity?.anchor?.anchorDate ?? _account?.snapshotDate ?? '';
+      if (raw.isNotEmpty) parts.add(line('最近导入 ${raw.length >= 10 ? raw.substring(5, 10) : raw}'));
+      final ir = _integrity;
+      if (ir == null) {
+        // m4：避开与账区自证条 sub「对账还没取到」同文（脚注空间小 + 测试断言会双命中）
+        parts.add(line('账实未知'));
+      } else if (ir.hasIssue) {
+        parts.add(line('账实有差异', color: AppColors.darkOrange));
+      } else if (ir.holdingsKnown) {
+        parts.add(line('账实对上了'));
+      } else {
+        parts.add(line('还没锚定 · 先导快照'));
+      }
+    } else if (tabIndex == 4) {
+      parts.add(line('案例是规则的出口'));
+      parts.add(line('它从你的记录里长'));
+    } else {
+      parts.add(line('看的是事实'));
+      parts.add(line('不是预测'));
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Container(height: 1, color: AppColors.darkBorder.withValues(alpha: 0.6)),
+      const SizedBox(height: 8),
+      ...parts,
+    ]);
   }
 
   /// 买点信号列文案（P2-案例2，2026-09-03）：buyPoint="case" = 规则未命中但形态接近库中
@@ -2431,7 +2720,6 @@ class _TradingPageState extends State<TradingPage> {
       else
         _scrollableTable(
           // 2026-10-07 批 6 小尾巴：加「图」列（+40）——自选也能开 K 线（与持仓/清仓同一张通用图）
-          minWidth: 890,
           table: DataTable(
             headingRowHeight: 30, dataRowMinHeight: 32, dataRowMaxHeight: 32,
             columns: const [
@@ -2486,32 +2774,7 @@ class _TradingPageState extends State<TradingPage> {
                 )),
                 DataCell(IconButton(
                   icon: const Icon(Icons.close, size: 14, color: AppColors.darkGrey5),
-                  onPressed: () async {
-                    // P2-13 + P3（2026-08-17）：删除带确认 + 失败反馈
-                    final ok = await showDialog<bool>(
-                      context: context,
-                      builder: (_) => AlertDialog(
-                        backgroundColor: AppColors.darkSurface2,
-                        title: Text('删除自选 ${w.name}？', style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
-                        content: const Text('删除后不再盯这只票的买点', style: TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
-                        actions: [
-                          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-                          FilledButton(
-                            onPressed: () => Navigator.pop(context, true),
-                            style: FilledButton.styleFrom(backgroundColor: AppColors.darkOrange),
-                            child: const Text('删除'),
-                          ),
-                        ],
-                      ),
-                    );
-                    if (ok != true) return;
-                    try {
-                      await widget.api.removeWatchlist(w.symbol);
-                      await _loadAll();
-                    } catch (e) {
-                      _toast('删除失败：${extractApiErrorMessage(e)}');
-                    }
-                  },
+                  onPressed: () => _removeWatchlist(w),
                 )),
               ]);
             }).toList(),
@@ -2747,8 +3010,6 @@ class _TradingPageState extends State<TradingPage> {
             style: TextStyle(fontSize: 12, color: AppColors.darkGrey5))
       else
         _scrollableTable(
-          // m3：名称/代码合并后少一列 → 同步收窄
-          minWidth: 1000,
           table: DataTable(
             headingRowHeight: 30, dataRowMinHeight: 32, dataRowMaxHeight: 32,
             columns: const [
@@ -6564,7 +6825,13 @@ class _HistorySectionState extends State<_HistorySection>
 class _AnalysisSection extends StatefulWidget {
   final ApiService api;
 
-  const _AnalysisSection({required this.api});
+  /// m4：父页（左侧导航子项 这一笔/这只票/这一段）请求的粒度；null = 不受控（保持内部状态）。
+  final String? requestedScope;
+
+  /// m4：粒度变化的回调——让导航子项高亮跟随（与内部 chips 双向同步）。
+  final ValueChanged<String>? onScopeChanged;
+
+  const _AnalysisSection({required this.api, this.requestedScope, this.onScopeChanged});
 
   @override
   State<_AnalysisSection> createState() => _AnalysisSectionState();
@@ -6581,7 +6848,24 @@ class _AnalysisSectionState extends State<_AnalysisSection> {
   @override
   void initState() {
     super.initState();
+    // m4：粒度提父页后，切区重建时按父页记住的粒度恢复——与上次看到的一致
+    _scope = widget.requestedScope ?? 'global';
     _load(); // 打开先看全局——零操作出内容
+  }
+
+  /// m4：导航子项改了粒度 → 这里跟着切（父子双向同步的「父→子」边）。
+  /// 直接在 didUpdateWidget 改字段（本 widget 马上随之重建，无需 setState）；
+  /// 不回调 onScopeChanged（父页自己就是发起方，幂等判断也能挡住重入）。
+  @override
+  void didUpdateWidget(covariant _AnalysisSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final req = widget.requestedScope;
+    if (req != null && req != oldWidget.requestedScope && req != _scope) {
+      _scope = req;
+      _error = null;
+      _data = null; // 换粒度旧结果不再挂着（避免看错对象）
+      if (req == 'global') scheduleMicrotask(_load); // 本次 build 后再发请求
+    }
   }
 
   @override
@@ -6598,6 +6882,7 @@ class _AnalysisSectionState extends State<_AnalysisSection> {
       _error = null;
       _data = null; // 换粒度旧结果不再挂着（避免看错对象）
     });
+    widget.onScopeChanged?.call(s); // m4：内部 chips 点了 → 父页导航子项高亮跟上
     if (s == 'global') _load(); // 全局无需输入，切换即出
   }
 

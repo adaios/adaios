@@ -1426,7 +1426,7 @@ void main() {
       await _pumpTrading(tester, api);
 
       // 切到自选 Tab
-      await tester.tap(find.byKey(const Key('posFilter1')));
+      await tester.tap(find.byKey(const Key('posFilter2')));
       await tester.pumpAndSettle();
 
       // 命中：B1 87%（score 0-100 量纲，F53）
@@ -1466,7 +1466,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.byKey(const Key('posFilter1')));
+      await tester.tap(find.byKey(const Key('posFilter2')));
       await tester.pumpAndSettle();
 
       // case 参考：显示「案例相似 92%」（取 caseMatches 最高相似度），不出现「case 0%」异常
@@ -1502,7 +1502,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.byKey(const Key('posFilter2')));
+      await tester.tap(find.byKey(const Key('posFilter3')));
       await tester.pumpAndSettle();
 
       // 三维打分列渲染（分数是参考不是指令）
@@ -1534,7 +1534,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.byKey(const Key('posFilter2')));
+      await tester.tap(find.byKey(const Key('posFilter3')));
       await tester.pumpAndSettle();
 
       expect(find.text('流水'), findsOneWidget, reason: '只有 provenance=flow 的行显示来源徽标');
@@ -1571,7 +1571,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.byKey(const Key('posFilter2')));
+      await tester.tap(find.byKey(const Key('posFilter3')));
       await tester.pumpAndSettle();
 
       // 行为模式归类：追高 1 笔 + 恐慌 1 笔（同一笔命中两个词）+ 死扛 1 笔
@@ -1618,7 +1618,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.byKey(const Key('posFilter2')));
+      await tester.tap(find.byKey(const Key('posFilter3')));
       await tester.pumpAndSettle();
 
       expect(find.text('卖掉之后到现在'), findsOneWidget, reason: '列头可见');
@@ -1669,7 +1669,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.byKey(const Key('posFilter2')));
+      await tester.tap(find.byKey(const Key('posFilter3')));
       await tester.pumpAndSettle();
 
       // 差的那笔：「—」+ tooltip 说清为什么（不拿邻近价格编）
@@ -1708,7 +1708,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.byKey(const Key('posFilter2')));
+      await tester.tap(find.byKey(const Key('posFilter3')));
       await tester.pumpAndSettle();
 
       expect(find.text('卖掉之后到现在'), findsOneWidget, reason: '列头照在');
@@ -1758,7 +1758,7 @@ void main() {
       });
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
-      await tester.tap(find.byKey(const Key('posFilter2')));
+      await tester.tap(find.byKey(const Key('posFilter3')));
       await tester.pumpAndSettle();
 
       Text stripCell(Key k) => tester.widget<Text>(find.byKey(k));
@@ -1792,7 +1792,7 @@ void main() {
       });
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
-      await tester.tap(find.byKey(const Key('posFilter2')));
+      await tester.tap(find.byKey(const Key('posFilter3')));
       await tester.pumpAndSettle();
 
       expect(tester.widget<Text>(find.byKey(const Key('soldStatLongest'))).data, '19 天',
@@ -1913,7 +1913,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.byKey(const Key('posFilter2')));
+      await tester.tap(find.byKey(const Key('posFilter3')));
       await tester.pumpAndSettle();
 
       expect(find.text('胜率 50%'), findsOneWidget);
@@ -1944,7 +1944,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.byKey(const Key('posFilter2')));
+      await tester.tap(find.byKey(const Key('posFilter3')));
       await tester.pumpAndSettle();
 
       expect(find.text('违反 R53 1 笔'), findsOneWidget);
@@ -1971,7 +1971,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.byKey(const Key('posFilter2')));
+      await tester.tap(find.byKey(const Key('posFilter3')));
       await tester.pumpAndSettle();
 
       // 「不贪心」不应归入贪心模式 → 行为模式行不出现（patternCounts 空）
@@ -4789,7 +4789,7 @@ void main() {
     Future<void> runSoldImport(WidgetTester tester, Map<String, dynamic> soldImport) async {
       await _pumpTrading(tester,
           ApiService(baseUrl: 'http://test', client: mock(soldImport)));
-      await tester.tap(find.byKey(const Key('posFilter2')));
+      await tester.tap(find.byKey(const Key('posFilter3')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入清仓'));
       await tester.pumpAndSettle();
@@ -5250,9 +5250,14 @@ void _marketStageGroup() {
     testWidgets('不到线没有行标；筛选 chips 带计数', (tester) async {
       await _pumpTrading(tester, ApiService(baseUrl: 'http://test', client: _tradingMock()));
       expect(find.byKey(const Key('online_600123')), findsNothing, reason: '26.10 > 22.80 未到线');
-      expect(find.text('持仓 1'), findsOneWidget);
-      expect(find.text('自选 0'), findsOneWidget);
-      expect(find.text('清仓 0'), findsOneWidget);
+      // m4：左导航子项与 chips 同文（「持仓 1」×2）→ Key 锚定 chips 内文本，裸文本断言会双命中
+      String chipText(String key) => tester
+          .widget<Text>(find.descendant(of: find.byKey(Key(key)), matching: find.byType(Text)).first)
+          .data!;
+      expect(chipText('posFilter0'), '全部 1');
+      expect(chipText('posFilter1'), '持仓 1');
+      expect(chipText('posFilter2'), '自选 0');
+      expect(chipText('posFilter3'), '清仓 0');
     });
   });
 
@@ -5350,6 +5355,146 @@ void _marketStageGroup() {
 
       expect(find.text('今天记的是：没动'), findsOneWidget);
       expect(find.text('今天没买卖的话，点一下就行——没动也是一天的完整记录。'), findsNothing);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // m4（2026-10-07）：顶部横 Tab → 左侧竖导航（品牌 / 6 项 / 激活区子项 / 左下脚注）。
+  // 子项交互规则：可点 ⇔ 该区有真实视图切换（持仓=切筛选、分析=切粒度）；
+  // 账/案例子项是目录型标注（对应内容屏内同屏，不可点、不高亮）。
+  // ══════════════════════════════════════════════════════════════════════
+  group('m4 左导航骨架', () {
+    testWidgets('品牌 + 六个分区都在；子项只出在激活区（持仓激活 → 四个筛选子项，计数同源）', (tester) async {
+      await _pumpTrading(tester, ApiService(baseUrl: 'http://test', client: _tradingMock()));
+
+      // 品牌（原型 .wd-brand）。'交易' 在 PageHeader 也有一份 → 用 'AdaiOS' 锚品牌
+      expect(find.text('AdaiOS'), findsOneWidget);
+      for (var i = 0; i < 6; i++) {
+        expect(find.byKey(Key('navItem$i')), findsOneWidget, reason: '六个分区 navItem$i 都应在');
+      }
+      // 默认激活持仓 → 四个子项，计数与 mock 数据一致（持仓 1 / 自选 0 / 清仓 0）
+      expect(find.descendant(of: find.byKey(const Key('navSub_pos0')), matching: find.text('全部 1')), findsOneWidget);
+      expect(find.descendant(of: find.byKey(const Key('navSub_pos1')), matching: find.text('持仓 1')), findsOneWidget);
+      expect(find.descendant(of: find.byKey(const Key('navSub_pos2')), matching: find.text('自选 0')), findsOneWidget);
+      expect(find.descendant(of: find.byKey(const Key('navSub_pos3')), matching: find.text('清仓 0')), findsOneWidget);
+      // 未激活区的子项不渲染
+      expect(find.byKey(const Key('navSub_acc0')), findsNothing);
+      expect(find.byKey(const Key('navSub_ana0')), findsNothing);
+      expect(find.byKey(const Key('navSub_case0')), findsNothing);
+    });
+
+    testWidgets('点导航切区：子项跟着换（账 3 项 / 分析 3 项 / 案例 2 项 / 规则无子项）', (tester) async {
+      await _pumpTrading(tester, ApiService(baseUrl: 'http://test', client: _tradingMock()));
+
+      await tester.tap(find.byKey(const Key('navItem1')));
+      await tester.pumpAndSettle();
+      expect(find.descendant(of: find.byKey(const Key('navSub_acc0')), matching: find.text('资金')), findsOneWidget);
+      expect(find.descendant(of: find.byKey(const Key('navSub_acc1')), matching: find.text('流水')), findsOneWidget);
+      expect(find.descendant(of: find.byKey(const Key('navSub_acc2')), matching: find.text('对账')), findsOneWidget);
+      expect(find.byKey(const Key('navSub_pos0')), findsNothing, reason: '离开持仓区，其子项应收起');
+
+      await tester.tap(find.byKey(const Key('navItem2')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('navSub_ana0')), findsOneWidget);
+      expect(find.byKey(const Key('navSub_ana1')), findsOneWidget);
+      expect(find.byKey(const Key('navSub_ana2')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('navItem4')));
+      await tester.pumpAndSettle();
+      expect(find.descendant(of: find.byKey(const Key('navSub_case0')), matching: find.text('等你认 0')), findsOneWidget);
+      expect(find.descendant(of: find.byKey(const Key('navSub_case1')), matching: find.text('已收下 0')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('navItem3')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('navSub_ana0')), findsNothing, reason: '规则区没有子项');
+      expect(find.byKey(const Key('navSub_case0')), findsNothing);
+    });
+
+    testWidgets('持仓子项点击 = 切筛选（与 chips 同源）', (tester) async {
+      await _pumpTrading(tester, ApiService(baseUrl: 'http://test', client: _tradingMock()));
+
+      await tester.tap(find.byKey(const Key('navSub_pos2')));
+      await tester.pumpAndSettle();
+      expect(find.text('暂无自选股——导入通达信自选导出，阿呆帮你盯买点'), findsOneWidget, reason: '点是「自选 0」→ 切到自选视图');
+      expect(find.text('立昂微'), findsNothing);
+
+      await tester.tap(find.byKey(const Key('navSub_pos3')));
+      await tester.pumpAndSettle();
+      expect(find.text('暂无清仓记录——导入通达信清仓导出，阿呆对照规则给你判对错'), findsOneWidget, reason: '点是「清仓 0」→ 切到清仓视图');
+
+      await tester.tap(find.byKey(const Key('navSub_pos0')));
+      await tester.pumpAndSettle();
+      expect(find.text('立昂微'), findsOneWidget, reason: '回「全部」→ 混合表里有持仓行');
+    });
+
+    testWidgets('分析子项 ↔ 区内部粒度双向同步（这一笔/这只票/这一段）', (tester) async {
+      await _pumpTrading(tester, ApiService(baseUrl: 'http://test', client: _tradingMock()));
+
+      await tester.tap(find.byKey(const Key('navItem2')));
+      await tester.pumpAndSettle();
+      // 默认「这一段」（global）：两种目标输入框都不该在
+      expect(find.byKey(const Key('analysisSymbol')), findsNothing);
+      expect(find.byKey(const Key('analysisRound')), findsNothing);
+
+      await tester.tap(find.byKey(const Key('navSub_ana0')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('analysisRound')), findsOneWidget, reason: '「这一笔」= 单笔粒度 → 单笔目标输入框出现');
+
+      await tester.tap(find.byKey(const Key('navSub_ana1')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('analysisSymbol')), findsOneWidget, reason: '「这只票」= 单标的粒度');
+      expect(find.byKey(const Key('analysisRound')), findsNothing);
+
+      await tester.tap(find.byKey(const Key('navSub_ana2')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('analysisSymbol')), findsNothing, reason: '「这一段」= 全局粒度');
+    });
+
+    testWidgets('左下脚注随区切换（持仓给账实实况、其它区给屏相关文案）', (tester) async {
+      await _pumpTrading(tester, ApiService(baseUrl: 'http://test', client: _tradingMock()));
+
+      // 持仓：integrity 未给（mock 无该路由）→ 「账实未知」；日期取账户快照日兜底
+      expect(find.text('账实未知'), findsOneWidget);
+      expect(find.text('最近导入 08-16'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('navItem3')));
+      await tester.pumpAndSettle();
+      expect(find.text('看的是事实'), findsOneWidget);
+      expect(find.text('不是预测'), findsOneWidget);
+      expect(find.text('账实未知'), findsNothing);
+
+      await tester.tap(find.byKey(const Key('navItem4')));
+      await tester.pumpAndSettle();
+      expect(find.text('案例是规则的出口'), findsOneWidget);
+      expect(find.text('它从你的记录里长'), findsOneWidget);
+    });
+
+    testWidgets('「全部」= 持仓 + 自选混合表：自选轻行（名字 + 「自选」标），缺列不编数', (tester) async {
+      final api = ApiService(
+          baseUrl: 'http://test',
+          client: MockClient((request) async {
+            if (request.url.path == '/api/v1/trading/watchlist') {
+              return _json([
+                {'symbol': '600999', 'name': '招商银行'},
+              ]);
+            }
+            return _tradingHandler(request);
+          }));
+      await _pumpTrading(tester, api);
+
+      // 表头两计数（原型「全部」屏）：持仓 + 自选
+      expect(find.text('持仓 1 只 · 自选 1 只'), findsOneWidget);
+      // 自选轻行：名字 + 代码 + 「自选」标（一眼分清不是持仓行）
+      expect(find.text('招商银行'), findsOneWidget);
+      expect(find.text('600999'), findsOneWidget);
+      expect(find.text('自选'), findsOneWidget);
+      // chips 计数同源
+      expect(find.descendant(of: find.byKey(const Key('posFilter0')), matching: find.text('全部 2')), findsOneWidget);
+
+      // 切「持仓」→ 自选轻行不再混在表里
+      await tester.tap(find.byKey(const Key('posFilter1')));
+      await tester.pumpAndSettle();
+      expect(find.text('招商银行'), findsNothing);
     });
   });
 }
