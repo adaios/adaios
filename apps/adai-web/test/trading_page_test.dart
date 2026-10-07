@@ -7023,6 +7023,10 @@ void _marketStageGroup() {
       await tester.pumpAndSettle();
 
       expect(requests, contains('GET /api/v1/trading/market-stage'));
+      // 批 6（2026-10-08 · D1）：区间条已从首屏移入「规则」区——首屏顶部只剩状态条
+      expect(find.text('空头区间'), findsNothing, reason: '持仓首屏顶部不再有区间条（D1）');
+      await tester.tap(find.byKey(const Key('tabItem4')));
+      await tester.pumpAndSettle();
       expect(find.text('空头区间'), findsOneWidget, reason: '用户判定空头应渲染「空头区间」');
       expect(find.text('活跃市值（指南针）'), findsOneWidget, reason: '开关条标题');
       expect(find.textContaining('手动'), findsOneWidget, reason: '手动判定副文案');
@@ -7063,6 +7067,9 @@ void _marketStageGroup() {
       await _pumpTrading(tester, api);
       await tester.pumpAndSettle();
 
+      // 批 6（2026-10-08 · D1）：区间条在「规则」区 → 先切过去
+      await tester.tap(find.byKey(const Key('tabItem4')));
+      await tester.pumpAndSettle();
       expect(find.text('空头区间'), findsOneWidget);
       await tester.tap(find.text('多头'));
       await tester.pumpAndSettle();

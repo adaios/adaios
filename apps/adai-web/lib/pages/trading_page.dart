@@ -520,6 +520,7 @@ class _TradingPageState extends State<TradingPage>
   }
 
   /// v3.41（2026-09-04）：活跃市值区间切换条（多头=红/空头=绿，红涨绿亏）。
+  /// 批 6（2026-10-08 · D1）：从首屏顶部移入「规则」区（与规则参数同区）——它是提醒/判定的前提。
   Widget _buildMarketStageBar() {
     final bear = _marketStage == 'bear';
     final bull = _marketStage == 'bull';
@@ -1102,11 +1103,8 @@ class _TradingPageState extends State<TradingPage>
                         20,
                       ),
                       children: [
-                        // v3.41（2026-09-04）：活跃市值区间（用户手动判定）——一切的前提，放最顶
-                        if (_marketStageLoaded) ...[
-                          _buildMarketStageBar(),
-                          const SizedBox(height: 10),
-                        ],
+                        // D1（2026-10-08 批 6）：「活跃市值（指南针）」区间条已从首屏移入「规则」区——
+                        // 它是提醒/判定的前提，与规则参数同区（布局见 _buildTabWorkspace 的规则分支）。
                         // RFC 20260923：行情链路横幅放对账之上——它是上游根因（行情拿不到 → 曲线/信号/案例
                         // 都会不全），先让用户看到「为什么今天数据可能不对劲」，再看下面的具体对账差异
                         if (_marketHealth != null &&
@@ -3345,8 +3343,20 @@ class _TradingPageState extends State<TradingPage>
                   SingleChildScrollView(child: _buildSoldSection()),
                   // 3 资金：三合一自己管高度（内含两个 Expanded）→ 不能再套一层无界滚动
                   _buildAccountZone(),
-                  // 4 规则
-                  SingleChildScrollView(child: _buildRuleSection()),
+                  // 4 规则（D1 · 2026-10-08 批 6：活跃市值条并入本区顶部——它是提醒/判定的前提，
+                  // 与规则参数同区；首屏顶部因此只剩状态条）
+                  SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (_marketStageLoaded) ...[
+                          _buildMarketStageBar(),
+                          const SizedBox(height: 14),
+                        ],
+                        _buildRuleSection(),
+                      ],
+                    ),
+                  ),
                   // 5 分析：三粒度「这一笔 / 这只票 / 这一段」（粒度提父页，与区内部 chips 双向同步）
                   SingleChildScrollView(
                     child: _AnalysisSection(
