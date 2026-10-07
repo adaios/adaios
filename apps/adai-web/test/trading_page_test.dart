@@ -1127,7 +1127,7 @@ void main() {
         await _pumpTrading(tester, api);
 
         // RFC 20260823：历史成交从页头 Dialog 升级为第 5 Tab，点击 Tab 进入
-        await tester.tap(find.text('账'));
+        await tester.tap(find.byKey(const Key('tabItem3')));
         await tester.pumpAndSettle();
         // m6：金额/数量默认掩码——本组验证字段级渲染 → 先点 👁 显形（掩码态断言在 m6 组）
         await tester.tap(find.byKey(const Key('revealToggle')));
@@ -1196,7 +1196,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('账'));
+      await tester.tap(find.byKey(const Key('tabItem3')));
       await tester.pumpAndSettle();
       expect(find.text('这段时间还没有历史成交'), findsOneWidget);
       expect(find.text('导入通达信历史成交导出'), findsOneWidget);
@@ -1219,7 +1219,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('账'));
+      await tester.tap(find.byKey(const Key('tabItem3')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
@@ -1308,7 +1308,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('账'));
+      await tester.tap(find.byKey(const Key('tabItem3')));
       await tester.pumpAndSettle();
       // m6：发生金额（股息）默认掩码 → 先点 👁 显形
       await tester.tap(find.byKey(const Key('revealToggle')));
@@ -1755,7 +1755,7 @@ void main() {
       await _pumpTrading(tester, api);
 
       // 切到自选 Tab
-      await tester.tap(find.byKey(const Key('posFilter2')));
+      await tester.tap(find.byKey(const Key('tabItem1')));
       await tester.pumpAndSettle();
 
       // 命中：B1 87%（score 0-100 量纲，F53）
@@ -1816,7 +1816,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.byKey(const Key('posFilter2')));
+      await tester.tap(find.byKey(const Key('tabItem1')));
       await tester.pumpAndSettle();
 
       // case 参考：显示「案例相似 92%」（取 caseMatches 最高相似度），不出现「case 0%」异常
@@ -1872,7 +1872,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.byKey(const Key('posFilter3')));
+      await tester.tap(find.byKey(const Key('tabItem2')));
       await tester.pumpAndSettle();
 
       // 列头与分数都不再渲染（即使后端仍返回分数）；行数据本身照常
@@ -1929,7 +1929,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.byKey(const Key('posFilter3')));
+      await tester.tap(find.byKey(const Key('tabItem2')));
       await tester.pumpAndSettle();
 
       expect(
@@ -2002,7 +2002,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.byKey(const Key('posFilter3')));
+      await tester.tap(find.byKey(const Key('tabItem2')));
       await tester.pumpAndSettle();
 
       // 行为模式归类：追高 1 笔 + 恐慌 1 笔（同一笔命中两个词）+ 死扛 1 笔
@@ -2104,7 +2104,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.byKey(const Key('posFilter3')));
+      await tester.tap(find.byKey(const Key('tabItem2')));
       await tester.pumpAndSettle();
 
       expect(find.text('卖掉之后到现在'), findsOneWidget, reason: '列头可见');
@@ -2216,7 +2216,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.byKey(const Key('posFilter3')));
+      await tester.tap(find.byKey(const Key('tabItem2')));
       await tester.pumpAndSettle();
 
       // 差的那笔：「—」+ tooltip 说清为什么（不拿邻近价格编）
@@ -2283,7 +2283,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.byKey(const Key('posFilter3')));
+      await tester.tap(find.byKey(const Key('tabItem2')));
       await tester.pumpAndSettle();
 
       expect(find.text('卖掉之后到现在'), findsOneWidget, reason: '列头照在');
@@ -2388,7 +2388,7 @@ void main() {
       });
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
-      await tester.tap(find.byKey(const Key('posFilter3')));
+      await tester.tap(find.byKey(const Key('tabItem2')));
       await tester.pumpAndSettle();
 
       Text stripCell(Key k) => tester.widget<Text>(find.byKey(k));
@@ -2447,7 +2447,7 @@ void main() {
       });
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
-      await tester.tap(find.byKey(const Key('posFilter3')));
+      await tester.tap(find.byKey(const Key('tabItem2')));
       await tester.pumpAndSettle();
 
       expect(
@@ -2523,7 +2523,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('案例'));
+      await tester.tap(find.byKey(const Key('tabItem6')));
       await tester.pumpAndSettle();
 
       Text stripCell(Key k) => tester.widget<Text>(find.byKey(k));
@@ -2564,7 +2564,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('案例'));
+      await tester.tap(find.byKey(const Key('tabItem6')));
       await tester.pumpAndSettle();
 
       expect(
@@ -2653,7 +2653,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.byKey(const Key('posFilter3')));
+      await tester.tap(find.byKey(const Key('tabItem2')));
       await tester.pumpAndSettle();
 
       // D1-4（批 5）：纪律统计收进 5 格副注——「胜率」在合计格 note、
@@ -2704,7 +2704,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.byKey(const Key('posFilter3')));
+      await tester.tap(find.byKey(const Key('tabItem2')));
       await tester.pumpAndSettle();
 
       // D1-4（批 5）：「违反 R53 N 笔」聚合收进最长拿着格副注（R53 计入违规 → 遵守率不虚高）
@@ -2741,7 +2741,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.byKey(const Key('posFilter3')));
+      await tester.tap(find.byKey(const Key('tabItem2')));
       await tester.pumpAndSettle();
 
       // 「不贪心」不应归入贪心模式 → 行为模式行不出现（patternCounts 空）
@@ -2818,7 +2818,7 @@ void main() {
     final api = ApiService(baseUrl: 'http://test', client: client);
     await _pumpTrading(tester, api);
 
-    await tester.tap(find.text('账'));
+    await tester.tap(find.byKey(const Key('tabItem3')));
     await tester.pumpAndSettle();
     // P2-交易31（2026-08-29，U32）+ 2026-10-08 账三合一：principal=0 → 总盈亏 null →
     // 不给误导数值（不回落浮盈、不把全部资产当总盈亏）；旧「设置本金」入口随后端 410 退役已撤。
@@ -2858,7 +2858,7 @@ void main() {
     final api = ApiService(baseUrl: 'http://test', client: client);
     await _pumpTrading(tester, api);
 
-    await tester.tap(find.text('账'));
+    await tester.tap(find.byKey(const Key('tabItem3')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('导入历史成交'));
     await tester.pumpAndSettle();
@@ -3368,7 +3368,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('账'));
+      await tester.tap(find.byKey(const Key('tabItem3')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
@@ -3435,7 +3435,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('账'));
+      await tester.tap(find.byKey(const Key('tabItem3')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
@@ -3486,7 +3486,7 @@ void main() {
     });
     final api = ApiService(baseUrl: 'http://test', client: client);
     await _pumpTrading(tester, api);
-    await tester.tap(find.text('账')); // 一键同步按钮在历史成交 Tab 工具行
+    await tester.tap(find.byKey(const Key('tabItem3'))); // 一键同步按钮在资金区（历史成交工具行）
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('一键同步'));
@@ -3621,12 +3621,12 @@ void main() {
           ),
         );
       }
-      // 其余走基础 mock：页面需要 portfolio 等基础数据才能渲染工作区（navItem3 左导航）
+      // 其余走基础 mock：页面需要 portfolio 等基础数据才能渲染工作区（tabItem4 规则区）
       return _tradingHandler(request);
     });
     final api = ApiService(baseUrl: 'http://test', client: client);
     await _pumpTrading(tester, api);
-    await tester.tap(find.byKey(const Key('navItem3')));
+    await tester.tap(find.byKey(const Key('tabItem4')));
     await tester.pumpAndSettle();
 
     // 标题 + 设计定义（P3-7：自建 / 从你的数据里长出来——它也是提醒的判据来源）
@@ -3666,12 +3666,12 @@ void main() {
           ruleListView(candidates: [ruleJson(evidence: ruleEvidence())]),
         );
       }
-      // 其余走基础 mock：页面需要 portfolio 等基础数据才能渲染工作区（navItem3 左导航）
+      // 其余走基础 mock：页面需要 portfolio 等基础数据才能渲染工作区（tabItem4 规则区）
       return _tradingHandler(request);
     });
     final api = ApiService(baseUrl: 'http://test', client: client);
     await _pumpTrading(tester, api);
-    await tester.tap(find.byKey(const Key('navItem3')));
+    await tester.tap(find.byKey(const Key('tabItem4')));
     await tester.pumpAndSettle();
 
     // 空态引导：没规则时的出路（照一遍 / 写一条）
@@ -3701,12 +3701,12 @@ void main() {
         accepted = true;
         return _json(ruleJson(state: 'ACCEPTED'));
       }
-      // 其余走基础 mock：页面需要 portfolio 等基础数据才能渲染工作区（navItem3 左导航）
+      // 其余走基础 mock：页面需要 portfolio 等基础数据才能渲染工作区（tabItem4 规则区）
       return _tradingHandler(request);
     });
     final api = ApiService(baseUrl: 'http://test', client: client);
     await _pumpTrading(tester, api);
-    await tester.tap(find.byKey(const Key('navItem3')));
+    await tester.tap(find.byKey(const Key('tabItem4')));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('认下'));
@@ -3734,12 +3734,12 @@ void main() {
           ),
         );
       }
-      // 其余走基础 mock：页面需要 portfolio 等基础数据才能渲染工作区（navItem3 左导航）
+      // 其余走基础 mock：页面需要 portfolio 等基础数据才能渲染工作区（tabItem4 规则区）
       return _tradingHandler(request);
     });
     final api = ApiService(baseUrl: 'http://test', client: client);
     await _pumpTrading(tester, api);
-    await tester.tap(find.byKey(const Key('navItem3')));
+    await tester.tap(find.byKey(const Key('tabItem4')));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('写一条'));
@@ -3780,12 +3780,12 @@ void main() {
         dismissed = true;
         return _json({'status': 'ok', 'id': 'cus-1'});
       }
-      // 其余走基础 mock：页面需要 portfolio 等基础数据才能渲染工作区（navItem3 左导航）
+      // 其余走基础 mock：页面需要 portfolio 等基础数据才能渲染工作区（tabItem4 规则区）
       return _tradingHandler(request);
     });
     final api = ApiService(baseUrl: 'http://test', client: client);
     await _pumpTrading(tester, api);
-    await tester.tap(find.byKey(const Key('navItem3')));
+    await tester.tap(find.byKey(const Key('tabItem4')));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('弃'));
@@ -3921,7 +3921,7 @@ void main() {
     await _pumpTrading(tester, api);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('案例'));
+    await tester.tap(find.byKey(const Key('tabItem6')));
     await tester.pumpAndSettle();
 
     expect(find.text('从你的记录里长出来的'), findsOneWidget);
@@ -3971,7 +3971,7 @@ void main() {
     await _pumpTrading(tester, api);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('案例'));
+    await tester.tap(find.byKey(const Key('tabItem6')));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(OutlinedButton, '收下').first);
     await tester.pumpAndSettle();
@@ -4011,7 +4011,7 @@ void main() {
     await _pumpTrading(tester, api);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('案例'));
+    await tester.tap(find.byKey(const Key('tabItem6')));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(OutlinedButton, '改一改').first);
     await tester.pumpAndSettle();
@@ -4056,7 +4056,7 @@ void main() {
     await _pumpTrading(tester, api);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('案例'));
+    await tester.tap(find.byKey(const Key('tabItem6')));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(OutlinedButton, '不要').first);
     await tester.pumpAndSettle();
@@ -4077,7 +4077,7 @@ void main() {
     await _pumpTrading(tester, api);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('案例'));
+    await tester.tap(find.byKey(const Key('tabItem6')));
     await tester.pumpAndSettle();
 
     expect(find.text('从你的记录里长出来的'), findsNothing, reason: '拿不到就整区不显示（零噪音）');
@@ -4104,7 +4104,7 @@ void main() {
     await _pumpTrading(tester, api);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('案例'));
+    await tester.tap(find.byKey(const Key('tabItem6')));
     await tester.pumpAndSettle();
 
     expect(find.text('从你的记录里长出来的'), findsNothing, reason: '没数据不占位（沉默是默认）');
@@ -4132,7 +4132,7 @@ void main() {
     await _pumpTrading(tester, api);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('案例'));
+    await tester.tap(find.byKey(const Key('tabItem6')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('标注案例'));
     await tester.pumpAndSettle();
@@ -4198,7 +4198,7 @@ void main() {
     await _pumpTrading(tester, api);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('案例'));
+    await tester.tap(find.byKey(const Key('tabItem6')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('标注案例'));
     await tester.pumpAndSettle();
@@ -4247,7 +4247,7 @@ void main() {
     await _pumpTrading(tester, api);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('案例'));
+    await tester.tap(find.byKey(const Key('tabItem6')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('匹配买点'));
     await tester.pumpAndSettle();
@@ -4318,7 +4318,7 @@ void main() {
     await _pumpTrading(tester, api);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('案例'));
+    await tester.tap(find.byKey(const Key('tabItem6')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('批量导入'));
     await tester.pumpAndSettle();
@@ -4362,7 +4362,7 @@ void main() {
     await _pumpTrading(tester, api);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('案例'));
+    await tester.tap(find.byKey(const Key('tabItem6')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('标注案例'));
     await tester.pumpAndSettle();
@@ -4420,7 +4420,7 @@ void main() {
     await _pumpTrading(tester, api);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('案例'));
+    await tester.tap(find.byKey(const Key('tabItem6')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('标注案例'));
     await tester.pumpAndSettle();
@@ -5115,7 +5115,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('账'));
+      await tester.tap(find.byKey(const Key('tabItem3')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
@@ -5202,7 +5202,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('账'));
+      await tester.tap(find.byKey(const Key('tabItem3')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
@@ -5301,7 +5301,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('账'));
+      await tester.tap(find.byKey(const Key('tabItem3')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
@@ -5368,7 +5368,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('账'));
+      await tester.tap(find.byKey(const Key('tabItem3')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
@@ -5430,7 +5430,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('账'));
+      await tester.tap(find.byKey(const Key('tabItem3')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
@@ -5526,7 +5526,7 @@ void main() {
       await _pumpTrading(tester, api);
 
       expect(find.textContaining('阿呆发现账对不上'), findsNothing);
-      await tester.tap(find.text('账'));
+      await tester.tap(find.byKey(const Key('tabItem3')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
@@ -5668,7 +5668,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('账'));
+      await tester.tap(find.byKey(const Key('tabItem3')));
       await tester.pumpAndSettle();
       // m6：金额默认掩码 → 先点 👁 显形再验格值
       await tester.tap(find.byKey(const Key('revealToggle')));
@@ -5740,7 +5740,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('账'));
+      await tester.tap(find.byKey(const Key('tabItem3')));
       await tester.pumpAndSettle();
 
       expect(find.text('⚠ 有差异'), findsNWidgets(2), reason: '状态条 + 账区自证条各一份');
@@ -5801,7 +5801,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('账'));
+      await tester.tap(find.byKey(const Key('tabItem3')));
       await tester.pumpAndSettle();
 
       // 现金格：有异常 → 「⚠ 有异常」+ 条下橙色人话行（后端文案只渲染不加工）
@@ -6617,7 +6617,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('账'));
+      await tester.tap(find.byKey(const Key('tabItem3')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
@@ -6678,7 +6678,7 @@ void main() {
       });
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
-      await tester.tap(find.text('账'));
+      await tester.tap(find.byKey(const Key('tabItem3')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
@@ -6730,7 +6730,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('账'));
+      await tester.tap(find.byKey(const Key('tabItem3')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入资金'));
       await tester.pumpAndSettle();
@@ -6776,7 +6776,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('账'));
+      await tester.tap(find.byKey(const Key('tabItem3')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入资金'));
       await tester.pumpAndSettle();
@@ -6811,7 +6811,7 @@ void main() {
         tester,
         ApiService(baseUrl: 'http://test', client: mock(soldImport)),
       );
-      await tester.tap(find.byKey(const Key('posFilter3')));
+      await tester.tap(find.byKey(const Key('tabItem2')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入清仓'));
       await tester.pumpAndSettle();
@@ -6873,7 +6873,7 @@ void main() {
         tester,
         ApiService(baseUrl: 'http://test', client: client),
       );
-      await tester.tap(find.text('账'));
+      await tester.tap(find.byKey(const Key('tabItem3')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入资金'));
       await tester.pumpAndSettle();
@@ -7451,7 +7451,7 @@ void _marketStageGroup() {
       expect(find.byKey(const Key('online_600123')), findsOneWidget);
     });
 
-    testWidgets('不到线没有行标；筛选 chips 带计数', (tester) async {
+    testWidgets('不到线没有行标；一级 Tab 计数 badge 同源', (tester) async {
       await _pumpTrading(
         tester,
         ApiService(baseUrl: 'http://test', client: _tradingMock()),
@@ -7461,21 +7461,31 @@ void _marketStageGroup() {
         findsNothing,
         reason: '26.10 > 22.80 未到线',
       );
-      // m4：左导航子项与 chips 同文（「持仓 1」×2）→ Key 锚定 chips 内文本，裸文本断言会双命中
-      String chipText(String key) => tester
-          .widget<Text>(
-            find
-                .descendant(
-                  of: find.byKey(Key(key)),
-                  matching: find.byType(Text),
-                )
-                .first,
-          )
-          .data!;
-      expect(chipText('posFilter0'), '全部 1');
-      expect(chipText('posFilter1'), '持仓 1');
-      expect(chipText('posFilter2'), '自选 0');
-      expect(chipText('posFilter3'), '清仓 0');
+      // D2 重排（2026-10-07）：原持仓区四 chips 退役 → 计数挂一级 Tab 右侧 badge（Key 锚 tabItemN）
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('tabItem0')),
+          matching: find.text('1'),
+        ),
+        findsOneWidget,
+        reason: '持仓 badge = 1',
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('tabItem1')),
+          matching: find.text('0'),
+        ),
+        findsOneWidget,
+        reason: '自选 badge = 0',
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('tabItem2')),
+          matching: find.text('0'),
+        ),
+        findsOneWidget,
+        reason: '清仓 badge = 0',
+      );
     });
   });
 
@@ -7593,164 +7603,126 @@ void _marketStageGroup() {
   });
 
   // ══════════════════════════════════════════════════════════════════════
-  // m4（2026-10-07）：顶部横 Tab → 左侧竖导航（品牌 / 6 项 / 激活区子项 / 左下脚注）。
-  // 子项交互规则：可点 ⇔ 该区有真实视图切换（持仓=切筛选、分析=切粒度）；
-  // 账/案例子项是目录型标注（对应内容屏内同屏，不可点、不高亮）。
+  // m4（2026-10-07 · D2 重排）：一级 8 区横 Tab（持仓·自选·清仓·资金·规则·分析·案例·计划）。
+  // 原交易内左导航（含二级）整体退役：持仓三视图升三个一级区、分析粒度回页内 chips、
+  // 案例两态在页内分段；计数挂一级 Tab 右侧 badge（持仓 / 自选 / 清仓三个列表型区）。
   // ══════════════════════════════════════════════════════════════════════
-  group('m4 左导航骨架', () {
-    testWidgets('品牌 + 六个分区都在；子项只出在激活区（持仓激活 → 四个筛选子项，计数同源）', (tester) async {
+  group('m4 横 Tab 骨架', () {
+    testWidgets('八个一级 Tab 都在；计数 badge 同源（持仓 1 / 自选 0 / 清仓 0）', (tester) async {
       await _pumpTrading(
         tester,
         ApiService(baseUrl: 'http://test', client: _tradingMock()),
       );
 
-      // 品牌（原型 .wd-brand）。'交易' 只在品牌一处（批 4 起页头标题改区名）→ 用 'AdaiOS' 锚品牌
-      expect(find.text('AdaiOS'), findsOneWidget);
-      for (var i = 0; i < 6; i++) {
+      for (var i = 0; i < 8; i++) {
         expect(
-          find.byKey(Key('navItem$i')),
+          find.byKey(Key('tabItem$i')),
           findsOneWidget,
-          reason: '六个分区 navItem$i 都应在',
+          reason: '八个一级区 tabItem$i 都应在',
         );
       }
-      // 默认激活持仓 → 四个子项，计数与 mock 数据一致（持仓 1 / 自选 0 / 清仓 0）
+      // 计数 badge（D2c）：挂一级 Tab 右侧，与 mock 数据同源
       expect(
         find.descendant(
-          of: find.byKey(const Key('navSub_pos0')),
-          matching: find.text('全部 1'),
+          of: find.byKey(const Key('tabItem0')),
+          matching: find.text('1'),
         ),
         findsOneWidget,
+        reason: '持仓 badge = 1（mock 一只 600123）',
       );
       expect(
         find.descendant(
-          of: find.byKey(const Key('navSub_pos1')),
-          matching: find.text('持仓 1'),
+          of: find.byKey(const Key('tabItem1')),
+          matching: find.text('0'),
         ),
         findsOneWidget,
+        reason: '自选 badge = 0',
       );
       expect(
         find.descendant(
-          of: find.byKey(const Key('navSub_pos2')),
-          matching: find.text('自选 0'),
+          of: find.byKey(const Key('tabItem2')),
+          matching: find.text('0'),
         ),
         findsOneWidget,
+        reason: '清仓 badge = 0',
       );
-      expect(
-        find.descendant(
-          of: find.byKey(const Key('navSub_pos3')),
-          matching: find.text('清仓 0'),
-        ),
-        findsOneWidget,
-      );
-      // 未激活区的子项不渲染
+      // 无二级：旧侧导航子项 key 全退役（navSub_* 一个都不在）
+      expect(find.byKey(const Key('navSub_pos0')), findsNothing);
       expect(find.byKey(const Key('navSub_acc0')), findsNothing);
       expect(find.byKey(const Key('navSub_ana0')), findsNothing);
       expect(find.byKey(const Key('navSub_case0')), findsNothing);
     });
 
-    testWidgets('点导航切区：子项跟着换（账 3 项 / 分析 3 项 / 案例 2 项 / 规则无子项）', (tester) async {
+    testWidgets('点 Tab 切区：内容跟着换（资金 / 规则 / 分析 / 案例）', (tester) async {
       await _pumpTrading(
         tester,
         ApiService(baseUrl: 'http://test', client: _tradingMock()),
       );
 
-      await tester.tap(find.byKey(const Key('navItem1')));
+      // 资金（3）：账区自证条的特征文案
+      await tester.tap(find.byKey(const Key('tabItem3')));
       await tester.pumpAndSettle();
-      expect(
-        find.descendant(
-          of: find.byKey(const Key('navSub_acc0')),
-          matching: find.text('资金'),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: find.byKey(const Key('navSub_acc1')),
-          matching: find.text('流水'),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: find.byKey(const Key('navSub_acc2')),
-          matching: find.text('对账'),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('navSub_pos0')),
-        findsNothing,
-        reason: '离开持仓区，其子项应收起',
-      );
+      expect(find.text('当天卖的钱也能买'), findsOneWidget);
 
-      await tester.tap(find.byKey(const Key('navItem2')));
+      // 规则（4）：mock 无 rules 路由 → 404 → 如实显示失败态（不编数据）
+      await tester.tap(find.byKey(const Key('tabItem4')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('navSub_ana0')), findsOneWidget);
-      expect(find.byKey(const Key('navSub_ana1')), findsOneWidget);
-      expect(find.byKey(const Key('navSub_ana2')), findsOneWidget);
+      expect(find.text('规则加载失败，请检查后端连接'), findsOneWidget);
+      expect(find.byKey(const Key('tabItem3')), findsOneWidget, reason: '横 Tab 常驻不随区卸载');
 
-      await tester.tap(find.byKey(const Key('navItem4')));
+      // 分析（5）：默认「这只票」→ 代码输入框出现（C1-1）
+      await tester.tap(find.byKey(const Key('tabItem5')));
       await tester.pumpAndSettle();
-      expect(
-        find.descendant(
-          of: find.byKey(const Key('navSub_case0')),
-          matching: find.text('等你认 0'),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: find.byKey(const Key('navSub_case1')),
-          matching: find.text('已收下 0'),
-        ),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('analysisSymbol')), findsOneWidget);
 
-      await tester.tap(find.byKey(const Key('navItem3')));
+      // 案例（6）：mock 无 cases 路由 → 404 → 如实显示失败态（不编数据）
+      await tester.tap(find.byKey(const Key('tabItem6')));
       await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('navSub_ana0')),
-        findsNothing,
-        reason: '规则区没有子项',
-      );
-      expect(find.byKey(const Key('navSub_case0')), findsNothing);
+      expect(find.text('案例加载失败，请检查后端连接'), findsOneWidget);
+      expect(find.text('立昂微'), findsNothing);
     });
 
-    testWidgets('持仓子项点击 = 切筛选（与 chips 同源）', (tester) async {
+    testWidgets('持仓 / 自选 / 清仓 = 三个独立一级区（不再折叠成筛选）', (tester) async {
       await _pumpTrading(
         tester,
         ApiService(baseUrl: 'http://test', client: _tradingMock()),
       );
 
-      await tester.tap(find.byKey(const Key('navSub_pos2')));
+      // 默认持仓区：持仓行在
+      expect(find.text('立昂微'), findsOneWidget);
+
+      // 自选区：空态人话（持仓行不再混进来）
+      await tester.tap(find.byKey(const Key('tabItem1')));
       await tester.pumpAndSettle();
       expect(
         find.text('暂无自选股——导入通达信自选导出，阿呆帮你盯买点'),
         findsOneWidget,
-        reason: '点是「自选 0」→ 切到自选视图',
+        reason: '自选区空态',
       );
-      expect(find.text('立昂微'), findsNothing);
+      expect(find.text('立昂微'), findsNothing, reason: '持仓行不跟到自选区');
 
-      await tester.tap(find.byKey(const Key('navSub_pos3')));
+      // 清选区：空态人话
+      await tester.tap(find.byKey(const Key('tabItem2')));
       await tester.pumpAndSettle();
       expect(
         find.text('暂无清仓记录——导入通达信清仓导出，阿呆对照规则给你判对错'),
         findsOneWidget,
-        reason: '点是「清仓 0」→ 切到清仓视图',
+        reason: '清选区空态',
       );
 
-      await tester.tap(find.byKey(const Key('navSub_pos0')));
+      // 回持仓区
+      await tester.tap(find.byKey(const Key('tabItem0')));
       await tester.pumpAndSettle();
-      expect(find.text('立昂微'), findsOneWidget, reason: '回「全部」→ 混合表里有持仓行');
+      expect(find.text('立昂微'), findsOneWidget);
     });
 
-    testWidgets('分析子项 ↔ 区内部粒度双向同步（这一笔/这只票/这一段）', (tester) async {
+    testWidgets('分析页内 chips 切粒度（这一笔 / 这只票 / 这一段）', (tester) async {
       await _pumpTrading(
         tester,
         ApiService(baseUrl: 'http://test', client: _tradingMock()),
       );
 
-      await tester.tap(find.byKey(const Key('navItem2')));
+      await tester.tap(find.byKey(const Key('tabItem5')));
       await tester.pumpAndSettle();
       // C1-1（2026-10-07 批 4）：默认「这只票」（symbol）——还没填代码 → 不空拉，出提示句
       expect(find.byKey(const Key('analysisSymbol')), findsOneWidget);
@@ -7761,7 +7733,8 @@ void _marketStageGroup() {
         reason: '未填代码时的空态说明',
       );
 
-      await tester.tap(find.byKey(const Key('navSub_ana0')));
+      // 「这一笔」= 单笔粒度 → 单笔目标输入框出现
+      await tester.tap(find.text('这一笔'));
       await tester.pumpAndSettle();
       expect(
         find.byKey(const Key('analysisRound')),
@@ -7769,7 +7742,8 @@ void _marketStageGroup() {
         reason: '「这一笔」= 单笔粒度 → 单笔目标输入框出现',
       );
 
-      await tester.tap(find.byKey(const Key('navSub_ana1')));
+      // 「这只票」= 单标的粒度
+      await tester.tap(find.text('这只票'));
       await tester.pumpAndSettle();
       expect(
         find.byKey(const Key('analysisSymbol')),
@@ -7778,7 +7752,8 @@ void _marketStageGroup() {
       );
       expect(find.byKey(const Key('analysisRound')), findsNothing);
 
-      await tester.tap(find.byKey(const Key('navSub_ana2')));
+      // 「这一段」= 全局粒度
+      await tester.tap(find.text('这一段'));
       await tester.pumpAndSettle();
       expect(
         find.byKey(const Key('analysisSymbol')),
@@ -7787,29 +7762,7 @@ void _marketStageGroup() {
       );
     });
 
-    testWidgets('左下脚注随区切换（持仓给账实实况、其它区给屏相关文案）', (tester) async {
-      await _pumpTrading(
-        tester,
-        ApiService(baseUrl: 'http://test', client: _tradingMock()),
-      );
-
-      // 持仓：integrity 未给（mock 无该路由）→ 「账实未知」；日期取账户快照日兜底
-      expect(find.text('账实未知'), findsOneWidget);
-      expect(find.text('最近导入 08-16'), findsOneWidget);
-
-      await tester.tap(find.byKey(const Key('navItem3')));
-      await tester.pumpAndSettle();
-      expect(find.text('看的是事实'), findsOneWidget);
-      expect(find.text('不是预测'), findsOneWidget);
-      expect(find.text('账实未知'), findsNothing);
-
-      await tester.tap(find.byKey(const Key('navItem4')));
-      await tester.pumpAndSettle();
-      expect(find.text('案例是规则的出口'), findsOneWidget);
-      expect(find.text('它从你的记录里长'), findsOneWidget);
-    });
-
-    testWidgets('「全部」= 持仓 + 自选混合表：自选轻行（名字 + 「自选」标），缺列不编数', (tester) async {
+    testWidgets('自选不进持仓表；自选区独立（混合表退役）', (tester) async {
       final api = ApiService(
         baseUrl: 'http://test',
         client: MockClient((request) async {
@@ -7823,25 +7776,23 @@ void _marketStageGroup() {
       );
       await _pumpTrading(tester, api);
 
-      // 表头两计数（原型「全部」屏）：持仓 + 自选
-      expect(find.text('持仓 1 只 · 自选 1 只'), findsOneWidget);
-      // 自选轻行：名字 + 代码 + 「自选」标（一眼分清不是持仓行）
-      expect(find.text('招商银行'), findsOneWidget);
-      expect(find.text('600999'), findsOneWidget);
-      expect(find.text('自选'), findsOneWidget);
-      // chips 计数同源
+      // 持仓区只有持仓（D2：混合表退役，自选轻行不再混进来）
+      expect(find.text('立昂微'), findsOneWidget);
+      expect(find.text('招商银行'), findsNothing, reason: '自选轻行不再混在持仓表');
+      // badge 计数同源：自选 1（watchlist mock 给了 1 只）
       expect(
         find.descendant(
-          of: find.byKey(const Key('posFilter0')),
-          matching: find.text('全部 2'),
+          of: find.byKey(const Key('tabItem1')),
+          matching: find.text('1'),
         ),
         findsOneWidget,
+        reason: '自选 badge = 1',
       );
 
-      // 切「持仓」→ 自选轻行不再混在表里
-      await tester.tap(find.byKey(const Key('posFilter1')));
+      // 自选区里能看到它
+      await tester.tap(find.byKey(const Key('tabItem1')));
       await tester.pumpAndSettle();
-      expect(find.text('招商银行'), findsNothing);
+      expect(find.text('招商银行'), findsOneWidget);
     });
   });
 
@@ -8044,7 +7995,7 @@ void _marketStageGroup() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('账'));
+      await tester.tap(find.byKey(const Key('tabItem3')));
       await tester.pumpAndSettle();
 
       expect(find.text('¥••••'), findsWidgets, reason: '自证条：现金/可用/可取/状态条 打码');
@@ -8314,10 +8265,10 @@ void _marketStageGroup() {
       );
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.byKey(const Key('navItem2')));
+      await tester.tap(find.byKey(const Key('tabItem5')));
       await tester.pumpAndSettle();
       await tester.tap(
-        find.byKey(const Key('navSub_ana2')),
+        find.text('这一段'),
       ); // 「这一段」= global，零输入即出
       await tester.pumpAndSettle();
 

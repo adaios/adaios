@@ -365,10 +365,10 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('分析'));
+      await tester.tap(find.byKey(const Key('tabItem5')));
       await tester.pumpAndSettle();
       // C1-1（2026-10-07 批 4）：默认「这只票」——「这一段」（全局）要自己切（零输入即出）
-      await tester.tap(find.byKey(const Key('navSub_ana2')));
+      await tester.tap(find.text('这一段'));
       await tester.pumpAndSettle();
 
       expect(find.text('我是什么样的交易者'), findsOneWidget);
@@ -438,7 +438,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('分析'));
+      await tester.tap(find.byKey(const Key('tabItem5')));
       await tester.pumpAndSettle();
       // C1-1（2026-10-07 批 4）：默认「这只票」——打开不再自动拉全局
       expect(requests, isEmpty);
@@ -547,15 +547,15 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('分析'));
+      await tester.tap(find.byKey(const Key('tabItem5')));
       await tester.pumpAndSettle();
       // m6（2026-10-07 · 原型 .wd-eye「👁 看金额」）：分析列表项金额默认打码——
       // 先点页头 👁 显形再断原值（掩码态断言在 trading_page_test 的 m6 组已覆盖）
       await tester.tap(find.byKey(const Key('revealToggle')));
       await tester.pumpAndSettle();
 
-      // 这一笔：一笔的过程（m4 起粒度文案为「这一笔」——与左导航子项同步）
-      await tester.tap(find.byKey(const Key('navSub_ana0')));
+      // 这一笔：一笔的过程（D2 重排起粒度 chips 在分析页内）
+      await tester.tap(find.text('这一笔'));
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const Key('analysisRound')),
