@@ -3,7 +3,7 @@ title: AdaiOS API 文档（接口契约）
 description: 📋 **API 接口契约（唯一真相源）**——全部端点定义与请求/响应结构；`ai-guard-align` A1 与源码 `@Mapping` 逐一对拍
 version: 1
 created: 2026-08-15
-updated: 2026-10-08
+updated: 2026-10-07
 status: active
 lines: 3477
 depends-on: []
@@ -964,7 +964,7 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
  "peakLine":{"price":17.7,"peakPrice":18.63,"peakDate":"2026-08-11","basis":"-5% 浮盈回吐（当前口径）","note":"峰值浮盈线"},
  "context":{"held":false,"tradeCount":4,"closedAt":"2026-08-19","holdDays":25,"holdPnlPct":9.6,"verdict":"守纪律"}}
 ```
-- `marks`：**我的买卖点** —— `B` 建仓 / `T` 加仓 / `S` 卖出（按成交先后推导：手上没有货的那一笔是 B，加的是 T）；窗口内没有成交就不给，**不硬编**。
+- `marks`：**我的买卖点** —— `B` 建仓 / `T` 加仓 / `S` 卖出（按成交先后推导：手上没有货的那一笔是 B，加的是 T）；窗口内没有成交就不给，**不硬编**；**同一天、同一方向的多笔成交合成一条**（数量相加、价格取加权均价——图上一天只出一个点）。
 - `stopLine`：取**最近一次买入时定的止损**（`TradeRecord.stopLossPrice`）；**从没定过 → `null`**（不凭空给一条线）。
 - `peakLine`：持有期内最高收盘 × (1 − 回吐阈值)，**只在见顶之后才存在** → 没有持有期就 `null`。当前回吐取固定 **5%**，`basis` 字段如实说明用的是哪一档（`rules.yaml` 的 `givebackPeakPct` 接入后改读用户设置）。
 - `context`：现在还拿着吗（`held`）· 清了的带出清仓日与这笔盈亏（来自 `SoldTradeRepository`）。

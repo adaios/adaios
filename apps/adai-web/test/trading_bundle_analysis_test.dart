@@ -10,7 +10,7 @@ import 'package:http/testing.dart';
 import 'package:adai_web/pages/trading_page.dart';
 import 'package:adai_web/services/api_service.dart';
 
-/// R-12 统一导入 + R-05 三粒度分析的 web 面验收（2026-10-06 首跑）。
+/// R-12 统一导入 + R-05 三粒度分析的 web 面验收（2026-10-06 首跑；2026-10-07 对齐右侧抽屉）。
 /// 口径同 trading_page_test.dart：替身选文件 + MockClient（UTF-8 charset）。
 
 /// 选文件替身：测试里不走真文件选择器（同 trading_page_test.dart 的 _FakePicker）。
@@ -124,7 +124,7 @@ const _globalStub = {
 
 void main() {
   group('R-12 统一导入（web，2026-10-06）', () {
-    testWidgets('多选 → 先看计划（dryRun）→ 导入 → 逐份回执 + 刷新数据', (tester) async {
+    testWidgets('多选 → 点虚线框即自动预检（dryRun）→ 确认入账 → 逐份回执 + 刷新数据', (tester) async {
       var portfolioCalls = 0;
       final dryRuns = <String>[];
       final client = MockClient((request) async {
@@ -177,46 +177,50 @@ void main() {
       await _pumpTrading(tester, api);
       _useFakePicker(['历史成交.txt', '资金股份.txt']);
 
-      // 2026-10-06 用户裁决：批量导入归各 Tab 专属入口——从「导入持仓」对话框进入，
-      // 「选择文件（可多选，通达信导出）」选 2 份 → 转统一批量对话框（R-12「一次交文件」）
+      // 2026-10-07（原型 web-7）：右侧抽屉只有一个入口——点虚线框一次选 2 份，
+      // 选完自动预检（「选完就看计划」，不用再点一次）
       await tester.tap(find.text('导入持仓'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('选择文件（可多选，通达信导出）'));
+      await tester.tap(find.byKey(const Key('importPickZone')));
       await tester.pumpAndSettle();
-      expect(find.text('导入交易数据'), findsOneWidget);
-      expect(find.text('已选 2 份'), findsOneWidget);
-      expect(find.text('历史成交.txt'), findsOneWidget);
-      expect(find.text('资金股份.txt'), findsOneWidget);
 
-      // 先看计划（dryRun=true）——只报会做什么、不动数据
-      await tester.tap(find.text('先看计划（预检：只报会做什么，不动数据）'));
-      await tester.pumpAndSettle();
-      expect(dryRuns, ['true']);
+      expect(dryRuns, ['true'], reason: '选完文件即自动预检');
+      expect(find.text('这次认出来的'), findsOneWidget);
+      expect(find.text('已选 2 份——点这里重新选'), findsOneWidget);
+      expect(find.text('历史成交.txt'), findsNWidgets(2), reason: '文件列表 + 回执行各一份');
+      expect(find.text('资金股份.txt'), findsNWidgets(2), reason: '文件列表 + 回执行各一份');
       expect(find.textContaining('计划：2 份能处理'), findsOneWidget);
       expect(find.textContaining('新增 3 · 并入 1 · 跳过 2'), findsOneWidget);
       expect(find.textContaining('对账：券商 ¥1,000.00 vs 系统'), findsOneWidget);
 
-      // 正式导入（dryRun=false）→ 一份失败不影响其他份（逐份如实回执）
-      await tester.tap(find.descendant(of: find.byType(Dialog), matching: find.text('导入')));
+      // 确认入账（dryRun=false）→ 一份失败不影响其他份（逐份如实回执）
+      await tester.tap(find.byKey(const Key('importConfirmBtn')));
       await tester.pumpAndSettle();
       expect(dryRuns, ['true', 'false']);
+      expect(find.text('这次交齐的'), findsOneWidget);
       expect(find.textContaining('导入完成：成功 1 份，失败 1 份'), findsOneWidget);
       expect(find.textContaining('没认出这份文件是哪类导出'), findsOneWidget);
-      expect(find.textContaining('已导入——可关闭'), findsOneWidget);
+      expect(find.textContaining('数据已更新'), findsOneWidget);
       expect(portfolioCalls, greaterThan(1), reason: '导入成功后必须刷新页面数据');
     });
 
-    testWidgets('选 1 份 → 仍走原文本框路径（不转批量对话框、不发批量请求）', (tester) async {
-      var bundleCalls = 0;
+    testWidgets('选 1 份 → 同样自动预检（不再分单份/多份两条路）', (tester) async {
+      final dryRuns = <String>[];
       final client = MockClient((request) async {
         final base = await _baseRoute(request);
         if (base != null) return base;
-        if (request.url.path == '/api/v1/trading/imports/save') {
-          return _json({'path': 'imports/持仓20261001.txt', 'content': '代码\t名称\n600123\t立昂微\n'});
-        }
-        if (request.url.path == '/api/v1/trading/import') {
-          bundleCalls++;
-          return _json({'dryRun': false, 'okCount': 0, 'failedCount': 0, 'files': []});
+        if (request.url.path == '/api/v1/trading/import' && request.method == 'POST') {
+          dryRuns.add(_hasField(request, 'dryRun', 'true') ? 'dry' : 'real');
+          return _json({
+            'dryRun': true, 'okCount': 1, 'failedCount': 0,
+            'files': [
+              {
+                'filename': '持仓20261001.txt', 'kind': 'positions', 'kindLabel': '持仓股',
+                'ok': true,
+                'detail': {'dryRun': true, 'fileCount': 1, 'systemCount': 0, 'diffs': [], 'note': '一致'},
+              },
+            ],
+          });
         }
         return http.Response('not found', 404);
       });
@@ -226,12 +230,12 @@ void main() {
 
       await tester.tap(find.text('导入持仓'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('选择文件（可多选，通达信导出）'));
+      await tester.tap(find.byKey(const Key('importPickZone')));
       await tester.pumpAndSettle();
 
-      expect(find.text('导入交易数据'), findsNothing, reason: '单份仍走原文本框路径，不转批量');
-      expect(find.textContaining('立昂微'), findsOneWidget, reason: '文件内容落进输入框（单份路径不变）');
-      expect(bundleCalls, 0, reason: '单份不走批量端点');
+      expect(dryRuns, ['dry'], reason: '单份也走统一链——选完自动预检，不再有「单份转文本框」的老路');
+      expect(find.text('这次认出来的'), findsOneWidget);
+      expect(find.text('确认入账 1 条'), findsOneWidget);
     });
   });
 

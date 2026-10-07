@@ -12,11 +12,12 @@ import 'package:adai_web/services/api_service.dart';
 import 'package:adai_web/theme/app_colors.dart';
 import 'package:adai_web/utils/trade_import_parser.dart';
 
-/// 选文件替身（P2-工程12④ 导入弹窗「选完文件撤掉旧错误」用例）：
+/// 选文件替身（P2-工程12④ 导入抽屉「选完文件撤掉旧错误」用例）：
 /// 测试里不走真文件选择器（不弹系统窗口）。值复制自 media_batch_test 的同名替身。
 class _FakePicker extends FilePicker {
-  _FakePicker(this.names);
+  _FakePicker(this.names, {this.emptyBytes = false});
   final List<String> names;
+  final bool emptyBytes; // true = 造空文件（抽屉「选到空文件」用例）
 
   @override
   Future<FilePickerResult?> pickFiles({
@@ -37,21 +38,21 @@ class _FakePicker extends FilePicker {
         for (var i = 0; i < names.length; i++)
           PlatformFile(
             name: names[i],
-            size: 4,
-            bytes: Uint8List.fromList([65 + i, 66, 67, 68]),
+            size: emptyBytes ? 0 : 4,
+            bytes: emptyBytes ? Uint8List(0) : Uint8List.fromList([65 + i, 66, 67, 68]),
           ),
       ]);
 }
 
 /// 注入选文件替身（跑完还原）。
-void _useFakePicker(List<String> names) {
+void _useFakePicker(List<String> names, {bool emptyBytes = false}) {
   FilePicker? original;
   try {
     original = FilePicker.platform;
   } catch (_) {
     original = null;
   }
-  FilePicker.platform = _FakePicker(names);
+  FilePicker.platform = _FakePicker(names, emptyBytes: emptyBytes);
   addTearDown(() {
     if (original != null) FilePicker.platform = original;
   });
@@ -63,6 +64,16 @@ http.Response _json(Object body) => http.Response(
       200,
       headers: {'content-type': 'application/json; charset=utf-8'},
     );
+
+/// multipart 文本字段断言（统一导入的 dryRun 是 multipart field；同
+/// trading_bundle_analysis_test.dart 口径）。
+bool _hasField(http.Request r, String name, String value) {
+  final body = utf8.decode(r.bodyBytes, allowMalformed: true);
+  final i = body.indexOf('name="$name"');
+  if (i < 0) return false;
+  final seg = body.substring(i, i + 200 > body.length ? body.length : i + 200);
+  return seg.contains('\r\n\r\n$value');
+}
 
 /// yyyy-MM-dd（P2-交易48 账户卡来源日期断言用；页面按「今天」判是否过期）。
 String _ymd(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
@@ -735,7 +746,7 @@ void main() {
         find.byKey(const Key('tradeImportContent')),
         '代码\t名称\t成本价\t证券数量\n600123\t立昂微\t25.30\t200\n600519\t贵州茅台\t1350\t100\n',
       );
-      await tester.tap(find.text('导入'));
+      await tester.tap(find.byKey(const Key('importConfirmBtn')));
       await tester.pumpAndSettle();
 
       expect(sentBody, isNotNull);
@@ -787,7 +798,7 @@ void main() {
       await tester.enterText(find.byKey(const Key('tradeImportBasis')), '2026-09-18');
       await tester.enterText(find.byKey(const Key('tradeImportContent')),
           '代码\t名称\t成本价\t证券数量\n600123\t立昂微\t25.30\t200\n');
-      await tester.tap(find.text('导入'));
+      await tester.tap(find.byKey(const Key('importConfirmBtn')));
       await tester.pumpAndSettle();
 
       expect(importUri, isNotNull, reason: '应发出正式导入请求');
@@ -831,7 +842,7 @@ void main() {
         '600206\t有研新材\t900\t46.012\n'
         '600601\t方正科技\t100\t--\n',
       );
-      await tester.tap(find.text('导入'));
+      await tester.tap(find.byKey(const Key('importConfirmBtn')));
       await tester.pumpAndSettle();
 
       expect(postCalls, 0, reason: '有看不懂的行时绝不能发全量覆盖请求（会误删持仓）');
@@ -873,7 +884,7 @@ void main() {
         '600601\t方正科技\t-5.078\t100\n'
         '603113\t金能科技\t5.569\t0\n',
       );
-      await tester.tap(find.text('导入'));
+      await tester.tap(find.byKey(const Key('importConfirmBtn')));
       await tester.pumpAndSettle();
 
       expect(sentBody, isNotNull, reason: '3 只全解析成功 → 正常导入');
@@ -914,7 +925,7 @@ void main() {
         find.byKey(const Key('tradeImportContent')),
         '代码\t名称\t介入日期\t清仓日期\t持仓天数\t买卖次数\t持仓期涨幅%\n600519\t贵州茅台\t20260801\t20260810\t9\t1\t-5.0\n',
       );
-      await tester.tap(find.text('导入'));
+      await tester.tap(find.byKey(const Key('importConfirmBtn')));
       await tester.pumpAndSettle();
 
       expect(postCalls, 0);
@@ -1048,7 +1059,7 @@ void main() {
         find.byType(TextField).last,
         '600123,立昂微,BUY,25.3,200,22.8,B2',
       );
-      await tester.tap(find.text('导入'));
+      await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('导入')));
       await tester.pumpAndSettle();
       expect(find.textContaining('无法识别'), findsOneWidget);
     });
@@ -1913,7 +1924,8 @@ void main() {
     // 表头四关键词齐全 → 过本地 isTdxHistoryExport 校验 → 请求打后端 → 400 人话透出
     await tester.enterText(find.byType(TextField).last,
         '成交日期 证券代码 证券名称 买卖标志 成交编号');
-    await tester.tap(find.text('导入'));
+    // 2026-10-07：顶栏常驻「导入」与对话框内「导入」同文 → 限定在弹窗内点
+    await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('导入')));
     await tester.pumpAndSettle();
 
     // 后端人话 error 透出（原实现 contains('无法识别') 恒 false → 吞成「检查网络」）
@@ -2243,7 +2255,7 @@ void main() {
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).last, tdxText);
-      await tester.tap(find.text('导入'));
+      await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('导入')));
       await tester.pumpAndSettle();
       // RFC 20260912：两段式——先预检（dryRun），点「确认导入」才落盘
       await tester.tap(find.text('确认导入'));
@@ -2292,7 +2304,7 @@ void main() {
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).last, tdxText);
-      await tester.tap(find.text('导入'));
+      await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('导入')));
       await tester.pumpAndSettle();
       // RFC 20260912：两段式——预检后才落盘
       await tester.tap(find.text('确认导入'));
@@ -2805,22 +2817,21 @@ void main() {
         reason: '原先这里直接 return，点「匹配」毫无反应');
   });
 
-  testWidgets('P2-交易71 同族：导入弹窗空内容点「导入」→ 弹窗内提示、不关窗', (tester) async {
+  testWidgets('P2-交易71 同族：导入抽屉空内容点「导入」→ 抽屉内提示、不关窗', (tester) async {
     final api = ApiService(baseUrl: 'http://test', client: _tradingMock());
     await _pumpTrading(tester, api);
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('导入持仓'));
     await tester.pumpAndSettle();
-    final dialog = find.byType(AlertDialog);
-    expect(dialog, findsOneWidget, reason: '应先打开导入弹窗');
+    expect(find.byKey(const Key('importDrawer')), findsOneWidget, reason: '应先打开导入抽屉');
 
-    await tester.tap(find.descendant(of: dialog, matching: find.widgetWithText(FilledButton, '导入')));
+    await tester.tap(find.byKey(const Key('importConfirmBtn')));
     await tester.pumpAndSettle();
 
     expect(find.text('先粘贴内容，或选择通达信导出的文件'), findsOneWidget,
         reason: '空内容要如实说明（原先直接 return，点了毫无反应）');
-    expect(find.byType(AlertDialog), findsOneWidget, reason: '校验失败不该关窗');
+    expect(find.byKey(const Key('importDrawer')), findsOneWidget, reason: '校验失败不该关窗');
   });
 
   testWidgets('P2-交易71 同族：案例批量导入空内容 → 弹窗内提示（原先点了毫无反应）', (tester) async {
@@ -2936,40 +2947,42 @@ void main() {
         reason: '标的还没选，这条错误仍成立——敲日期不能把它抹掉');
   });
 
-  testWidgets('P3 导入弹窗：选到空文件 → 「先粘贴内容…」红字仍在（只在真有内容时才清）', (tester) async {
-    _useFakePicker(['空文件20261001.txt']);
-    final client = MockClient((request) async {
-      if (request.url.path == '/api/v1/trading/imports/save') {
-        // 选到的文件是空的（只有空白）→ 内容仍为空，提示依旧成立
-        return _json({'path': 'imports/空文件20261001.txt', 'content': '  \n'});
-      }
-      return _tradingHandler(request);
-    });
-    final api = ApiService(baseUrl: 'http://test', client: client);
+  testWidgets('P3 导入抽屉：选到空文件 → 「先粘贴内容…」红字仍在（只在真有内容时才清）', (tester) async {
+    _useFakePicker(['空文件20261001.txt'], emptyBytes: true);
+    final api = ApiService(baseUrl: 'http://test', client: _tradingMock());
     await _pumpTrading(tester, api);
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('导入持仓'));
     await tester.pumpAndSettle();
-    final dialog = find.byType(AlertDialog);
 
-    await tester.tap(find.descendant(of: dialog, matching: find.widgetWithText(FilledButton, '导入')));
+    await tester.tap(find.byKey(const Key('importConfirmBtn')));
     await tester.pumpAndSettle();
     expect(find.text('先粘贴内容，或选择通达信导出的文件'), findsOneWidget);
 
-    await tester.tap(find.text('选择文件（可多选，通达信导出）'));
+    await tester.tap(find.byKey(const Key('importPickZone')));
     await tester.pumpAndSettle();
+    expect(find.text('选的文件都是空的——重新导出后再试'), findsOneWidget,
+        reason: '空文件要当场说清，不让用户干等');
     expect(find.text('先粘贴内容，或选择通达信导出的文件'), findsOneWidget,
         reason: '空文件清掉这句等于把仍成立的话藏起来（用户仍不知道该粘什么）');
   });
 
-  testWidgets('P2-工程12④ 导入弹窗：选完文件 → 红字立刻撤掉', (tester) async {
+  testWidgets('P2-工程12④ 导入抽屉：选完文件 → 自动预检 + 旧红字撤掉', (tester) async {
     _useFakePicker(['持仓20261001.txt']);
+    final dryRuns = <String>[];
     final client = MockClient((request) async {
-      if (request.url.path == '/api/v1/trading/imports/save') {
+      if (request.url.path == '/api/v1/trading/import' && request.method == 'POST') {
+        dryRuns.add(_hasField(request, 'dryRun', 'true') ? 'dry' : 'real');
         return _json({
-          'path': 'imports/持仓20261001.txt',
-          'content': '代码\t名称\n600123\t立昂微\n',
+          'dryRun': true, 'okCount': 1, 'failedCount': 0,
+          'files': [
+            {
+              'filename': '持仓20261001.txt', 'kind': 'positions', 'kindLabel': '持仓股',
+              'ok': true,
+              'detail': {'dryRun': true, 'fileCount': 1, 'systemCount': 0, 'diffs': [], 'note': '一致'},
+            },
+          ],
         });
       }
       return _tradingHandler(request);
@@ -2980,19 +2993,21 @@ void main() {
 
     await tester.tap(find.text('导入持仓'));
     await tester.pumpAndSettle();
-    final dialog = find.byType(AlertDialog);
 
-    await tester.tap(find.descendant(of: dialog, matching: find.widgetWithText(FilledButton, '导入')));
+    await tester.tap(find.byKey(const Key('importConfirmBtn')));
     await tester.pumpAndSettle();
     expect(find.text('先粘贴内容，或选择通达信导出的文件'), findsOneWidget);
 
-    await tester.tap(find.text('选择文件（可多选，通达信导出）'));
+    await tester.tap(find.byKey(const Key('importPickZone')));
     await tester.pumpAndSettle();
 
+    expect(dryRuns, ['dry'], reason: '选完文件即自动预检（原型「选完就看计划」）');
     expect(find.text('先粘贴内容，或选择通达信导出的文件'), findsNothing,
         reason: '选完文件即撤掉旧错误（原先红字挂着，看着像文件也不行）');
-    expect(find.descendant(of: dialog, matching: find.textContaining('立昂微')), findsOneWidget,
-        reason: '文件内容确实落进了输入框');
+    expect(find.text('这次认出来的'), findsOneWidget);
+    expect(find.text('持仓20261001.txt'), findsNWidgets(2), reason: '文件列表 + 回执行各一份');
+    expect(find.text('· 一致'), findsOneWidget, reason: '「对完账才发现的事」直出后端人话');
+    expect(find.text('确认入账 1 条'), findsOneWidget, reason: '底部主按钮按计划给条数');
   });
 
   testWidgets('案例 Tab：标注调用 POST /trading/cases（契约：symbol/buyDate/buyType）', (tester) async {
@@ -3352,16 +3367,6 @@ void main() {
       expect(legacy.hasIssue, isFalse);
     });
 
-    test('文件名解析快照日（yyyymmdd / yyyy-MM-dd / 假日期判掉）', () {
-      expect(parseSnapshotDateFromFilename('持仓股20260912.txt'), '2026-09-12');
-      expect(parseSnapshotDateFromFilename('资金股份查询-2026-09-12.csv'), '2026-09-12');
-      expect(parseSnapshotDateFromFilename('持仓股_2026_09_08.TXT'), '2026-09-08');
-      expect(parseSnapshotDateFromFilename('历史成交查询.txt'), isNull, reason: '无日期 → 不传，退回导入日');
-      expect(parseSnapshotDateFromFilename(''), isNull);
-      expect(parseSnapshotDateFromFilename('导出20261345.txt'), isNull, reason: '假日期不当作锚定日');
-      expect(parseSnapshotDateFromFilename('导出20260230.txt'), isNull, reason: '2/30 不存在');
-    });
-
     // ── P2-交易84（2026-10-05）：显式「数据基准日」输入 ──
     test('基准日输入解析（合法才传，非法不猜）', () {
       expect(parseBasisDateInput('2026-09-18'), '2026-09-18');
@@ -3451,7 +3456,7 @@ void main() {
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).last, tdxText);
-      await tester.tap(find.text('导入'));
+      await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('导入')));
       await tester.pumpAndSettle();
 
       // 预检阶段：只发了一次 dryRun=true；计划卡可见（未落盘）
@@ -3509,7 +3514,7 @@ void main() {
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).last, tdxText);
-      await tester.tap(find.text('导入'));
+      await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('导入')));
       await tester.pumpAndSettle();
 
       // 预检阶段就可见（用户确认前就知道有 N 笔要落成「未并入持仓」）
@@ -3575,7 +3580,7 @@ void main() {
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).last, tdxText);
-      await tester.tap(find.text('导入'));
+      await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('导入')));
       await tester.pumpAndSettle();
 
       // 400 人话原样透出（不吞成「检查网络」）+ 两条路
@@ -3629,7 +3634,7 @@ void main() {
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).last, tdxText);
-      await tester.tap(find.text('导入'));
+      await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('导入')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('先导快照'));
       await tester.pumpAndSettle();
@@ -3670,7 +3675,7 @@ void main() {
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).last, tdxText);
-      await tester.tap(find.text('导入'));
+      await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('导入')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('确认导入'));
       await tester.pumpAndSettle();
@@ -3729,7 +3734,7 @@ void main() {
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).last, tdxText);
-      await tester.tap(find.text('导入'));
+      await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('导入')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('确认导入'));
       await tester.pumpAndSettle();
@@ -4501,7 +4506,7 @@ void main() {
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).last, tdxText);
-      await tester.tap(find.text('导入'));
+      await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('导入')));
       await tester.pumpAndSettle();
 
       // 预检阶段就可见（默认展开：丢数据第一眼可见）
@@ -4549,7 +4554,7 @@ void main() {
       await tester.tap(find.text('导入历史成交'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).last, tdxText);
-      await tester.tap(find.text('导入'));
+      await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('导入')));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('没能识别'), findsNothing);
@@ -4585,7 +4590,7 @@ void main() {
       await tester.tap(find.text('导入资金'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).last, '资金导出文本');
-      await tester.tap(find.text('导入'));
+      await tester.tap(find.byKey(const Key('importConfirmBtn')));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('资金已更新：现金 ¥1381.93 · 成本更新 2 只'), findsOneWidget);
@@ -4619,7 +4624,7 @@ void main() {
       await tester.tap(find.text('导入资金'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).last, '资金导出文本');
-      await tester.tap(find.text('导入'));
+      await tester.tap(find.byKey(const Key('importConfirmBtn')));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('资金已更新：现金 ¥1381.93 · 成本更新 2 只'), findsOneWidget);
@@ -4643,7 +4648,7 @@ void main() {
       await tester.tap(find.text('导入清仓'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).last, '清仓导出文本');
-      await tester.tap(find.text('导入'));
+      await tester.tap(find.byKey(const Key('importConfirmBtn')));
       await tester.pumpAndSettle();
     }
 
@@ -4688,7 +4693,7 @@ void main() {
       await tester.tap(find.text('导入资金'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).last, '资金导出文本');
-      await tester.tap(find.text('导入'));
+      await tester.tap(find.byKey(const Key('importConfirmBtn')));
       await tester.pumpAndSettle();
     }
 

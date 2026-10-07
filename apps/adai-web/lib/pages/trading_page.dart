@@ -6,6 +6,7 @@ import '../utils/trade_import_parser.dart';
 import '../widgets/case_kline_chart.dart';
 import '../widgets/page_header.dart';
 import 'dart:async';
+import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 
 // ── RFC 20260825 共用格式化/配色（批次弹窗 + 导入总结，独立 State 类共享） ──
@@ -754,14 +755,10 @@ class _TradingPageState extends State<TradingPage> {
             color: AppColors.darkGrey4,
             tooltip: '复盘历史',
           ),
-          // RFC 20260823：交易历史 Dialog 已升级为第 5 Tab「历史成交」，页头入口移除
-          // 2026-08-23 用户确认：页头「批量导入」入口移除——清仓/资金/自选/历史成交各 Tab
-          // 已有专属导入按钮（导入清仓/导入资金/导入自选/导入历史成交），持仓导入在持仓 Tab 内，
-          // 避免用户把清仓/资金文本误塞进批量导入对话框（被交易 CSV 解析器校验「买点」拦截）
-          // 2026-10-06 用户裁决（R-12 落地口径）：「移除页头批量导入，归于 tab 专属」——页头不设导入入口。
-          // 统一识别（一次多选、逐份识别、先看计划）并入各 Tab 专属导入对话框的
-          // 「选择文件（可多选，通达信导出）」多选路径：选 ≥2 份 → `_openBundleImport` 批量对话框；
-          // 选 1 份 → 原文本框路径（可预览/编辑/基准日）。08-23 的「误塞被拦截」由逐份识别 + fail-closed 接管。
+          // RFC 20260823：交易历史 Dialog 已升级为第 5 Tab「历史成交」，页头入口移除。
+          // 2026-10-06 曾裁决「页头不设导入入口」；2026-10-07 按原型（全量地图「导入 / 记一笔 /
+          // 复盘 常驻顶栏」）改回：误塞顾虑已由 R-12 逐份识别 +「先看计划」预检接管——
+          // 选错文件也不动数据；各 Tab 的专属导入入口继续保留。
           // RFC 20260817：推送设置入口（早盘/午间/尾盘/买点/预警/行情条开关）
           IconButton(
             onPressed: _showPushSettings,
@@ -793,6 +790,22 @@ class _TradingPageState extends State<TradingPage> {
               label: const Text('记录交易'),
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.darkGreen,
+                foregroundColor: AppColors.darkBg,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+          // 2026-10-07（原型「导入」常驻顶栏）：亮底 main 款（原型 `wd-btn.main` 白底深字 =
+          // darkGrey1 #F0EDE9）。打开统一导入抽屉：点选文件一次多选、逐份识别、先看计划；粘贴路径同框保留。
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: FilledButton.icon(
+              onPressed: () => _showImportDrawer(),
+              icon: const Icon(Icons.file_download_outlined, size: 16),
+              label: const Text('导入'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.darkGrey1,
                 foregroundColor: AppColors.darkBg,
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
@@ -2259,7 +2272,7 @@ class _TradingPageState extends State<TradingPage> {
         Text('${_watchlist.length} 只 · 阿呆帮你盯买点', style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
         const Spacer(),
         OutlinedButton.icon(
-          onPressed: () => _openImportDialog('自选股',
+          onPressed: () => _openImportDialog(
               '粘贴通达信自选导出（或选择文件）：代码/名称/细分行业/长期中期短期形态/近日指标提示',
               (c, _, _) async {
                 final n = await widget.api.importWatchlist(c);
@@ -2284,13 +2297,15 @@ class _TradingPageState extends State<TradingPage> {
             style: TextStyle(fontSize: 12, color: AppColors.darkGrey5))
       else
         _scrollableTable(
-          minWidth: 850,
+          // 2026-10-07 批 6 小尾巴：加「图」列（+40）——自选也能开 K 线（与持仓/清仓同一张通用图）
+          minWidth: 890,
           table: DataTable(
             headingRowHeight: 30, dataRowMinHeight: 32, dataRowMaxHeight: 32,
             columns: const [
               DataColumn(label: Text('代码')), DataColumn(label: Text('名称')),
               DataColumn(label: Text('行业')), DataColumn(label: Text('长/中/短')),
-              DataColumn(label: Text('指标提示')), DataColumn(label: Text('买点信号')), DataColumn(label: Text('')),
+              DataColumn(label: Text('指标提示')), DataColumn(label: Text('买点信号')),
+              DataColumn(label: Text('图')), DataColumn(label: Text('')),
             ],
             rows: _watchlist.map((w) {
               // C2 买点信号：命中 B1/B2 显示红色徽标（判定是提示不是指令）
@@ -2317,6 +2332,16 @@ class _TradingPageState extends State<TradingPage> {
                                 color: bp.first.buyPoint == 'case'
                                     ? AppColors.darkOrange
                                     : AppColors.darkRed)))),
+                // 2026-10-07（批 6 小尾巴）：自选行「图」入口——样式与清仓表同一款
+                DataCell(TextButton(
+                  onPressed: () => _openKline(w.symbol, w.name),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text('图', style: TextStyle(fontSize: 12, color: AppColors.darkOrange)),
+                )),
                 DataCell(IconButton(
                   icon: const Icon(Icons.close, size: 14, color: AppColors.darkGrey5),
                   onPressed: () async {
@@ -2514,7 +2539,7 @@ class _TradingPageState extends State<TradingPage> {
         Text('${_sold.length} 笔 · B/S 对照规则判对错', style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
         const Spacer(),
         OutlinedButton.icon(
-          onPressed: () => _openImportDialog('清仓股',
+          onPressed: () => _openImportDialog(
               '粘贴通达信清仓导出（或选择文件）：代码/名称/介入日期/清仓日期/持仓天数/买卖次数/持仓期涨幅%',
               (c, _, _) async {
                 final r = await widget.api.importSold(c);
@@ -2858,7 +2883,7 @@ class _TradingPageState extends State<TradingPage> {
         ),
         const SizedBox(width: 6),
         OutlinedButton.icon(
-          onPressed: () => _openImportDialog('资金股份查询',
+          onPressed: () => _openImportDialog(
               '粘贴通达信「资金股份查询」导出（或选择文件）：更新现金余额 + 精确成本价（4 位）',
               _importCashSnapshot,
               withBasisDate: true),
@@ -4434,7 +4459,6 @@ class _TradingPageState extends State<TradingPage> {
   }
 
   void _openPositionsImport() => _openImportDialog(
-        '持仓',
         '粘贴通达信持仓导出（或选择文件）：证券代码/股票余额/成本价 自动识别，全量覆盖，止损需导入后补设',
         _importPositionsSnapshot,
         // 2026-10-05（P2-交易84）：持仓快照建立**锚定日**——让用户能显式说清基准日，
@@ -4533,158 +4557,45 @@ class _TradingPageState extends State<TradingPage> {
     }
   }
 
-  Future<void> _openImportDialog(String title, String hint,
+  /// 打开导入抽屉（R-12；2026-10-07 全量对齐原型：右侧滑入，不跳页）。
+  /// [hint] = 粘贴区的引导文案；[withBasisDate] = 显示「数据基准日」输入（快照类导入）。
+  /// [onImport] 非空时：粘贴文本交回原调用链处理（与旧对话框行为逐字一致）。
+  Future<void> _openImportDialog(String hint,
       Future<void> Function(String content, String? snapshotDate, String? basedOn) onImport,
-      {bool withBasisDate = false}) async {
-    final controller = TextEditingController();
-    // 2026-09-12：所选文件名的日期（通达信导出名带日期）→ 当锚定日传给后端（优先于导入日）；
-    // 粘贴路径取不到 → null（不传该字段，后端退回导入日）
-    String? snapshotDate;
-    // 2026-10-05（P2-交易84）：**显式数据基准日**（可选）——文件名里的日期是**导出日**，
-    // 盘前/休市日导出时数据其实是上一交易日的，由用户说清（此前只能靠导入时刻猜）。
-    // 默认留空 = 与既有行为完全一致（不替用户猜、不改变默认路径）。
-    final basisCtl = TextEditingController();
-    // 2026-10-01（P2-交易71 同族清扫）：空内容点「导入」原先直接 return——弹窗不关、也没有任何提示，
-    // 用户点了以为没生效（与标注/匹配弹窗同一形态）。改为弹窗内如实说明。
-    String? formError;
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDlg) => AlertDialog(
-          backgroundColor: AppColors.darkSurface2,
-          title: Text('导入$title', style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
-          content: SizedBox(
-            width: 480,
-            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    // 2026-10-06（R-12 · 入口归各 Tab）：文件选择升级为可多选——选 ≥2 份转统一批量
-                    // 路径（逐份识别 + 先看计划）；选 1 份仍走本对话框（文本框预览/编辑 + 基准日的精确入口）。
-                    final result = await FilePicker.platform.pickFiles(
-                        type: FileType.any, allowMultiple: true, withData: true);
-                    if (result == null || result.files.isEmpty) return;
-                    final picked = [for (final f in result.files) if (f.bytes != null) f];
-                    if (picked.length >= 2) {
-                      if (!ctx.mounted) return;
-                      Navigator.pop(ctx);
-                      await _openBundleImport(
-                          [for (final f in picked) BundleUploadFile(f.name, f.bytes!)]);
-                      return;
-                    }
-                    if (picked.isEmpty) return;
-                    final f = picked.first;
-                    final saved = await widget.api.saveImportFile(f.name, f.bytes!);
-                    if (!ctx.mounted) return;
-                    setDlg(() {
-                      controller.text = saved.content;
-                      snapshotDate = parseSnapshotDateFromFilename(f.name);
-                      // P2-工程12④（2026-10-04）：选完文件即撤掉旧错误——与标注弹窗改日期同理，
-                      // 「不拿过期提示挡新动作」（原先选完文件红字仍挂着，看着像文件也不行）。
-                      // P3 修正（2026-10-04 前端审查）：只在**文件真有内容**时才清——空文件清掉
-                      // 「先粘贴内容，或选择通达信导出的文件」等于把仍成立的话藏起来。
-                      formError = saved.content.trim().isEmpty ? formError : null;
-                    });
-                  },
-                  icon: const Icon(Icons.upload_file, size: 14),
-                  label: const Text('选择文件（可多选，通达信导出）', style: TextStyle(fontSize: 12)),
-                  style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.darkGrey1,
-                      side: const BorderSide(color: AppColors.darkGrey4)),
-                ),
-                const SizedBox(width: 8),
-                const Text('或直接粘贴', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
-              ]),
-              const SizedBox(height: 8),
-              Text(hint, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
-              // 2026-10-05（P2-交易84）：基准日框放在**粘贴框之前**——两个原因：
-              // ① 语义顺序（先说清这份数据是哪天的，再放内容）；② 既有用例按
-              // `find.byType(TextField).last` 定位内容框（多一个框会让它指错），顺序保持向后兼容。
-              if (withBasisDate) ...[
-                const SizedBox(height: 8),
-                Row(children: [
-                  const Text('数据基准日（可选）', style: TextStyle(fontSize: 12, color: AppColors.darkGrey3)),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 130,
-                    child: TextField(
-                      key: const Key('tradeImportBasis'),
-                      controller: basisCtl,
-                      style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1),
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        hintText: '2026-09-18',
-                        hintStyle: TextStyle(fontSize: 11, color: AppColors.darkGrey5),
-                      ),
-                    ),
-                  ),
-                ]),
-                const SizedBox(height: 4),
-                Text(
-                    '这是这份快照**数据本身**对应的交易日。通达信文件名里的日期是**导出日**——'
-                    '盘前或休市日导出时，数据其实是上一交易日的。'
-                    '${snapshotDate != null ? '文件名里的日期是 $snapshotDate。' : ''}'
-                    '留空时我按导入时间判断（并在对账里标注「无据」）。',
-                    style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5, height: 1.4)),
-              ],
-              const SizedBox(height: 6),
-              TextField(
-                key: const Key('tradeImportContent'),
-                controller: controller,
-                maxLines: 7, minLines: 4,
-                style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1),
-              ),
-              if (formError != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(formError!, style: const TextStyle(fontSize: 11, color: AppColors.darkRed)),
-                ),
-            ]),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-            FilledButton(
-              onPressed: () async {
-                if (controller.text.trim().isEmpty) {
-                  setDlg(() => formError = '先粘贴内容，或选择通达信导出的文件');
-                  return;
-                }
-                // 2026-10-05（P2-交易84）：基准日填了就必须是合法日期——宁可在弹窗里明说，
-                // 也不静默丢掉用户输入（那正是「字段被无声忽略」的老病）。
-                String? basedOn;
-                if (withBasisDate && basisCtl.text.trim().isNotEmpty) {
-                  basedOn = parseBasisDateInput(basisCtl.text);
-                  if (basedOn == null) {
-                    setDlg(() => formError = '基准日「${basisCtl.text.trim()}」不是有效日期'
-                        '（写成 2026-09-18 这样），或留空让我按导入时间判断');
-                    return;
-                  }
-                }
-                Navigator.pop(ctx);
-                // 2026-08-17（P1-交易5）：导入失败必须反馈——后端解析失败会 400 + 人话消息，这里透出
-                try {
-                  await onImport(controller.text, snapshotDate, basedOn);
-                } catch (e) {
-                  _toast('导入失败：${extractApiErrorMessage(e)}');
-                }
-              },
-              style: FilledButton.styleFrom(backgroundColor: AppColors.darkGreen),
-              child: const Text('导入'),
-            ),
-          ],
-        ),
-      ),
-    );
+      {bool withBasisDate = false}) {
+    return _showImportDrawer(
+        hint: hint, withBasisDate: withBasisDate, onPasteImport: onImport);
   }
 
-  /// 2026-10-06（R-12 · 入口归各 Tab）：统一批量导入对话框——由各 Tab 专属导入对话框的
-  /// 「选择文件（可多选，通达信导出）」多选（≥2 份）路径转入（见 `_openImportDialog`）。
-  /// 对话框内「先看计划（dryRun）」→ 确认 → 导入；成功后刷新本页数据。
-  Future<void> _openBundleImport(List<BundleUploadFile> files) {
-    return showDialog<void>(
+  /// 统一导入抽屉（2026-10-07 原型 web-7「导入」）：右侧滑入 404px，不跳页；
+  /// 一次交齐不计次序——文件交给后端逐份识别（选完自动先看计划 = dryRun 只报不动），
+  /// 确认后一次入账；粘贴路径同框保留（各 Tab 进时交回原链，顶栏进时走统一 bundle 链）。
+  Future<void> _showImportDrawer(
+      {String hint = '',
+      bool withBasisDate = false,
+      Future<void> Function(String content, String? snapshotDate, String? basedOn)? onPasteImport}) {
+    return showGeneralDialog<void>(
       context: context,
-      builder: (_) =>
-          _BundleImportDialog(api: widget.api, onImported: _loadAll, initialFiles: files),
+      barrierDismissible: true,
+      barrierLabel: '导入',
+      barrierColor: Colors.black45,
+      transitionDuration: const Duration(milliseconds: 200),
+      pageBuilder: (_, _, _) => Align(
+        alignment: Alignment.centerRight,
+        child: _ImportDrawer(
+          api: widget.api,
+          onImported: _loadAll,
+          onToast: _toast,
+          hint: hint,
+          withBasisDate: withBasisDate,
+          onPasteImport: onPasteImport,
+        ),
+      ),
+      transitionBuilder: (_, anim, _, child) => SlideTransition(
+        position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+            .animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+        child: child,
+      ),
     );
   }
 }
@@ -7427,35 +7338,52 @@ class _HistoryImportDialogState extends State<_HistoryImportDialog> {
     );
   }
 }
-// ─────────────── 统一批量导入 Dialog（R-12 · 2026-10-06 起由各 Tab 导入对话框转入） ───────────────
+// ─────────────── 统一导入抽屉（R-12 · 2026-10-07 起为右侧滑入抽屉，全量对齐原型） ───────────────
 
-/// 统一批量导入（`R-12`「一次把导出的文件交给它就行」）：一次多选通达信导出文件
-/// （历史成交 / 资金股份 / 持仓股 / 清仓股 / 自选股），交给后端逐份识别。
-/// **入口归各 Tab 专属导入对话框**（2026-10-06 用户裁决）——多选 ≥2 份转入本框；
-/// 「先看计划」= 预检（dryRun，只报会做什么、不动任何数据），确认后再「导入」。
-/// 契约：一份失败不影响其他份——逐份行如实展示成功/失败与人话原因。
-class _BundleImportDialog extends StatefulWidget {
+/// 统一导入抽屉（`R-12`「一次交齐就行 —— 不用记顺序、不用分次」）：右侧滑入 404px（原型 web-7），
+/// 一次多选通达信导出文件（历史成交 / 资金股份 / 持仓股 / 清仓股 / 自选股）或粘贴文本，
+/// 交给后端逐份识别。**选完自动先看计划**（dryRun，只报会做什么、不动任何数据），
+/// 确认后一次入账；一份失败不影响其他份——逐份行如实展示成功/失败与人话原因。
+///
+/// 两条进入路径（[onPasteImport] 区分）：
+/// - 各 Tab 导入按钮：粘贴文本交回原调用链（保留基准日与既有单份链路）；
+/// - 顶栏「导入」：纯 bundle 链（含粘贴文本打包成文件一并逐份识别）。
+class _ImportDrawer extends StatefulWidget {
   final ApiService api;
   final Future<void> Function()? onImported; // 正式导入成功后刷新页面数据
-  final List<BundleUploadFile> initialFiles; // 转入时已选好的文件（各 Tab 导入对话框多选路径）
+  final void Function(String msg) onToast; // 各 Tab 链路的失败反馈（粘贴交回时用）
+  final String hint; // 粘贴区引导文案（各 Tab 专属提示）
+  final bool withBasisDate; // 显示「数据基准日」输入（快照类导入）
+  final Future<void> Function(String content, String? snapshotDate, String? basedOn)? onPasteImport;
 
-  const _BundleImportDialog({required this.api, this.onImported, this.initialFiles = const []});
+  const _ImportDrawer({
+    required this.api,
+    required this.onToast,
+    this.onImported,
+    this.hint = '',
+    this.withBasisDate = false,
+    this.onPasteImport,
+  });
 
   @override
-  State<_BundleImportDialog> createState() => _BundleImportDialogState();
+  State<_ImportDrawer> createState() => _ImportDrawerState();
 }
 
-class _BundleImportDialogState extends State<_BundleImportDialog> {
+class _ImportDrawerState extends State<_ImportDrawer> {
   final List<BundleUploadFile> _files = [];
+  final _pasteCtl = TextEditingController();
+  final _basisCtl = TextEditingController();
   bool _busy = false;
   BundleImportReceipt? _receipt;
   bool _imported = false; // 已正式导入（按钮停用，防重复提交）
   String? _error;
+  String? _pasteError; // 粘贴区校验错误（空内容 / 基准日非法）
 
   @override
-  void initState() {
-    super.initState();
-    _files.addAll(widget.initialFiles);
+  void dispose() {
+    _pasteCtl.dispose();
+    _basisCtl.dispose();
+    super.dispose();
   }
 
   Future<void> _pick() async {
@@ -7474,13 +7402,22 @@ class _BundleImportDialogState extends State<_BundleImportDialog> {
         if (f.bytes == null || f.bytes!.isEmpty) continue;
         _files.add(BundleUploadFile(f.name, f.bytes!));
       }
-      if (_files.isEmpty) _error = '选的文件都是空的——重新导出后再试';
+      if (_files.isEmpty) {
+        // 空文件：粘贴仍是可用路径 → 粘贴区的旧提示不撤（仍成立）
+        _error = '选的文件都是空的——重新导出后再试';
+      } else {
+        // 已选到有效文件 → 「先粘贴内容…」不再成立，立刻撤掉（P2-工程12④ 同族）
+        _pasteError = null;
+      }
     });
+    // 2026-10-07（原型「选完就看计划」）：选完自动预检，不再要求再点一次
+    if (_files.isNotEmpty && !_busy) await _run(true);
   }
 
   Future<void> _run(bool dryRun) async {
+    if (!mounted) return;
     if (_files.isEmpty) {
-      setState(() => _error = '先选文件——点上面「选择文件」（可一次多选）');
+      setState(() => _error = '先选文件——点上面虚线框（可一次多选）');
       return;
     }
     setState(() {
@@ -7506,85 +7443,182 @@ class _BundleImportDialogState extends State<_BundleImportDialog> {
     }
   }
 
+  /// 「确认入账 N 条」的 N（原型底部主按钮的权威算法）：
+  /// trades = 新增 + 并入；sold/watchlist = 会导入；positions = 文件只数；cash 不贡献。
+  /// N = 0 时不编数字，退回「确认入账」。
+  int _confirmCount() {
+    final r = _receipt;
+    if (r == null) return 0;
+    var n = 0;
+    for (final f in r.files) {
+      if (!f.ok) continue;
+      final d = f.detail;
+      if (f.kind == 'trades') {
+        final plan = d['plan'];
+        if (plan is Map) {
+          n += ((plan['new'] as num?)?.toInt() ?? 0) + ((plan['merged'] as num?)?.toInt() ?? 0);
+        } else {
+          n += ((d['imported'] as num?)?.toInt() ?? 0) + ((d['updated'] as num?)?.toInt() ?? 0);
+        }
+      } else if (f.kind == 'sold' || f.kind == 'watchlist') {
+        final w = d['wouldImport'];
+        if (w is num) n += w.toInt();
+      } else if (f.kind == 'positions') {
+        n += ((d['fileCount'] as num?)?.toInt() ?? 0);
+      }
+    }
+    return n;
+  }
+
+  /// 「对完账才发现的事」：预检里 cash / positions 给的 note 直出（后端人话，前端不重写）。
+  List<String> _insightNotes() {
+    final r = _receipt;
+    if (r == null || !r.dryRun) return const [];
+    final notes = <String>[];
+    for (final f in r.files) {
+      if (!f.ok) continue;
+      final note = f.detail['note'];
+      if (note is String && note.trim().isNotEmpty) notes.add(note.trim());
+    }
+    return notes;
+  }
+
+  /// 粘贴路径提交：各 Tab 进 → 校验后交回原链（pop 后执行，与旧对话框逐字一致）；
+  /// 顶栏进 → 打包成一份「粘贴文本.txt」走统一 bundle 链（同样自动预检）。
+  Future<void> _submitPaste() async {
+    final text = _pasteCtl.text;
+    if (text.trim().isEmpty) {
+      setState(() => _pasteError = '先粘贴内容，或选择通达信导出的文件');
+      return;
+    }
+    String? basedOn;
+    if (widget.withBasisDate && _basisCtl.text.trim().isNotEmpty) {
+      basedOn = parseBasisDateInput(_basisCtl.text);
+      if (basedOn == null) {
+        setState(() => _pasteError = '基准日「${_basisCtl.text.trim()}」不是有效日期'
+            '（写成 2026-09-18 这样），或留空让我按导入时间判断');
+        return;
+      }
+    }
+    setState(() => _pasteError = null);
+    final handler = widget.onPasteImport;
+    if (handler != null) {
+      final toast = widget.onToast;
+      if (!mounted) return;
+      Navigator.pop(context);
+      try {
+        await handler(text, null, basedOn);
+      } catch (e) {
+        toast('导入失败：${extractApiErrorMessage(e)}');
+      }
+      return;
+    }
+    setState(() {
+      _receipt = null;
+      _error = null;
+      _files
+        ..clear()
+        ..add(BundleUploadFile('粘贴文本.txt', utf8.encode(text)));
+    });
+    await _run(true);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: AppColors.darkSurface,
-      insetPadding: const EdgeInsets.all(24),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 620, maxHeight: 540),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              const Icon(Icons.upload_file, size: 18, color: AppColors.darkGreen),
-              const SizedBox(width: 8),
-              const Text('导入交易数据',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
-              const Spacer(),
-              GestureDetector(
-                onTap: () => Navigator.pop(context),
-                child: const Icon(Icons.close, size: 18, color: AppColors.darkGrey5),
-              ),
-            ]),
-            const SizedBox(height: 4),
-            const Text('把通达信导出的文件一次选进来（可多选）：历史成交 / 资金股份 / 持仓股 / 清仓股 / 自选股'
-                '——我逐份识别，先看计划再导入；哪份不行会单独说，不影响其他份',
-                style: TextStyle(fontSize: 11, color: AppColors.darkGrey5, height: 1.4)),
-            const SizedBox(height: 10),
-            Row(children: [
-              OutlinedButton.icon(
-                onPressed: _busy ? null : _pick,
-                icon: const Icon(Icons.folder_open, size: 14),
-                label: Text(_files.isEmpty ? '选择文件' : '重新选择', style: const TextStyle(fontSize: 12)),
-                style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.darkGrey1,
-                    side: const BorderSide(color: AppColors.darkGrey4),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
-              ),
-              const SizedBox(width: 8),
-              if (_files.isNotEmpty)
-                Text('已选 ${_files.length} 份', style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
-            ]),
-            if (_files.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              _fileList(),
-            ],
-            if (_error != null) ...[
-              const SizedBox(height: 8),
-              _errorCard(),
-            ],
-            if (_receipt != null) ...[
-              const SizedBox(height: 10),
-              Flexible(child: _receiptView(_receipt!)),
-            ],
-            const SizedBox(height: 12),
-            Row(children: [
-              if (_imported)
-                const Text('已导入——可关闭（想再导一批就重新打开）',
-                    style: TextStyle(fontSize: 11, color: AppColors.darkGrey4))
-              else
-                TextButton(
-                  onPressed: _busy ? null : () => _run(true),
-                  child: Text(_busy ? '处理中…' : '先看计划（预检：只报会做什么，不动数据）',
-                      style: const TextStyle(fontSize: 12, color: AppColors.darkGrey3)),
-                ),
-              const Spacer(),
-              TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('关闭', style: TextStyle(fontSize: 13, color: AppColors.darkGrey4))),
-              const SizedBox(width: 6),
-              if (!_imported)
-                FilledButton(
-                  onPressed: _busy ? null : () => _run(false),
-                  style: FilledButton.styleFrom(backgroundColor: AppColors.darkGreen, foregroundColor: AppColors.darkBg),
-                  child: Text(_busy ? '处理中…' : '导入',
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                ),
-            ]),
-          ]),
+    // 原型 web-7：右侧抽屉 404px——Material 铺底，左边框与页面分界；不遮整屏（barrier 由外层给）
+    return Material(
+      color: AppColors.darkSurface,
+      child: Container(
+        key: const Key('importDrawer'),
+        width: 404,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          border: Border(left: BorderSide(color: AppColors.darkBorder)),
         ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                const Text('导入',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: const Icon(Icons.close, size: 18, color: AppColors.darkGrey5),
+                ),
+              ]),
+              const SizedBox(height: 4),
+              const Text('一次交齐就行 —— 不用记顺序、不用分次。',
+                  style: TextStyle(fontSize: 11, color: AppColors.darkGrey5, height: 1.4)),
+              const SizedBox(height: 12),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    _pickZone(),
+                    if (_files.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      _fileList(),
+                    ],
+                    if (_busy) ...[
+                      const SizedBox(height: 10),
+                      const Row(children: [
+                        SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 2)),
+                        SizedBox(width: 8),
+                        Text('我来逐份看看…', style: TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
+                      ]),
+                    ],
+                    if (_error != null) ...[
+                      const SizedBox(height: 10),
+                      _errorCard(),
+                    ],
+                    // 回执卡：预检「这次认出来的」→ 确认入账；正式导入后同卡换文案（结果留给人看）
+                    if (_receipt != null) ...[
+                      const SizedBox(height: 10),
+                      _receiptCard(_receipt!),
+                    ],
+                    // 「对完账才发现的事」（原型 wd-say）：预检阶段才有
+                    if (_receipt?.dryRun == true && _insightNotes().isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      _insightCard(),
+                    ],
+                    const SizedBox(height: 12),
+                    _pasteSection(),
+                  ]),
+                ),
+              ),
+              const SizedBox(height: 12),
+              _footer(),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 点选区（原型 wd-drop 虚线框）：整框可点，选完自动预检
+  Widget _pickZone() {
+    return GestureDetector(
+      key: const Key('importPickZone'),
+      onTap: _busy ? null : _pick,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 26),
+        decoration: BoxDecoration(
+          color: AppColors.darkSurface2,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.darkBorder),
+        ),
+        child: Column(children: [
+          Icon(_busy ? Icons.hourglass_top : Icons.file_download_outlined,
+              size: 22, color: _busy ? AppColors.darkGrey5 : AppColors.darkGrey3),
+          const SizedBox(height: 8),
+          const Text('把「资金流水 + 历史成交」选到这里',
+              style: TextStyle(fontSize: 12, color: AppColors.darkGrey2)),
+          const SizedBox(height: 4),
+          Text(_files.isEmpty ? '或者点这里选文件（可多选，通达信导出）' : '已选 ${_files.length} 份——点这里重新选',
+              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+        ]),
       ),
     );
   }
@@ -7627,39 +7661,172 @@ class _BundleImportDialogState extends State<_BundleImportDialog> {
     );
   }
 
-  /// 回执区：汇总一行 + 逐份行（成功绿勾 / 失败橙叹号 + 人话摘要）。
-  Widget _receiptView(BundleImportReceipt r) {
-    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [
-        Icon(
-            r.failedCount == 0
-                ? (r.dryRun ? Icons.visibility_outlined : Icons.check_circle_outline)
-                : Icons.info_outline,
-            size: 14,
-            color: r.failedCount == 0 ? AppColors.darkGreen : AppColors.darkOrange),
-        const SizedBox(width: 6),
-        Expanded(
+  /// 「这次认出来的」卡（原型 wd-card）：汇总一行 + 逐份行（成功绿勾 / 失败橙叹号 + 人话摘要）。
+  /// 预检与正式导入共用一张卡，靠 r.dryRun 分流文案；滚动由外层 SingleChildScrollView 统一管。
+  Widget _receiptCard(BundleImportReceipt r) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface2,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.8)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(
+              r.failedCount == 0
+                  ? (r.dryRun ? Icons.visibility_outlined : Icons.check_circle_outline)
+                  : Icons.info_outline,
+              size: 14,
+              color: r.failedCount == 0 ? AppColors.darkGreen : AppColors.darkOrange),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              r.dryRun ? '这次认出来的' : '这次交齐的',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGrey1),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 2),
+        Text(
+          r.dryRun
+              ? '计划：${r.okCount} 份能处理${r.failedCount > 0 ? '，${r.failedCount} 份不行' : ''}（预检没动任何数据）'
+              : '导入完成：成功 ${r.okCount} 份${r.failedCount > 0 ? '，失败 ${r.failedCount} 份' : ''}',
+          style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4),
+        ),
+        const SizedBox(height: 6),
+        for (final f in r.files) _fileResultRow(f),
+        if (!r.dryRun && r.okCount > 0)
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Text('数据已更新——去「分析」标签看三粒度结果，或关掉后看各 Tab',
+                style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+          ),
+      ]),
+    );
+  }
+
+  /// 「对完账才发现的事」（原型 wd-say）：预检里 cash / positions 给的 note 直出。
+  Widget _insightCard() {
+    final notes = _insightNotes();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface2.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.8)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('对完账才发现的事',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGrey2)),
+        const SizedBox(height: 4),
+        for (final n in notes)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Text('· $n', style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4, height: 1.4)),
+          ),
+      ]),
+    );
+  }
+
+  /// 粘贴区（各 Tab 专属入口保留的旧链路）：有 onPasteImport 时点主按钮 = pop 后交回原链；
+  /// 顶栏入口时粘贴文本打包成一份文件，走统一 bundle 链。
+  Widget _pasteSection() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('或直接粘贴文本', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+      if (widget.hint.isNotEmpty) ...[
+        const SizedBox(height: 4),
+        Text(widget.hint, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+      ],
+      if (widget.withBasisDate) ...[
+        const SizedBox(height: 8),
+        Row(children: [
+          const Text('数据基准日（可选）', style: TextStyle(fontSize: 12, color: AppColors.darkGrey3)),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 130,
+            child: TextField(
+              key: const Key('tradeImportBasis'),
+              controller: _basisCtl,
+              style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1),
+              decoration: const InputDecoration(
+                isDense: true,
+                hintText: '2026-09-18',
+                hintStyle: TextStyle(fontSize: 11, color: AppColors.darkGrey5),
+              ),
+            ),
+          ),
+        ]),
+      ],
+      const SizedBox(height: 6),
+      TextField(
+        key: const Key('tradeImportContent'),
+        controller: _pasteCtl,
+        maxLines: 5, minLines: 3,
+        style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1),
+      ),
+      if (_pasteError != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(_pasteError!, style: const TextStyle(fontSize: 11, color: AppColors.darkRed)),
+        ),
+    ]);
+  }
+
+  /// 底部（原型：主按钮 flex:1 + 「再看看」）：按状态分派——
+  /// 已导入 → 「完成」；预检完有文件 → 「确认入账 N 条」（正式导入）；预检失败 → 「重试」；
+  /// 无文件 → 「导入」（提交粘贴内容）。
+  Widget _footer() {
+    final r = _receipt;
+    final needConfirm = _files.isNotEmpty && r != null && r.dryRun;
+    final noFiles = _files.isEmpty;
+    return Row(children: [
+      Expanded(
+        child: FilledButton(
+          key: const Key('importConfirmBtn'),
+          onPressed: _busy
+              ? null
+              : _imported
+                  ? () => Navigator.pop(context)
+                  : needConfirm
+                      ? () => _run(false)
+                      : noFiles
+                          ? () => _submitPaste()
+                          : () => _run(true),
+          // 原型 wd-btn.main：亮底深字（= darkGrey1 底 / darkBg 字）——与顶栏「导入」同款
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.darkGrey1,
+            foregroundColor: AppColors.darkBg,
+            minimumSize: const Size.fromHeight(36),
+          ),
           child: Text(
-            r.dryRun
-                ? '计划：${r.okCount} 份能处理${r.failedCount > 0 ? '，${r.failedCount} 份不行' : ''}（预检没动任何数据）'
-                : '导入完成：成功 ${r.okCount} 份${r.failedCount > 0 ? '，失败 ${r.failedCount} 份' : ''}',
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGrey1),
+            _busy
+                ? '处理中…'
+                : _imported
+                    ? '完成'
+                    : needConfirm
+                        ? (_confirmCount() > 0 ? '确认入账 ${_confirmCount()} 条' : '确认入账')
+                        : noFiles
+                            ? '导入'
+                            : '重试',
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
           ),
         ),
-      ]),
-      const SizedBox(height: 6),
-      Flexible(
-        child: SingleChildScrollView(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            for (final f in r.files) _fileResultRow(f),
-          ]),
-        ),
       ),
-      if (!r.dryRun && r.okCount > 0)
-        const Padding(
-          padding: EdgeInsets.only(top: 6),
-          child: Text('数据已更新——去「分析」标签看三粒度结果，或关掉后看各 Tab',
-              style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+      const SizedBox(width: 8),
+      if (!_imported)
+        SizedBox(
+          height: 36,
+          child: OutlinedButton(
+            onPressed: () => Navigator.pop(context),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.darkGrey3,
+              side: const BorderSide(color: AppColors.darkBorder),
+            ),
+            child: const Text('再看看', style: TextStyle(fontSize: 13)),
+          ),
         ),
     ]);
   }
