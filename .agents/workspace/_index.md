@@ -5,7 +5,7 @@ version: 2
 created: 2026-10-04
 updated: 2026-10-08
 status: active
-lines: 162
+lines: 164
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index, workspace]
@@ -27,7 +27,7 @@ tags: [meta, index, workspace]
 
 > **规则**：**一个分支 = 一个目录 = 一个任务**（主键唯一 ⇒ **零冲突**）；目录里**需要什么才有什么**（轻活就一个 `LEDGER.md`）。
 
-## 文件清单（123 项）
+## 文件清单（125 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -42,6 +42,7 @@ tags: [meta, index, workspace]
 | `_meta/inbox-receipt.md` | 子代理在零消息下自行读到 inbox.md 并执行——证明 AGENTS.md 规则 0c 通道可用 | active |
 | `_meta/inbox.md` | 消息通道丢载荷时的兜底派单通道；任何 AI 开工先看本文件（AGENTS.md 规则 0c） | active |
 | `_meta/process-issues-20261006.md` | 本次会话实跑「需求 → 设计」全流程时实测发现的 12 条流程问题（主链本身 5 · 契约与守卫 3 · 子代理… | active |
+| `_meta/process-issues-20261008.md` | 本轮（UI/UX 体验重构 + 7 批实施 + 两轮走查 + 规格补齐）实测的流程问题——事实 → 问题 → 改… | active |
 | `_meta/process-log-20261006-v4.md` | 流程官（QA）对本轮（2026-10-06 · trading-plugin 设计 final v4 轮）的事实… | active |
 | `_meta/proposal-scope-completeness-20261006.md` | P1-交易101（设计 §6 前端整体未交付且未声明）的机制性修复方案——病因＝「设计→编码」接缝无人站岗（裁剪… | active |
 | `_meta/roadmap-diff-trading-20261006.md` | product-roadmap.md 的三条改动提案（现状原文 → 改后原文 + 理由），与 RFC 草稿同口径… | draft |
@@ -93,6 +94,7 @@ tags: [meta, index, workspace]
 | `trading-plugin/diff-decisions-20261007.md` | 对 review-web-uiux-20261007（v2）判定的「实现比设计多出来」的项逐条拉单并给四档处置建… | active |
 | `trading-plugin/frontend-gap-20261006.md` | 编码段只交付后端（67/78 文件），设计 §6「三端呈现」的 web/app 范围 0 实现——补做清单 + … | active |
 | `trading-plugin/handoff-20261007.md` | 给下一个 AI 工具的交接：目标 · 已完成（含 commit）· 未完成清单 · 必读约束与坑 · 验证与本地… | active |
+| `trading-plugin/handoff-20261008.md` | 给下一个 AI 工具的交接：现状（体验重构 7 批 + 两轮走查完成）· 未完成（批 8 R-10 · 待派设计… | active |
 | `trading-plugin/impl-plan-20261007.md` | 把 A1–A5 批注与 D1–D6 决策转成 7 个可执行批次——每批含范围 / 涉及文件 / 验收口径 / 测… | active |
 | `trading-plugin/input.md` | 归位之后剩下的"怎么做"——数据现实与处理 / 去重 / 顺序 / 表头识别 / 送股兜底 / 同日行序陷阱 /… | active |
 | `trading-plugin/mockups/README.md` | 2026-10-07 夜做的一批 UI/UX 原型——6 个自包含 HTML（可在浏览器直接打开、可点、可切方向… | active |

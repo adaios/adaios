@@ -3,9 +3,9 @@ title: feat/trading-plugin · 分支账本
 description: ② 交易线的分支账本——本批目标 + 并行作业纪律 + 待交接；一个分支一个目录（feat/trading-plugin → trading-plugin/）；合并时搬运完即删整目录
 version: 1
 created: 2026-10-05
-updated: 2026-10-07
+updated: 2026-10-08
 status: active
-lines: 82
+lines: 93
 depends-on: []
 related: [../../records/REVIEW.md, ../../rules/guides/git-workflow.md, ../../rules/guides/worktree-workflow.md]
 tags: [workspace, task, trading, ledger]
@@ -63,6 +63,17 @@ tags: [workspace, task, trading, ledger]
   ③ **收工契约账**（align FAIL，ship 前必补）：api-spec 补 11 新端点 + 升版 · status.md 测试数 2462→**2597**、端点数 173→186。
 
 ## 本任务遗留记录（随分支归档）
+
+### 本轮进度（UI/UX 体验重构 · 2026-10-07 ~ 08）
+
+- ✅ **差异决算 5 批 + 补批**（`91035896`）——列预算 / 信息带收薄 / 对齐 / P3-6 抽屉 / P3-8 打码
+- ✅ **实施清单 7 批**（`fbfed3bd` … `c9a6f329`）——一级 8 区横 Tab + 去二级 · 宽度断点 1200 · 表格自适应（降列 + 操作列冻结）· K 线统一组件（B/T/S + 图例 + 放宽）· 分析屏（默认带票 + 嵌图）· 活跃市值条移规则区 · 文档同步
+- ✅ **走查两轮**（`7eab26d2` 决算批回验 · `940286e2` 七批验收）+ 规格补齐（`039e731f`：`design-uiux` / `scope-uiux` / `review-driven §10`）
+- ⏳ **批 8 待办（唯一未交付项）**：`R-10` 案例屏 4 格状态条 + 「已收下」计数入口（二级退役后无处显示）—— 见 `scope-uiux-20261008.md` 条目表 + 走查 `R6`/`R7`
+- ⏳ **待派**：`design-uiux-20261007.md` 的**独立设计审核**（`ux-interaction-reviewer` + `ux-visual-reviewer`）—— 规范要求设计稿有独立审核官，本轮尚未派
+- ⏳ **收尾时办**（沿用本文件下方 10-06 那条的同一批动作）：编码段 deep 深审誊写 · 本轮报告的 `docs/records/audits/` 归档 · `REVIEW.md` 编号誊写 · `status.md` 测试数同步
+
+> **在制品文档地图（2026-10-08 定格）**：需求 `requirement.md` + 3 轮审核 · 设计 `design-v1~v3` + `design-final` + `design-kline-r04` + **`design-uiux`** · 设计审核 `review-v1~v4`（多官）· 交付 `scope-frontend` + **`scope-uiux`** · 走查 **`review-web-uiux`**（§六/§七 两轮）+ **`review-annotations`**（批注与决策）+ **`diff-decisions`**（差异处置）+ **`impl-plan`** · 素材 `uiux-discovery` / `input` / `blueprint` / `overview` / `frontend-gap` · 交接 `handoff-*` · 账本 `LEDGER` · 思考 `thinking-log`
 
 - 🟥 **活跃市值「改为 admin 导入」——已定方向、未落地（2026-10-07 核出并登记）**
   方向（2026-10-05 红线）：行情导入 + 活跃市值导入**都归 admin**、不涉及用户（`blueprint.md` L100）；设计 §5/§6 均声明 admin 侧「公共数据导入」。
