@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1080" viewBox="0 0 2200 1080" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC',sans-serif">
+  <rect width="2200" height="1080" fill="#ffffff"/>
+  <text x="40" y="52" font-size="27" font-weight="700" fill="#0f172a">Layer 3 · GitLab Flow：主线 + 六道关卡</text>
+  <text x="40" y="86" font-size="15" fill="#64748b">比 GitHub Flow 多一条下游链（staging → production）—— 多出来的关卡全在「环境」上，全在服务端</text>
+
+  <rect x="1440" y="20" width="720" height="76" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <line x1="1462" y1="48" x2="1518" y2="48" stroke="#0f172a" stroke-width="6" stroke-linecap="round"/>
+  <text x="1532" y="53" font-size="12.5" fill="#334155">粗线 ＝ 一个改动的旅程（AI 全程执行）</text>
+  <circle cx="1470" cy="76" r="9" fill="#b91c1c"/>
+  <text x="1483" y="80" font-size="9.5" font-weight="700" fill="#ffffff">人</text>
+  <text x="1500" y="80" font-size="12.5" fill="#334155">＝ 决策接口（4 个点：取舍 / 批准合流 / 推进生产 / 验收）</text>
+
+  <rect x="160" y="120" width="360" height="160" rx="10" fill="#f0fdf4" stroke="#86efac"/>
+  <text x="180" y="150" font-size="13.5" font-weight="700" fill="#0f172a">D1 · 进入分支（开工）</text>
+  <text x="180" y="182" font-size="12" font-weight="600" fill="#15803d">✔ 允许</text>
+  <text x="180" y="204" font-size="11.5" fill="#166534">读规则 / 坑 · 写分支草案</text>
+  <text x="180" y="226" font-size="11.5" fill="#166534">重建本机出口</text>
+  <text x="180" y="254" font-size="12" font-weight="600" fill="#b91c1c">✘ 禁止 写全局账本 · 写顶层决策 · 碰本机状态</text>
+
+  <rect x="1000" y="120" width="360" height="160" rx="10" fill="#fffbeb" stroke="#fcd34d"/>
+  <text x="1020" y="150" font-size="13.5" font-weight="700" fill="#0f172a">D3 · 合入 main</text>
+  <text x="1020" y="182" font-size="12" font-weight="600" fill="#15803d">✔ 允许</text>
+  <text x="1020" y="204" font-size="11.5" fill="#166534">真相源合过来 · 出口重建</text>
+  <text x="1020" y="226" font-size="11.5" fill="#166534">待交接清单交主会话</text>
+  <text x="1020" y="254" font-size="12" font-weight="600" fill="#b91c1c">✘ 禁止 直写未修项 / 批次历史 / 清单</text>
+
+  <rect x="1580" y="120" width="360" height="160" rx="10" fill="#fef2f2" stroke="#fca5a5"/>
+  <text x="1600" y="150" font-size="13.5" font-weight="700" fill="#0f172a">D5 · 进 production（受保护）</text>
+  <text x="1600" y="182" font-size="12" font-weight="600" fill="#15803d">✔ 允许</text>
+  <text x="1600" y="204" font-size="11.5" fill="#166534">写批次历史与清单（此刻才允许）</text>
+  <text x="1600" y="226" font-size="11.5" fill="#166534">打 tag</text>
+  <text x="1600" y="254" font-size="12" font-weight="600" fill="#b91c1c">✘ 禁止 跳过环境保护审批 · ★ 漏记环境事实</text>
+
+  <rect x="300" y="320" width="880" height="440" fill="#f0fdf4"/>
+  <rect x="1180" y="320" width="240" height="440" fill="#fffbeb"/>
+  <rect x="1420" y="320" width="690" height="440" fill="#fef2f2"/>
+
+  <line x1="250" y1="490" x2="2110" y2="490" stroke="#93c5fd" stroke-width="2.5"/>
+  <line x1="250" y1="610" x2="2110" y2="610" stroke="#fcd34d" stroke-width="2.5" stroke-dasharray="8 5"/>
+  <line x1="250" y1="730" x2="2110" y2="730" stroke="#86efac" stroke-width="2.5" stroke-dasharray="8 5"/>
+  <line x1="340" y1="380" x2="1180" y2="380" stroke="#c4b5fd" stroke-width="2.5"/>
+
+  <text x="40" y="386" font-size="16" font-weight="700" fill="#7c3aed">feature/*</text>
+  <text x="40" y="496" font-size="16" font-weight="700" fill="#1d4ed8">main</text>
+  <text x="40" y="616" font-size="16" font-weight="700" fill="#d97706">staging</text>
+  <text x="40" y="736" font-size="16" font-weight="700" fill="#16a34a">production</text>
+
+  <line x1="340" y1="290" x2="340" y2="800" stroke="#fca5a5" stroke-width="1.5" stroke-dasharray="5 6"/>
+  <line x1="760" y1="290" x2="760" y2="800" stroke="#fca5a5" stroke-width="1.5" stroke-dasharray="5 6"/>
+  <line x1="1180" y1="290" x2="1180" y2="800" stroke="#fca5a5" stroke-width="1.5" stroke-dasharray="5 6"/>
+  <line x1="1420" y1="290" x2="1420" y2="800" stroke="#fca5a5" stroke-width="1.5" stroke-dasharray="5 6"/>
+  <line x1="1760" y1="290" x2="1760" y2="800" stroke="#fca5a5" stroke-width="1.5" stroke-dasharray="5 6"/>
+  <line x1="2020" y1="290" x2="2020" y2="800" stroke="#fca5a5" stroke-width="1.5" stroke-dasharray="5 6"/>
+
+  <path d="M340,380 L1180,380 L1180,490 L1420,490 L1420,610 L1760,610 L1760,730 L2040,730" stroke="#ffffff" stroke-width="11" fill="none" stroke-linejoin="round"/>
+  <path d="M340,380 L1180,380 L1180,490 L1420,490 L1420,610 L1760,610 L1760,730 L2030,730" stroke="#0f172a" stroke-width="5.5" fill="none" stroke-linejoin="round"/>
+  <path d="M2030,730 L2062,730" stroke="#0f172a" stroke-width="5.5" fill="none"/>
+  <path d="M2062,720 L2084,730 L2062,740 z" fill="#0f172a"/>
+  <path d="M768,372 L788,380 L768,388 z" fill="#0f172a"/>
+  <path d="M1508,482 L1528,490 L1508,498 z" fill="#0f172a"/>
+  <path d="M1848,602 L1868,610 L1848,618 z" fill="#0f172a"/>
+  <circle cx="340" cy="380" r="9" fill="#0f172a"/>
+  <circle cx="760" cy="380" r="7" fill="#dc2626"/>
+  <circle cx="1180" cy="380" r="7" fill="#dc2626"/><circle cx="1180" cy="490" r="7" fill="#dc2626"/>
+  <circle cx="1420" cy="490" r="7" fill="#dc2626"/><circle cx="1420" cy="610" r="7" fill="#dc2626"/>
+  <circle cx="1760" cy="610" r="7" fill="#dc2626"/><circle cx="1760" cy="730" r="7" fill="#dc2626"/>
+  <circle cx="2020" cy="730" r="7" fill="#dc2626"/>
+  <text x="300" y="356" font-size="11.5" fill="#334155">改动从这里开始</text>
+  <rect x="1686" y="690" width="20" height="20" transform="rotate(45 1696 700)" fill="#16a34a"/>
+  <text x="1662" y="686" font-size="11.5" font-weight="600" fill="#15803d">tag v2.3</text>
+
+  <circle cx="560" cy="380" r="12" fill="#b91c1c"/>
+  <text x="560" y="385" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">人</text>
+  <text x="560" y="358" font-size="11" fill="#b91c1c" text-anchor="middle">取舍 / 验收</text>
+  <circle cx="1120" cy="380" r="12" fill="#b91c1c"/>
+  <text x="1120" y="385" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">人</text>
+  <text x="1116" y="358" font-size="11" fill="#b91c1c" text-anchor="middle">批准合流（或平台强制）</text>
+  <circle cx="1700" cy="610" r="12" fill="#b91c1c"/>
+  <text x="1700" y="615" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">人</text>
+  <text x="1676" y="588" font-size="11" fill="#b91c1c" text-anchor="middle">点头推进生产</text>
+  <circle cx="1970" cy="730" r="12" fill="#b91c1c"/>
+  <text x="1970" y="735" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">人</text>
+  <text x="1952" y="708" font-size="11" fill="#b91c1c" text-anchor="middle">验收</text>
+
+  <text x="1150" y="402" font-size="11.5" fill="#7c3aed">① 做功能＋MR</text>
+  <text x="1200" y="512" font-size="11.5" fill="#1d4ed8">② 合入主干</text>
+  <text x="1450" y="632" font-size="11.5" fill="#b45309">③ 自动进 staging</text>
+  <text x="1800" y="752" font-size="11.5" fill="#15803d">④ 审批进 production → 归档</text>
+
+  <text x="740" y="776" font-size="12.5" font-weight="700" fill="#15803d" text-anchor="middle">开发期 · 分支内可自由改</text>
+  <text x="1300" y="776" font-size="12.5" font-weight="700" fill="#b45309" text-anchor="middle">合流期 · 权限收紧</text>
+  <text x="1765" y="776" font-size="12.5" font-weight="700" fill="#b91c1c" text-anchor="middle">环境推进之后 · 只许发布与归档</text>
+
+  <rect x="580" y="820" width="360" height="160" rx="10" fill="#f0fdf4" stroke="#86efac"/>
+  <text x="600" y="850" font-size="13.5" font-weight="700" fill="#0f172a">D2 · 提交前（本机）</text>
+  <text x="600" y="882" font-size="12" font-weight="600" fill="#15803d">✔ 允许</text>
+  <text x="600" y="904" font-size="11.5" fill="#166534">改代码 · 同步事实层</text>
+  <text x="600" y="926" font-size="11.5" fill="#166534">当场补坑 · 加技能与守卫</text>
+  <text x="600" y="954" font-size="12" font-weight="600" fill="#b91c1c">✘ 禁止 绕门禁 · 只合代码不带规则</text>
+
+  <rect x="1240" y="820" width="360" height="160" rx="10" fill="#fffbeb" stroke="#fcd34d"/>
+  <text x="1260" y="850" font-size="13.5" font-weight="700" fill="#0f172a">D4 · 进 staging（自动）</text>
+  <text x="1260" y="882" font-size="12" font-weight="600" fill="#15803d">✔ 允许</text>
+  <text x="1260" y="904" font-size="11.5" fill="#166534">记录环境事实（哪个 commit 在哪个环境）</text>
+  <text x="1260" y="934" font-size="12" font-weight="600" fill="#b91c1c">✘ 禁止 手动改写环境分支</text>
+  <text x="1260" y="956" font-size="11.5" fill="#b91c1c">跳过流水线</text>
+
+  <rect x="1820" y="820" width="360" height="160" rx="10" fill="#fef2f2" stroke="#fca5a5"/>
+  <text x="1840" y="850" font-size="13.5" font-weight="700" fill="#0f172a">D6 · 归档回灌</text>
+  <text x="1840" y="882" font-size="12" font-weight="600" fill="#15803d">✔ 允许</text>
+  <text x="1840" y="904" font-size="11.5" fill="#166534">草案 → 顶层 · 登记索引</text>
+  <text x="1840" y="926" font-size="11.5" fill="#166534">清理在制品目录</text>
+  <text x="1840" y="954" font-size="12" font-weight="600" fill="#b91c1c">✘ 禁止 未验证的假设进顶层</text>
+
+  <text x="40" y="1024" font-size="13.5" fill="#334155">· 与 GitHub Flow 的差别全在右半段：多了 staging 与 production 两条下游线，D4 自动、D5 受保护 —— 两道关卡都在服务端，本地绕不过</text>
+  <text x="40" y="1052" font-size="13.5" font-weight="600" fill="#0f766e">· 关键机制差异：合并进主干 ≠ 上线；而且只有一条 production，A 推完 B 才能推 —— 发布期天然串行</text>
+</svg>

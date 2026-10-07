@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="960" viewBox="0 0 1500 960" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC',sans-serif">
+  <rect width="1500" height="960" fill="#ffffff"/>
+  <text x="48" y="52" font-size="27" font-weight="700" fill="#0f172a">Layer 2 · GitLab Flow 的流</text>
+  <text x="48" y="84" font-size="15" fill="#64748b">沿用 L1 的分支线条 —— 一次改动穿过主干与环境；环境是串行闸门，天然不允许并行推进</text>
+
+  <defs>
+    <marker id="l2v" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker>
+    <marker id="l2a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#d97706"/></marker>
+    <marker id="l2g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/></marker>
+  </defs>
+
+  <text x="48" y="207" font-size="18" font-weight="700" fill="#1d4ed8">main</text>
+  <text x="48" y="227" font-size="11.5" fill="#94a3b8">唯一开发主干 · 受保护</text>
+  <line x1="200" y1="200" x2="1420" y2="200" stroke="#cbd5e1" stroke-width="3"/>
+  <circle cx="260" cy="200" r="8" fill="#2563eb"/>
+  <circle cx="760" cy="200" r="9" fill="#2563eb" stroke="#ffffff" stroke-width="2"/>
+  <circle cx="900" cy="200" r="8" fill="#2563eb"/>
+  <circle cx="1180" cy="200" r="9" fill="#2563eb" stroke="#ffffff" stroke-width="2"/>
+  <text x="200" y="180" font-size="12.5" fill="#1d4ed8">① 从 main 切分支</text>
+  <text x="694" y="180" font-size="12.5" fill="#1d4ed8">④ 审批 + 合并进 main</text>
+  <text x="1114" y="180" font-size="12.5" fill="#1d4ed8">④ 合并进 main</text>
+
+  <line x1="260" y1="200" x2="260" y2="320" stroke="#c4b5fd" stroke-width="2" stroke-dasharray="6 6"/>
+  <text x="48" y="327" font-size="17" font-weight="700" fill="#7c3aed">feature/A</text>
+  <line x1="260" y1="320" x2="760" y2="320" stroke="#ddd6fe" stroke-width="3"/>
+  <circle cx="260" cy="320" r="8" fill="#7c3aed"/><circle cx="500" cy="320" r="7" fill="#a78bfa"/><circle cx="760" cy="320" r="8" fill="#7c3aed"/>
+  <path d="M760,312 L760,212" stroke="#7c3aed" stroke-width="2.5" fill="none" marker-end="url(#l2v)"/>
+  <text x="330" y="300" font-size="12.5" fill="#7c3aed">② 提交 + push</text>
+  <text x="560" y="300" font-size="12.5" fill="#7c3aed">③ 开 MR · CI</text>
+
+  <line x1="900" y1="200" x2="900" y2="420" stroke="#c4b5fd" stroke-width="2" stroke-dasharray="6 6"/>
+  <text x="48" y="427" font-size="17" font-weight="700" fill="#7c3aed">feature/B</text>
+  <line x1="900" y1="420" x2="1180" y2="420" stroke="#ddd6fe" stroke-width="3"/>
+  <circle cx="900" cy="420" r="8" fill="#7c3aed"/><circle cx="1180" cy="420" r="8" fill="#7c3aed"/>
+  <path d="M1180,412 L1180,212" stroke="#7c3aed" stroke-width="2.5" fill="none" marker-end="url(#l2v)"/>
+
+  <text x="48" y="507" font-size="17" font-weight="700" fill="#d97706">staging</text>
+  <line x1="200" y1="500" x2="1420" y2="500" stroke="#fde68a" stroke-width="3" stroke-dasharray="8 5"/>
+  <circle cx="760" cy="500" r="8" fill="#d97706"/><circle cx="1180" cy="500" r="8" fill="#d97706"/>
+  <path d="M800,208 L800,492" stroke="#d97706" stroke-width="2" fill="none" marker-end="url(#l2a)"/>
+  <text x="812" y="470" font-size="12" fill="#b45309">⑤ 合并即自动部署</text>
+
+  <text x="48" y="617" font-size="17" font-weight="700" fill="#16a34a">production</text>
+  <line x1="200" y1="610" x2="1420" y2="610" stroke="#bbf7d0" stroke-width="3" stroke-dasharray="8 5"/>
+  <circle cx="1080" cy="610" r="8" fill="#16a34a"/>
+  <path d="M760,508 Q900,610 1068,610" stroke="#16a34a" stroke-width="2.5" fill="none" marker-end="url(#l2g)"/>
+  <text x="400" y="560" font-size="12" fill="#15803d">⑥ 审批后推进（人工 / 定时）</text>
+  <path d="M1180,508 Q1180,570 1160,602" stroke="#94a3b8" stroke-width="2" stroke-dasharray="5 4" fill="none"/>
+  <text x="1196" y="560" font-size="11.5" fill="#94a3b8">B 只能排队等待</text>
+
+  <rect x="48" y="660" width="1400" height="104" rx="12" fill="#fffbeb" stroke="#fde68a"/>
+  <text x="72" y="692" font-size="15.5" font-weight="700" fill="#b45309">★ 环境是串行闸门 —— 这是 GitLab Flow 与 GitHub Flow 最大的差别</text>
+  <text x="72" y="720" font-size="13" fill="#78350f">代码能合进主干，不等于能进生产：只有一条 production。A 推进时 B 只能等，环境的推进顺序天然被锁成一条线。</text>
+  <text x="72" y="744" font-size="13" fill="#78350f">所以它用「多一道环境」换来了「上线可控」—— 代价是每次发布的节奏由环境审批决定，而不是由改动写完决定。</text>
+
+  <rect x="48" y="784" width="14" height="14" rx="3" fill="#dc2626"/><text x="70" y="796" font-size="12.5" fill="#475569">硬 · 平台 / 环境兜底</text>
+  <rect x="290" y="784" width="14" height="14" rx="3" fill="#d97706"/><text x="312" y="796" font-size="12.5" fill="#475569">半硬 · 本地 hook</text>
+  <rect x="500" y="784" width="14" height="14" rx="3" fill="#64748b"/><text x="522" y="796" font-size="12.5" fill="#475569">软 · 纯纪律</text>
+
+  <rect x="40" y="808" width="220" height="116" rx="10" fill="#f1f5f9" stroke="#cbd5e1"/>
+  <text x="60" y="840" font-size="13.5" font-weight="700" fill="#334155">① 切分支</text>
+  <text x="60" y="866" font-size="12" fill="#64748b">软 · 纪律</text>
+  <text x="60" y="888" font-size="11.5" fill="#94a3b8">命名 + 关联 Issue</text>
+
+  <rect x="280" y="808" width="220" height="116" rx="10" fill="#fffbeb" stroke="#fcd34d"/>
+  <text x="300" y="840" font-size="13.5" font-weight="700" fill="#92400e">② 提交</text>
+  <text x="300" y="866" font-size="12" fill="#b45309">半硬 · 本地 hook</text>
+  <text x="300" y="888" font-size="11.5" fill="#a16207">pre-commit 检查</text>
+
+  <rect x="520" y="808" width="220" height="116" rx="10" fill="#fef2f2" stroke="#fca5a5"/>
+  <text x="540" y="840" font-size="13.5" font-weight="700" fill="#b91c1c">③ 开 MR</text>
+  <text x="540" y="866" font-size="12" fill="#dc2626">硬 · 平台</text>
+  <text x="540" y="888" font-size="11.5" fill="#b91c1c">pipeline 必须绿</text>
+
+  <rect x="760" y="808" width="220" height="116" rx="10" fill="#fef2f2" stroke="#fca5a5"/>
+  <text x="780" y="840" font-size="13.5" font-weight="700" fill="#b91c1c">④ 审批 + 合流</text>
+  <text x="780" y="866" font-size="12" fill="#dc2626">硬 · 平台</text>
+  <text x="780" y="888" font-size="11.5" fill="#b91c1c">必须 N 人批准 + 分支保护</text>
+
+  <rect x="1000" y="808" width="220" height="116" rx="10" fill="#fef2f2" stroke="#fca5a5"/>
+  <text x="1020" y="840" font-size="13.5" font-weight="700" fill="#b91c1c">⑤ 部署 staging</text>
+  <text x="1020" y="866" font-size="12" fill="#dc2626">硬 · 平台</text>
+  <text x="1020" y="888" font-size="11.5" fill="#b91c1c">自动触发 · 不需要人</text>
+
+  <rect x="1240" y="808" width="220" height="116" rx="10" fill="#fef2f2" stroke="#fca5a5"/>
+  <text x="1260" y="840" font-size="13.5" font-weight="700" fill="#b91c1c">⑥ 推进 production</text>
+  <text x="1260" y="866" font-size="12" fill="#dc2626">硬 · 环境</text>
+  <text x="1260" y="888" font-size="11.5" fill="#b91c1c">protected environment + 审批</text>
+</svg>

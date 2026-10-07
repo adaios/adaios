@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="900" viewBox="0 0 1500 900" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC',sans-serif">
+  <rect width="1500" height="900" fill="#ffffff"/>
+  <text x="48" y="52" font-size="27" font-weight="700" fill="#0f172a">Layer 2+ · GitHub Flow：闸门与并行窗口</text>
+  <text x="48" y="84" font-size="15" fill="#64748b">同一条线上看两件事 —— 闸门在哪把线掐住，并行就存在于没被掐住的那几段里</text>
+
+  <defs>
+    <marker id="p1v" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker>
+  </defs>
+
+  <text x="48" y="140" font-size="14" font-weight="700" fill="#0f172a">① 线条与闸门位置</text>
+  <text x="1000" y="140" font-size="12" fill="#64748b">闸门标记：红 ＝ 硬（平台 / 门禁）· 橙 ＝ 半硬（本地 hook）</text>
+  <text x="48" y="197" font-size="18" font-weight="700" fill="#1d4ed8">main</text>
+  <line x1="200" y1="190" x2="1420" y2="190" stroke="#cbd5e1" stroke-width="3"/>
+  <circle cx="260" cy="190" r="8" fill="#2563eb"/><circle cx="760" cy="190" r="9" fill="#2563eb" stroke="#ffffff" stroke-width="2"/>
+  <circle cx="1100" cy="190" r="9" fill="#2563eb" stroke="#ffffff" stroke-width="2"/>
+
+  <text x="48" y="307" font-size="17" font-weight="700" fill="#7c3aed">feature/A</text>
+  <line x1="260" y1="300" x2="760" y2="300" stroke="#ddd6fe" stroke-width="3"/>
+  <circle cx="260" cy="300" r="8" fill="#7c3aed"/><circle cx="760" cy="300" r="8" fill="#7c3aed"/>
+  <path d="M760,292 L760,198" stroke="#7c3aed" stroke-width="2.5" fill="none" marker-end="url(#p1v)"/>
+  <text x="48" y="407" font-size="17" font-weight="700" fill="#7c3aed">feature/B</text>
+  <line x1="620" y1="400" x2="1100" y2="400" stroke="#ddd6fe" stroke-width="3"/>
+  <circle cx="620" cy="400" r="8" fill="#7c3aed"/><circle cx="1100" cy="400" r="8" fill="#7c3aed"/>
+  <path d="M1100,392 L1100,198" stroke="#7c3aed" stroke-width="2.5" fill="none" marker-end="url(#p1v)"/>
+  <line x1="620" y1="190" x2="620" y2="400" stroke="#c4b5fd" stroke-width="2" stroke-dasharray="6 6"/>
+
+  <rect x="515" y="283" width="10" height="34" rx="5" fill="#d97706"/>
+  <circle cx="520" cy="262" r="13" fill="#d97706"/><text x="520" y="267" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+  <rect x="740" y="240" width="40" height="10" rx="5" fill="#dc2626"/>
+  <circle cx="760" cy="218" r="13" fill="#dc2626"/><text x="760" y="223" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  <rect x="875" y="173" width="10" height="34" rx="5" fill="#dc2626"/>
+  <circle cx="880" cy="152" r="13" fill="#dc2626"/><text x="880" y="157" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+
+  <rect x="48" y="452" width="452" height="150" rx="12" fill="#fffbeb" stroke="#fcd34d"/>
+  <text x="68" y="484" font-size="15" font-weight="700" fill="#92400e">闸 1 · 提交前</text>
+  <text x="68" y="512" font-size="12.5" fill="#b45309">半硬 · 本地 hook</text>
+  <text x="68" y="538" font-size="12.5" fill="#78350f">pre-commit：lint · 格式化 · 密钥扫描</text>
+  <text x="68" y="562" font-size="12" fill="#a16207">开发者机器上 —— 一条 --no-verify 就能绕过</text>
+  <text x="68" y="584" font-size="12" fill="#a16207">所以它只能挡「手滑」，挡不住「不想」</text>
+
+  <rect x="524" y="452" width="452" height="150" rx="12" fill="#fef2f2" stroke="#fca5a5"/>
+  <text x="544" y="484" font-size="15" font-weight="700" fill="#b91c1c">闸 2 · 合流前</text>
+  <text x="544" y="512" font-size="12.5" fill="#dc2626">硬 · 平台</text>
+  <text x="544" y="538" font-size="12.5" fill="#7f1d1d">必须 N 人批准 + 检查必须绿 + 分支保护</text>
+  <text x="544" y="562" font-size="12" fill="#b91c1c">「禁直推主干、禁强推」都是平台策略 ——</text>
+  <text x="544" y="584" font-size="12" fill="#b91c1c">这是 GitHub Flow 敢只留一条主干的底气</text>
+
+  <rect x="1000" y="452" width="452" height="150" rx="12" fill="#fef2f2" stroke="#fca5a5"/>
+  <text x="1020" y="484" font-size="15" font-weight="700" fill="#b91c1c">闸 3 · 部署前</text>
+  <text x="1020" y="512" font-size="12.5" fill="#dc2626">硬 · 部署门禁</text>
+  <text x="1020" y="538" font-size="12.5" fill="#7f1d1d">部署前检查：构建 / 测试 / 回滚预案</text>
+  <text x="1020" y="562" font-size="12" fill="#b91c1c">它不拦「能不能合」，只拦「能不能上」——</text>
+  <text x="1020" y="584" font-size="12" fill="#b91c1c">所以合并可以快，上线必须过这道关</text>
+
+  <text x="48" y="636" font-size="14" font-weight="700" fill="#0f172a">结论：<tspan fill="#b91c1c">单闸门形态</tspan> —— 三道闸门全压在「从分支进主干」这一个动作的前后；过了这里就一路到生产</text>
+
+  <text x="48" y="690" font-size="14" font-weight="700" fill="#0f172a">② 并行窗口：闸门之外全是并行区</text>
+  <rect x="48" y="712" width="560" height="56" rx="8" fill="#dbeafe" stroke="#93c5fd"/>
+  <text x="328" y="746" font-size="13.5" font-weight="600" fill="#1e3a8a" text-anchor="middle">可并行 · 开发期（任意多条分支）</text>
+  <rect x="624" y="712" width="170" height="56" rx="8" fill="#fee2e2" stroke="#fca5a5"/>
+  <text x="709" y="746" font-size="13" font-weight="600" fill="#b91c1c" text-anchor="middle">串行 · 合流点</text>
+  <rect x="810" y="712" width="642" height="56" rx="8" fill="#dbeafe" stroke="#93c5fd"/>
+  <text x="1131" y="746" font-size="13.5" font-weight="600" fill="#1e3a8a" text-anchor="middle">可并行 · 下一轮开发（主干一合，立刻开新线）</text>
+
+  <text x="48" y="806" font-size="13" fill="#334155">★ 唯一的闸门在合流点，所以并行几乎不受限 —— 约束只剩两条：主干一次只能接受一个合并；分支活得越久，撞车概率越大。</text>
+  <text x="48" y="832" font-size="13" fill="#334155">★ 于是代价被转移到「时间」上：GitHub Flow 的核心纪律不是「怎么合」，而是「<tspan font-weight="600" fill="#0f172a">分支要短</tspan>」。</text>
+  <text x="48" y="866" font-size="12" fill="#94a3b8">对照：GitLab Flow 的闸门有两道（多一道环境），Git Flow 几乎没有机器闸门 —— 同样一条线，闸门数量决定了并行的形状</text>
+</svg>

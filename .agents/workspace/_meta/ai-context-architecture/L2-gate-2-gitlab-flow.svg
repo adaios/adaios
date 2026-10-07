@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="980" viewBox="0 0 1500 980" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC',sans-serif">
+  <rect width="1500" height="980" fill="#ffffff"/>
+  <text x="48" y="52" font-size="27" font-weight="700" fill="#0f172a">Layer 2+ · GitLab Flow：闸门与并行窗口</text>
+  <text x="48" y="84" font-size="15" fill="#64748b">两道闸门把线切成三段 —— 开发可并行、合流串行、发布也串行</text>
+
+  <defs>
+    <marker id="p2v" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker>
+    <marker id="p2a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#d97706"/></marker>
+    <marker id="p2g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/></marker>
+  </defs>
+
+  <text x="48" y="134" font-size="14" font-weight="700" fill="#0f172a">① 线条与闸门位置</text>
+  <text x="1000" y="134" font-size="12" fill="#64748b">闸门标记：红 ＝ 硬（平台 / 环境）· 橙 ＝ 半硬（本地 hook）</text>
+  <text x="48" y="187" font-size="18" font-weight="700" fill="#1d4ed8">main</text>
+  <line x1="200" y1="180" x2="1420" y2="180" stroke="#cbd5e1" stroke-width="3"/>
+  <circle cx="260" cy="180" r="8" fill="#2563eb"/><circle cx="760" cy="180" r="9" fill="#2563eb" stroke="#ffffff" stroke-width="2"/>
+  <circle cx="1180" cy="180" r="9" fill="#2563eb" stroke="#ffffff" stroke-width="2"/>
+
+  <text x="48" y="297" font-size="17" font-weight="700" fill="#7c3aed">feature/A</text>
+  <line x1="260" y1="290" x2="760" y2="290" stroke="#ddd6fe" stroke-width="3"/>
+  <circle cx="260" cy="290" r="8" fill="#7c3aed"/><circle cx="760" cy="290" r="8" fill="#7c3aed"/>
+  <path d="M760,282 L760,188" stroke="#7c3aed" stroke-width="2.5" fill="none" marker-end="url(#p2v)"/>
+  <text x="48" y="377" font-size="17" font-weight="700" fill="#7c3aed">feature/B</text>
+  <line x1="900" y1="370" x2="1180" y2="370" stroke="#ddd6fe" stroke-width="3"/>
+  <circle cx="900" cy="370" r="8" fill="#7c3aed"/><circle cx="1180" cy="370" r="8" fill="#7c3aed"/>
+  <path d="M1180,362 L1180,188" stroke="#7c3aed" stroke-width="2.5" fill="none" marker-end="url(#p2v)"/>
+  <line x1="900" y1="180" x2="900" y2="370" stroke="#c4b5fd" stroke-width="2" stroke-dasharray="6 6"/>
+
+  <text x="48" y="477" font-size="17" font-weight="700" fill="#d97706">staging</text>
+  <line x1="200" y1="470" x2="1420" y2="470" stroke="#fde68a" stroke-width="3" stroke-dasharray="8 5"/>
+  <circle cx="760" cy="470" r="8" fill="#d97706"/><circle cx="1180" cy="470" r="8" fill="#d97706"/>
+  <path d="M800,188 L800,462" stroke="#d97706" stroke-width="2" fill="none" marker-end="url(#p2a)"/>
+  <text x="812" y="440" font-size="12" fill="#b45309">合并即自动部署</text>
+  <text x="48" y="577" font-size="17" font-weight="700" fill="#16a34a">production</text>
+  <line x1="200" y1="570" x2="1420" y2="570" stroke="#bbf7d0" stroke-width="3" stroke-dasharray="8 5"/>
+  <circle cx="1080" cy="570" r="8" fill="#16a34a"/>
+  <path d="M760,478 Q900,570 1068,570" stroke="#16a34a" stroke-width="2.5" fill="none" marker-end="url(#p2g)"/>
+  <path d="M1180,478 Q1180,530 1160,562" stroke="#94a3b8" stroke-width="2" stroke-dasharray="5 4" fill="none"/>
+  <text x="1196" y="522" font-size="11.5" fill="#94a3b8">B 只能排队</text>
+
+  <rect x="503" y="273" width="10" height="34" rx="5" fill="#d97706"/>
+  <circle cx="508" cy="252" r="13" fill="#d97706"/><text x="508" y="257" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+  <rect x="663" y="273" width="10" height="34" rx="5" fill="#dc2626"/>
+  <circle cx="668" cy="252" r="13" fill="#dc2626"/><text x="668" y="257" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  <rect x="740" y="230" width="40" height="10" rx="5" fill="#dc2626"/>
+  <circle cx="760" cy="208" r="13" fill="#dc2626"/><text x="760" y="213" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+  <rect x="880" y="508" width="40" height="10" rx="5" fill="#dc2626"/>
+  <circle cx="900" cy="538" r="13" fill="#dc2626"/><text x="900" y="543" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+
+  <rect x="40" y="622" width="341" height="140" rx="12" fill="#fffbeb" stroke="#fcd34d"/>
+  <text x="58" y="652" font-size="14.5" font-weight="700" fill="#92400e">闸 1 · 提交前</text>
+  <text x="58" y="678" font-size="12" fill="#b45309">半硬 · 本地 hook</text>
+  <text x="58" y="704" font-size="12" fill="#78350f">pre-commit：lint / 格式化</text>
+  <text x="58" y="726" font-size="12" fill="#a16207">可 --no-verify 绕过</text>
+  <text x="58" y="750" font-size="12" fill="#a16207">挡手滑，不挡「不想」</text>
+
+  <rect x="397" y="622" width="341" height="140" rx="12" fill="#fef2f2" stroke="#fca5a5"/>
+  <text x="415" y="652" font-size="14.5" font-weight="700" fill="#b91c1c">闸 2 · 开 MR</text>
+  <text x="415" y="678" font-size="12" fill="#dc2626">硬 · 平台</text>
+  <text x="415" y="704" font-size="12" fill="#7f1d1d">pipeline 必须绿</text>
+  <text x="415" y="726" font-size="12" fill="#b91c1c">lint / test / build / SAST</text>
+  <text x="415" y="750" font-size="12" fill="#b91c1c">不绿就合不进去</text>
+
+  <rect x="754" y="622" width="341" height="140" rx="12" fill="#fef2f2" stroke="#fca5a5"/>
+  <text x="772" y="652" font-size="14.5" font-weight="700" fill="#b91c1c">闸 3 · 合流点</text>
+  <text x="772" y="678" font-size="12" fill="#dc2626">硬 · 平台</text>
+  <text x="772" y="704" font-size="12" fill="#7f1d1d">必须 N 人批准</text>
+  <text x="772" y="726" font-size="12" fill="#7f1d1d">+ 分支保护（禁直推）</text>
+  <text x="772" y="750" font-size="12" fill="#b91c1c">主干只进不改</text>
+
+  <rect x="1111" y="622" width="341" height="140" rx="12" fill="#fef2f2" stroke="#fca5a5"/>
+  <text x="1129" y="652" font-size="14.5" font-weight="700" fill="#b91c1c">闸 4 · 推进 production</text>
+  <text x="1129" y="678" font-size="12" fill="#dc2626">硬 · 环境</text>
+  <text x="1129" y="704" font-size="12" fill="#7f1d1d">protected environment</text>
+  <text x="1129" y="726" font-size="12" fill="#7f1d1d">+ 人工 approve / 定时</text>
+  <text x="1129" y="750" font-size="12" fill="#b91c1c">★ 这是第二道闸门</text>
+
+  <text x="40" y="798" font-size="14" font-weight="700" fill="#0f172a">结论：<tspan fill="#b91c1c">双闸门形态</tspan> —— 合流点一道、环境一道；代码能进主干，不等于能进生产</text>
+
+  <text x="40" y="842" font-size="14" font-weight="700" fill="#0f172a">② 并行窗口：被两道闸门切成三段</text>
+  <rect x="40" y="862" width="500" height="52" rx="8" fill="#dbeafe" stroke="#93c5fd"/>
+  <text x="290" y="894" font-size="13" font-weight="600" fill="#1e3a8a" text-anchor="middle">可并行 · 开发期</text>
+  <rect x="556" y="862" width="170" height="52" rx="8" fill="#fee2e2" stroke="#fca5a5"/>
+  <text x="641" y="894" font-size="13" font-weight="600" fill="#b91c1c" text-anchor="middle">串行 · 合流</text>
+  <rect x="742" y="862" width="710" height="52" rx="8" fill="#fee2e2" stroke="#fca5a5"/>
+  <text x="1097" y="894" font-size="13" font-weight="600" fill="#b91c1c" text-anchor="middle">串行 · 发布（只有一条 production，A 推完 B 才能推）</text>
+
+  <text x="40" y="938" font-size="12.5" fill="#334155">★ 与 GitHub Flow 的关键差别：多出来的那一段红色 —— 发布期不再并行。改动写完了也不能随便上，得排队等环境。</text>
+  <text x="40" y="962" font-size="12" fill="#94a3b8">对照：GitHub Flow 只有合流点一道闸（发布期仍并行）；Git Flow 几乎没有机器闸门（发布期也并行，但靠人协调兜底）</text>
+</svg>

@@ -5,7 +5,7 @@ version: 2
 created: 2026-10-04
 updated: 2026-10-06
 status: active
-lines: 80
+lines: 110
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index, workspace]
@@ -27,7 +27,7 @@ tags: [meta, index, workspace]
 
 > **规则**：**一个分支 = 一个目录 = 一个任务**（主键唯一 ⇒ **零冲突**）；目录里**需要什么才有什么**（轻活就一个 `LEDGER.md`）。
 
-## 文件清单（40 项）
+## 文件清单（70 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -44,6 +44,36 @@ tags: [meta, index, workspace]
 | `_meta/process-issues-20261006.md` | 本次会话实跑「需求 → 设计」全流程时实测发现的 12 条流程问题（主链本身 5 · 契约与守卫 3 · 子代理… | active |
 | `_meta/process-log-20261006-v4.md` | 流程官（QA）对本轮（2026-10-06 · trading-plugin 设计 final v4 轮）的事实… | active |
 | `_meta/roadmap-diff-trading-20261006.md` | product-roadmap.md 的三条改动提案（现状原文 → 改后原文 + 理由），与 RFC 草稿同口径… | draft |
+| `_meta/ai-context-architecture/L1-git-flow.svg` | — | active |
+| `_meta/ai-context-architecture/L1-github-flow.svg` | — | active |
+| `_meta/ai-context-architecture/L1-gitlab-flow.svg` | — | active |
+| `_meta/ai-context-architecture/L2-1-github-flow.svg` | — | active |
+| `_meta/ai-context-architecture/L2-2-gitlab-flow.svg` | — | active |
+| `_meta/ai-context-architecture/L2-3-git-flow.svg` | — | active |
+| `_meta/ai-context-architecture/L2-b-enforcement.svg` | — | active |
+| `_meta/ai-context-architecture/L2-c-parallel.svg` | — | active |
+| `_meta/ai-context-architecture/L2-gate-1-github-flow.svg` | — | active |
+| `_meta/ai-context-architecture/L2-gate-2-gitlab-flow.svg` | — | active |
+| `_meta/ai-context-architecture/L2-gate-3-git-flow.svg` | — | active |
+| `_meta/ai-context-architecture/L3-1-main-path-git-flow.svg` | — | active |
+| `_meta/ai-context-architecture/L3-2-main-path-github-flow.svg` | — | active |
+| `_meta/ai-context-architecture/L3-3-main-path-gitlab-flow.svg` | — | active |
+| `_meta/ai-context-architecture/README.md` | **AI 上下文工程体系架构图（分层推进）**——L1 三种经典分支模式 · L2 流 · L2+ 闸门与并行 · L3 主线 + 六道关卡；12 张 SVG 原件 + `png/` 位图版 | draft |
+| `_meta/ai-context-architecture/png/L1-git-flow.png` | — | active |
+| `_meta/ai-context-architecture/png/L1-github-flow.png` | — | active |
+| `_meta/ai-context-architecture/png/L1-gitlab-flow.png` | — | active |
+| `_meta/ai-context-architecture/png/L2-1-github-flow.png` | — | active |
+| `_meta/ai-context-architecture/png/L2-2-gitlab-flow.png` | — | active |
+| `_meta/ai-context-architecture/png/L2-3-git-flow.png` | — | active |
+| `_meta/ai-context-architecture/png/L2-b-enforcement.png` | — | active |
+| `_meta/ai-context-architecture/png/L2-c-parallel.png` | — | active |
+| `_meta/ai-context-architecture/png/L2-gate-1-github-flow.png` | — | active |
+| `_meta/ai-context-architecture/png/L2-gate-2-gitlab-flow.png` | — | active |
+| `_meta/ai-context-architecture/png/L2-gate-3-git-flow.png` | — | active |
+| `_meta/ai-context-architecture/png/L3-1-main-path-git-flow.png` | — | active |
+| `_meta/ai-context-architecture/png/L3-2-main-path-github-flow.png` | — | active |
+| `_meta/ai-context-architecture/png/L3-3-main-path-gitlab-flow.png` | — | active |
+| `_meta/ai-context-issues-20261007.md` | 体系自洽性问题记录（5 条：图纸无家 / 引用单向 / 图片无契约 / 无人关卡 / 规则没人读）——**只记录不修改**（B7） | draft |
 | `_templates/design.md` | 设计文档模板——本轮回应 · 设计 · 取舍 · 未决 · 自评风险；每轮一份、不覆盖；**一轮只收敛一类**（… | active |
 | `_templates/dispatch.md` | 派审核官 / 编写者时的 prompt 骨架——照抄改；含回执 · 材料前置 · 先落文件 · 3 分钟闸门（协… | active |
 | `_templates/ledger.md` | 分支账本模板——本分支的目标 · 进度 · 风险 · 待交接；放在 .agents/workspace/<分支名… | active |

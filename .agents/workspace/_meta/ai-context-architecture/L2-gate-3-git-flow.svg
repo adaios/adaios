@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1040" viewBox="0 0 1500 1040" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC',sans-serif">
+  <rect width="1500" height="1040" fill="#ffffff"/>
+  <text x="48" y="52" font-size="27" font-weight="700" fill="#0f172a">Layer 2+ · Git Flow：闸门与并行窗口</text>
+  <text x="48" y="84" font-size="15" fill="#64748b">几乎没有机器闸门 —— 全程可并行，代价是合并面最大、全靠人协调</text>
+
+  <defs>
+    <marker id="p3v" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker>
+    <marker id="p3g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/></marker>
+    <marker id="p3r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/></marker>
+  </defs>
+
+  <text x="48" y="134" font-size="14" font-weight="700" fill="#0f172a">① 线条与闸门位置</text>
+  <text x="1000" y="134" font-size="12" fill="#64748b">闸门标记：橙 ＝ 半硬（本地 hook）· 灰 ＝ 软（纯纪律）</text>
+  <text x="48" y="187" font-size="18" font-weight="700" fill="#1d4ed8">main</text>
+  <line x1="200" y1="180" x2="1440" y2="180" stroke="#cbd5e1" stroke-width="3"/>
+  <circle cx="260" cy="180" r="8" fill="#2563eb"/><circle cx="1150" cy="180" r="9" fill="#2563eb" stroke="#ffffff" stroke-width="2"/>
+  <circle cx="1360" cy="180" r="9" fill="#2563eb" stroke="#ffffff" stroke-width="2"/>
+  <rect x="1126" y="130" width="20" height="20" transform="rotate(45 1136 140)" fill="#16a34a"/>
+  <text x="1158" y="134" font-size="12" font-weight="600" fill="#15803d">tag</text>
+
+  <text x="48" y="287" font-size="17" font-weight="700" fill="#b91c1c">hotfix</text>
+  <line x1="1240" y1="280" x2="1420" y2="280" stroke="#fecaca" stroke-width="3"/>
+  <line x1="1240" y1="180" x2="1240" y2="280" stroke="#fecaca" stroke-width="2" stroke-dasharray="6 6"/>
+  <circle cx="1240" cy="280" r="8" fill="#dc2626"/><circle cx="1360" cy="280" r="8" fill="#dc2626"/><circle cx="1420" cy="280" r="8" fill="#dc2626"/>
+  <path d="M1360,272 L1360,192" stroke="#dc2626" stroke-width="2.5" fill="none" marker-end="url(#p3r)"/>
+  <path d="M1420,288 L1420,392" stroke="#dc2626" stroke-width="2.5" fill="none" marker-end="url(#p3r)"/>
+
+  <text x="48" y="397" font-size="18" font-weight="700" fill="#0f766e">develop</text>
+  <line x1="200" y1="390" x2="1440" y2="390" stroke="#cbd5e1" stroke-width="3"/>
+  <circle cx="260" cy="390" r="8" fill="#0f766e"/><circle cx="780" cy="390" r="8" fill="#0f766e" stroke="#ffffff" stroke-width="2"/>
+  <circle cx="1250" cy="390" r="8" fill="#0f766e" stroke="#ffffff" stroke-width="2"/><circle cx="1420" cy="390" r="8" fill="#0f766e" stroke="#ffffff" stroke-width="2"/>
+
+  <text x="48" y="507" font-size="17" font-weight="700" fill="#7c3aed">feature/x</text>
+  <line x1="320" y1="500" x2="780" y2="500" stroke="#ddd6fe" stroke-width="3"/>
+  <line x1="320" y1="390" x2="320" y2="500" stroke="#c4b5fd" stroke-width="2" stroke-dasharray="6 6"/>
+  <circle cx="320" cy="500" r="8" fill="#7c3aed"/><circle cx="780" cy="500" r="8" fill="#7c3aed"/>
+  <path d="M780,492 L780,402" stroke="#7c3aed" stroke-width="2.5" fill="none" marker-end="url(#p3v)"/>
+
+  <text x="48" y="617" font-size="17" font-weight="700" fill="#16a34a">release/1.0</text>
+  <line x1="900" y1="610" x2="1250" y2="610" stroke="#bbf7d0" stroke-width="3"/>
+  <line x1="900" y1="390" x2="900" y2="610" stroke="#bbf7d0" stroke-width="2" stroke-dasharray="6 6"/>
+  <circle cx="900" cy="610" r="8" fill="#16a34a"/><circle cx="1150" cy="610" r="8" fill="#16a34a"/><circle cx="1250" cy="610" r="8" fill="#16a34a"/>
+  <path d="M1150,602 L1150,192" stroke="#16a34a" stroke-width="2.5" fill="none" marker-end="url(#p3g)"/>
+  <path d="M1250,602 L1250,402" stroke="#16a34a" stroke-width="2.5" fill="none" marker-end="url(#p3g)"/>
+
+  <rect x="495" y="483" width="10" height="34" rx="5" fill="#d97706"/>
+  <circle cx="500" cy="462" r="13" fill="#d97706"/><text x="500" y="467" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+  <rect x="760" y="430" width="40" height="10" rx="5" fill="#64748b"/>
+  <circle cx="780" cy="458" r="13" fill="#64748b"/><text x="780" y="463" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  <rect x="1130" y="365" width="40" height="10" rx="5" fill="#64748b"/>
+  <circle cx="1150" cy="341" r="13" fill="#64748b"/><text x="1150" y="346" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+  <rect x="1230" y="565" width="40" height="10" rx="5" fill="#64748b"/>
+  <circle cx="1250" cy="541" r="13" fill="#64748b"/><text x="1250" y="546" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+
+  <rect x="40" y="664" width="341" height="146" rx="12" fill="#fffbeb" stroke="#fcd34d"/>
+  <text x="58" y="694" font-size="14.5" font-weight="700" fill="#92400e">闸 1 · 提交前</text>
+  <text x="58" y="720" font-size="12" fill="#b45309">半硬 · 本地 hook</text>
+  <text x="58" y="746" font-size="12" fill="#78350f">pre-commit（若有）</text>
+  <text x="58" y="772" font-size="12" fill="#a16207">唯一能自动拦的一环</text>
+  <text x="58" y="796" font-size="12" fill="#a16207">其余全靠人</text>
+
+  <rect x="397" y="664" width="341" height="146" rx="12" fill="#f1f5f9" stroke="#94a3b8"/>
+  <text x="415" y="694" font-size="14.5" font-weight="700" fill="#334155">闸 2 · 合 develop</text>
+  <text x="415" y="720" font-size="12" fill="#64748b">软 · 纯纪律</text>
+  <text x="415" y="746" font-size="12" fill="#475569">谁同意这个功能算完</text>
+  <text x="415" y="772" font-size="12" fill="#64748b">用了 MR 才变硬；</text>
+  <text x="415" y="796" font-size="12" fill="#64748b">不用就是「谁都能合」</text>
+
+  <rect x="754" y="664" width="341" height="146" rx="12" fill="#f1f5f9" stroke="#94a3b8"/>
+  <text x="772" y="694" font-size="14.5" font-weight="700" fill="#334155">闸 3 · 合 main + 打 tag</text>
+  <text x="772" y="720" font-size="12" fill="#64748b">软 · release manager</text>
+  <text x="772" y="746" font-size="12" fill="#475569">什么时候「可以发了」</text>
+  <text x="772" y="772" font-size="12" fill="#64748b">版本号定成什么</text>
+  <text x="772" y="796" font-size="12" fill="#64748b">全是人的决定，机器不表态</text>
+
+  <rect x="1111" y="664" width="341" height="146" rx="12" fill="#f1f5f9" stroke="#94a3b8"/>
+  <text x="1129" y="694" font-size="14.5" font-weight="700" fill="#334155">闸 4 · 合回 develop</text>
+  <text x="1129" y="720" font-size="12" fill="#64748b">软 · ★ 最容易漏</text>
+  <text x="1129" y="746" font-size="12" fill="#475569">release / hotfix 都要合两处</text>
+  <text x="1129" y="772" font-size="12" fill="#64748b">漏了没人报错 ——</text>
+  <text x="1129" y="796" font-size="12" fill="#64748b">下次发布 bug 原地复活</text>
+
+  <text x="40" y="844" font-size="14" font-weight="700" fill="#0f172a">结论：<tspan fill="#334155">近乎无机器闸门</tspan> —— 五处关卡里四处是软的；CI 出现之前，这套模型的可靠性来自「人记得」</text>
+
+  <text x="40" y="888" font-size="14" font-weight="700" fill="#0f172a">② 并行窗口：全程可并行，只有合流那一下是串行</text>
+  <rect x="40" y="908" width="440" height="52" rx="8" fill="#dbeafe" stroke="#93c5fd"/>
+  <text x="260" y="940" font-size="13" font-weight="600" fill="#1e3a8a" text-anchor="middle">可并行 · 做功能</text>
+  <rect x="496" y="908" width="150" height="52" rx="8" fill="#fee2e2" stroke="#fca5a5"/>
+  <text x="571" y="940" font-size="13" font-weight="600" fill="#b91c1c" text-anchor="middle">串行 · 合 develop</text>
+  <rect x="662" y="908" width="440" height="52" rx="8" fill="#dbeafe" stroke="#93c5fd"/>
+  <text x="882" y="940" font-size="13" font-weight="600" fill="#1e3a8a" text-anchor="middle">可并行 · 发布 &amp; 救火同时跑</text>
+  <rect x="1118" y="908" width="150" height="52" rx="8" fill="#fee2e2" stroke="#fca5a5"/>
+  <text x="1193" y="940" font-size="13" font-weight="600" fill="#b91c1c" text-anchor="middle">串行 · 合 main</text>
+  <rect x="1284" y="908" width="158" height="52" rx="8" fill="#dbeafe" stroke="#93c5fd"/>
+  <text x="1363" y="940" font-size="12.5" font-weight="600" fill="#1e3a8a" text-anchor="middle">可并行</text>
+
+  <text x="40" y="998" font-size="12.5" fill="#334155">★ 与另两种的关键差别：Git Flow 连「发布」都能并行（release 冻结的同时，别的功能继续往 develop 走；hotfix 也能同时从 main 切）。</text>
+  <text x="40" y="1022" font-size="12.5" fill="#334155">★ 代价：并行越多、合并面越大，而唯一能兜底的机制是「人记得」——这也是它被持续交付淘汰的原因（作者本人 2020 年附注）。</text>
+</svg>

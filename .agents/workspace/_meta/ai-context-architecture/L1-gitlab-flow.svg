@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="960" viewBox="0 0 1400 960" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC',sans-serif">
+  <rect width="1400" height="960" fill="#ffffff"/>
+  <text x="48" y="54" font-size="27" font-weight="700" fill="#0f172a">GitLab Flow（经典）</text>
+  <rect x="1152" y="28" width="200" height="30" rx="15" fill="#eef2ff" stroke="#c7d2fe"/>
+  <text x="1252" y="49" font-size="13" fill="#4338ca" text-anchor="middle">Layer 1 · 分支策略</text>
+  <text x="48" y="86" font-size="15" fill="#64748b">在 GitHub Flow 之上补「发布」这一段 ｜ 环境分支 / 发布分支 ｜ 上游优先（upstream first）</text>
+
+  <defs>
+    <marker id="b1v" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker>
+    <marker id="b1a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#d97706"/></marker>
+    <marker id="b1g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/></marker>
+  </defs>
+
+  <rect x="48" y="120" width="1304" height="212" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="68" y="152" font-size="15.5" font-weight="700" fill="#0f172a">① 主干与功能分支 —— 与 GitHub Flow 相同，只是 PR 换成 MR</text>
+  <text x="68" y="200" font-size="15" font-weight="700" fill="#1d4ed8">main</text>
+  <text x="68" y="218" font-size="11.5" fill="#94a3b8">唯一长期分支</text>
+  <line x1="200" y1="195" x2="1320" y2="195" stroke="#cbd5e1" stroke-width="3"/>
+  <circle cx="300" cy="195" r="8" fill="#2563eb"/><circle cx="900" cy="195" r="9" fill="#2563eb" stroke="#ffffff" stroke-width="2"/>
+  <text x="68" y="272" font-size="15" font-weight="700" fill="#7c3aed">feature/x</text>
+  <line x1="300" y1="195" x2="300" y2="267" stroke="#c4b5fd" stroke-width="2" stroke-dasharray="6 6"/>
+  <line x1="300" y1="267" x2="800" y2="267" stroke="#ddd6fe" stroke-width="3"/>
+  <circle cx="300" cy="267" r="8" fill="#7c3aed"/><circle cx="550" cy="267" r="7" fill="#a78bfa"/><circle cx="800" cy="267" r="8" fill="#7c3aed"/>
+  <path d="M800,259 Q860,195 892,195" stroke="#7c3aed" stroke-width="2.5" fill="none" marker-end="url(#b1v)"/>
+  <text x="820" y="248" font-size="12.5" fill="#7c3aed">Merge Request（MR）</text>
+  <text x="68" y="308" font-size="12.5" fill="#475569">合并进 main ＝ 进入「可发布状态」，但不等于已上线；GitLab 侧一切协作（Issue 关联 · 评审 · 审批 · CI）挂在 MR 上</text>
+
+  <rect x="48" y="356" width="640" height="300" rx="12" fill="#fffbeb" stroke="#fde68a"/>
+  <text x="68" y="390" font-size="16" font-weight="700" fill="#b45309">形态 A · 环境分支（持续交付）</text>
+  <text x="68" y="414" font-size="12.5" fill="#78350f">下游一条分支对应一个环境；环境之间只做「合并」</text>
+  <line x1="170" y1="466" x2="656" y2="466" stroke="#93c5fd" stroke-width="3"/>
+  <text x="68" y="471" font-size="12.5" font-weight="600" fill="#1d4ed8">main</text>
+  <circle cx="320" cy="466" r="8" fill="#2563eb"/><circle cx="520" cy="466" r="8" fill="#2563eb"/>
+  <line x1="170" y1="536" x2="656" y2="536" stroke="#fcd34d" stroke-width="3" stroke-dasharray="8 5"/>
+  <text x="68" y="541" font-size="12.5" font-weight="600" fill="#b45309">pre-prod</text>
+  <line x1="170" y1="606" x2="656" y2="606" stroke="#86efac" stroke-width="3" stroke-dasharray="8 5"/>
+  <text x="68" y="611" font-size="12.5" font-weight="600" fill="#15803d">production</text>
+  <path d="M320,474 L320,528" stroke="#d97706" stroke-width="2" fill="none" marker-end="url(#b1a)"/>
+  <path d="M520,544 L520,598" stroke="#16a34a" stroke-width="2" fill="none" marker-end="url(#b1g)"/>
+  <text x="336" y="506" font-size="11.5" fill="#b45309">自动部署</text>
+  <text x="536" y="576" font-size="11.5" fill="#15803d">审批后推进（人工或定时）</text>
+  <text x="68" y="640" font-size="12" fill="#a16207">适用：一条产品线、随时可发、按环境逐级推进</text>
+
+  <rect x="712" y="356" width="640" height="300" rx="12" fill="#f0fdf4" stroke="#bbf7d0"/>
+  <text x="732" y="390" font-size="16" font-weight="700" fill="#15803d">形态 B · 发布分支（版本发布）</text>
+  <text x="732" y="414" font-size="12.5" fill="#166534">每个版本切一条 release 分支，冻结成可交付版本</text>
+  <line x1="834" y1="466" x2="1320" y2="466" stroke="#93c5fd" stroke-width="3"/>
+  <text x="732" y="471" font-size="12.5" font-weight="600" fill="#1d4ed8">main</text>
+  <circle cx="900" cy="466" r="8" fill="#2563eb"/><circle cx="1200" cy="466" r="8" fill="#2563eb"/>
+  <line x1="900" y1="556" x2="1320" y2="556" stroke="#86efac" stroke-width="3"/>
+  <circle cx="900" cy="556" r="8" fill="#16a34a"/><circle cx="1080" cy="556" r="8" fill="#16a34a"/>
+  <path d="M900,474 L900,548" stroke="#16a34a" stroke-width="2" fill="none" marker-end="url(#b1g)"/>
+  <path d="M1200,474 Q1236,540 1248,550" stroke="#16a34a" stroke-width="2" stroke-dasharray="5 4" fill="none" marker-end="url(#b1g)"/>
+  <text x="916" y="500" font-size="11.5" fill="#15803d">从 main 切出</text>
+  <text x="1256" y="506" font-size="11.5" fill="#15803d">只摘 fix</text>
+  <text x="906" y="586" font-size="12" fill="#15803d">release/1.0</text>
+  <text x="1076" y="586" font-size="12" fill="#15803d">hotfix</text>
+  <text x="732" y="628" font-size="12" fill="#15803d">适用：按版本对外交付、要同时维护老版本</text>
+  <text x="732" y="648" font-size="12" fill="#15803d">关键：hotfix 先修 main，再 cherry-pick 到 release 分支</text>
+
+  <rect x="48" y="692" width="1304" height="200" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="68" y="726" font-size="15" font-weight="700" fill="#0f172a">四条原则（GitLab 官方口径）</text>
+  <text x="68" y="756" font-size="13" fill="#334155">· main 是唯一长期分支，也是唯一接受功能改动的地方 —— 功能分支从 main 切、合回 main</text>
+  <text x="68" y="780" font-size="13" fill="#334155">· 下游分支（环境 / 发布）只接受合并或摘取，永远不直接在上面开发</text>
+  <text x="68" y="804" font-size="13" fill="#334155">· upstream first：修复先落在 main，再往下游推进 —— 否则下次发布把 bug 带回来</text>
+  <text x="68" y="828" font-size="13" fill="#334155">· 一切走 Merge Request；提交信息关联 Issue，评审与审批在 MR 上闭环</text>
+  <text x="68" y="866" font-size="11.5" fill="#94a3b8">出处：GitLab 官方文档 · GitLab Flow（docs.gitlab.com/ee/topics/gitlab_flow.html）｜ 由 GitHub Flow 扩展而来</text>
+</svg>

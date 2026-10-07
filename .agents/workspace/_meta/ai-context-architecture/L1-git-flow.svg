@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC',sans-serif">
+  <rect width="1400" height="900" fill="#ffffff"/>
+  <text x="48" y="54" font-size="27" font-weight="700" fill="#0f172a">Git Flow（经典）</text>
+  <rect x="1152" y="28" width="200" height="30" rx="15" fill="#eef2ff" stroke="#c7d2fe"/>
+  <text x="1252" y="49" font-size="13" fill="#4338ca" text-anchor="middle">Layer 1 · 分支策略</text>
+  <text x="48" y="86" font-size="15" fill="#64748b">两条长期分支（main / develop）＋ 三类辅助分支（feature / release / hotfix）</text>
+
+  <defs>
+    <marker id="c1v" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker>
+    <marker id="c1g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/></marker>
+    <marker id="c1r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/></marker>
+  </defs>
+
+  <text x="48" y="207" font-size="18" font-weight="700" fill="#1d4ed8">main</text>
+  <text x="48" y="227" font-size="11.5" fill="#94a3b8">长期 · 生产就绪（原文叫 master）</text>
+  <line x1="180" y1="200" x2="1340" y2="200" stroke="#cbd5e1" stroke-width="3"/>
+  <circle cx="260" cy="200" r="8" fill="#2563eb"/>
+  <circle cx="900" cy="200" r="9" fill="#2563eb" stroke="#ffffff" stroke-width="2"/>
+  <circle cx="1200" cy="200" r="9" fill="#2563eb" stroke="#ffffff" stroke-width="2"/>
+  <rect x="876" y="150" width="20" height="20" transform="rotate(45 886 160)" fill="#16a34a"/>
+  <text x="908" y="164" font-size="12.5" font-weight="600" fill="#15803d">tag 1.0</text>
+  <rect x="1176" y="144" width="20" height="20" transform="rotate(45 1186 154)" fill="#dc2626"/>
+  <text x="1208" y="149" font-size="12.5" font-weight="600" fill="#b91c1c">tag 1.0.1</text>
+
+  <text x="48" y="407" font-size="18" font-weight="700" fill="#0f766e">develop</text>
+  <text x="48" y="427" font-size="11.5" fill="#94a3b8">长期 · 下个版本的集成分支</text>
+  <line x1="180" y1="400" x2="1340" y2="400" stroke="#cbd5e1" stroke-width="3"/>
+  <circle cx="260" cy="400" r="8" fill="#0f766e"/>
+  <circle cx="660" cy="400" r="8" fill="#0f766e" stroke="#ffffff" stroke-width="2"/>
+  <circle cx="980" cy="400" r="8" fill="#0f766e" stroke="#ffffff" stroke-width="2"/>
+  <circle cx="1280" cy="400" r="8" fill="#0f766e" stroke="#ffffff" stroke-width="2"/>
+
+  <line x1="300" y1="400" x2="300" y2="530" stroke="#c4b5fd" stroke-width="2" stroke-dasharray="6 6"/>
+  <line x1="300" y1="530" x2="660" y2="530" stroke="#ddd6fe" stroke-width="3"/>
+  <circle cx="300" cy="530" r="8" fill="#7c3aed"/><circle cx="480" cy="530" r="7" fill="#a78bfa"/><circle cx="660" cy="530" r="8" fill="#7c3aed"/>
+  <path d="M660,522 Q682,400 668,400" stroke="#7c3aed" stroke-width="2.5" fill="none" marker-end="url(#c1v)"/>
+  <text x="300" y="562" font-size="12.5" font-weight="600" fill="#7c3aed">feature/login</text>
+  <text x="300" y="586" font-size="11.5" fill="#a78bfa">从 develop 切出 → 只合回 develop，从不碰 main</text>
+
+  <line x1="720" y1="400" x2="720" y2="630" stroke="#bbf7d0" stroke-width="2" stroke-dasharray="6 6"/>
+  <line x1="720" y1="630" x2="980" y2="630" stroke="#bbf7d0" stroke-width="3"/>
+  <circle cx="720" cy="630" r="8" fill="#16a34a"/><circle cx="900" cy="630" r="8" fill="#16a34a"/><circle cx="980" cy="630" r="8" fill="#16a34a"/>
+  <path d="M980,622 Q1004,400 988,400" stroke="#16a34a" stroke-width="2.5" fill="none" marker-end="url(#c1g)"/>
+  <path d="M900,622 Q888,300 890,212" stroke="#16a34a" stroke-width="2.5" fill="none" marker-end="url(#c1g)"/>
+  <text x="720" y="662" font-size="12.5" font-weight="600" fill="#15803d">release/1.0</text>
+  <text x="908" y="586" font-size="11.5" fill="#15803d">合 main ＋ 打 tag</text>
+  <text x="996" y="470" font-size="11.5" fill="#15803d">合回 develop</text>
+
+  <line x1="1060" y1="200" x2="1060" y2="320" stroke="#fecaca" stroke-width="2" stroke-dasharray="6 6"/>
+  <line x1="1060" y1="320" x2="1280" y2="320" stroke="#fecaca" stroke-width="3"/>
+  <circle cx="1060" cy="320" r="8" fill="#dc2626"/><circle cx="1120" cy="320" r="8" fill="#dc2626"/><circle cx="1280" cy="320" r="8" fill="#dc2626"/>
+  <path d="M1120,312 L1120,214" stroke="#dc2626" stroke-width="2.5" fill="none" marker-end="url(#c1r)"/>
+  <path d="M1280,328 Q1294,400 1288,400" stroke="#dc2626" stroke-width="2.5" fill="none" marker-end="url(#c1r)"/>
+  <text x="1060" y="352" font-size="12.5" font-weight="600" fill="#b91c1c">hotfix/1.0.1</text>
+  <text x="1060" y="376" font-size="11.5" fill="#dc2626">从 main 切出（线上事故）</text>
+  <text x="1136" y="266" font-size="11.5" fill="#dc2626">合 main ＋ 打 tag</text>
+  <text x="1190" y="430" font-size="11.5" fill="#dc2626">合回 develop</text>
+
+  <rect x="48" y="700" width="420" height="132" rx="12" fill="#f5f3ff" stroke="#ddd6fe"/>
+  <text x="68" y="732" font-size="15.5" font-weight="700" fill="#5b21b6">feature/* · 做功能</text>
+  <text x="68" y="762" font-size="12.5" fill="#6d28d9">从 develop 切出</text>
+  <text x="68" y="786" font-size="12.5" fill="#6d28d9">合回 develop（不打 tag）</text>
+  <text x="68" y="814" font-size="12" fill="#7c3aed">只存在于开发期，从不与 main 直接接触</text>
+
+  <rect x="490" y="700" width="420" height="132" rx="12" fill="#f0fdf4" stroke="#bbf7d0"/>
+  <text x="510" y="732" font-size="15.5" font-weight="700" fill="#166534">release/* · 准备发布</text>
+  <text x="510" y="762" font-size="12.5" fill="#15803d">从 develop 切出（功能冻结）</text>
+  <text x="510" y="786" font-size="12.5" fill="#15803d">合到 main（在 main 上打 tag）</text>
+  <text x="510" y="814" font-size="12" fill="#15803d">并合回 develop —— 否则修复会丢</text>
+
+  <rect x="932" y="700" width="420" height="132" rx="12" fill="#fef2f2" stroke="#fecaca"/>
+  <text x="952" y="732" font-size="15.5" font-weight="700" fill="#b91c1c">hotfix/* · 救火</text>
+  <text x="952" y="762" font-size="12.5" fill="#dc2626">从 main 切出（线上事故）</text>
+  <text x="952" y="786" font-size="12.5" fill="#dc2626">合到 main（在 main 上打 tag）</text>
+  <text x="952" y="814" font-size="12" fill="#dc2626">并合回 develop —— 两处都不能少</text>
+
+  <text x="48" y="872" font-size="11.5" fill="#94a3b8">出处：Vincent Driessen · A successful Git branching model（nvie.com, 2010）｜ 作者 2020 年附注：此模型已不再推荐用于 Web 持续交付</text>
+</svg>

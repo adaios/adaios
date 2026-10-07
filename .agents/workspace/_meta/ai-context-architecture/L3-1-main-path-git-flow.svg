@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1120" viewBox="0 0 2200 1120" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC',sans-serif">
+  <rect width="2200" height="1120" fill="#ffffff"/>
+  <text x="40" y="52" font-size="27" font-weight="700" fill="#0f172a">Layer 3 · 一个改动的旅程：主线 + 六道关卡</text>
+  <text x="40" y="86" font-size="15" fill="#64748b">AI 上下文工程是中枢 —— 人（决策接口）与 AI（执行接口）都挂在它上面；粗线是一个改动走过的路</text>
+
+  <rect x="1440" y="20" width="720" height="76" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <line x1="1462" y1="48" x2="1518" y2="48" stroke="#0f172a" stroke-width="6" stroke-linecap="round"/>
+  <text x="1532" y="53" font-size="12.5" fill="#334155">粗线 ＝ 一个改动的旅程（AI 全程执行）</text>
+  <circle cx="1470" cy="76" r="9" fill="#b91c1c"/>
+  <text x="1483" y="80" font-size="9.5" font-weight="700" fill="#ffffff">人</text>
+  <text x="1500" y="80" font-size="12.5" fill="#334155">＝ 决策接口（4 个点：取舍 / 冻结 / 发布 / 验收）</text>
+
+  <rect x="160" y="130" width="360" height="160" rx="10" fill="#f0fdf4" stroke="#86efac"/>
+  <text x="180" y="160" font-size="13.5" font-weight="700" fill="#0f172a">D1 · 进入分支（开工）</text>
+  <text x="180" y="192" font-size="12" font-weight="600" fill="#15803d">✔ 允许</text>
+  <text x="180" y="214" font-size="11.5" fill="#166534">读规则 / 坑 · 写分支草案</text>
+  <text x="180" y="236" font-size="11.5" fill="#166534">重建本机出口</text>
+  <text x="180" y="264" font-size="12" font-weight="600" fill="#b91c1c">✘ 禁止 写全局账本 · 写顶层决策 · 碰本机状态</text>
+
+  <rect x="760" y="130" width="360" height="160" rx="10" fill="#fffbeb" stroke="#fcd34d"/>
+  <text x="780" y="160" font-size="13.5" font-weight="700" fill="#0f172a">D3 · 合入 develop</text>
+  <text x="780" y="192" font-size="12" font-weight="600" fill="#15803d">✔ 允许</text>
+  <text x="780" y="214" font-size="11.5" fill="#166534">真相源合过来 · 出口重建</text>
+  <text x="780" y="236" font-size="11.5" fill="#166534">待交接清单交主会话</text>
+  <text x="780" y="264" font-size="12" font-weight="600" fill="#b91c1c">✘ 禁止 直写未修项 / 批次历史 / 清单</text>
+
+  <rect x="1520" y="130" width="360" height="160" rx="10" fill="#fef2f2" stroke="#fca5a5"/>
+  <text x="1540" y="160" font-size="13.5" font-weight="700" fill="#0f172a">D5 · 发 main（发布点）</text>
+  <text x="1540" y="192" font-size="12" font-weight="600" fill="#15803d">✔ 允许</text>
+  <text x="1540" y="214" font-size="11.5" fill="#166534">写批次历史与清单（此刻才允许）</text>
+  <text x="1540" y="236" font-size="11.5" fill="#166534">打 tag</text>
+  <text x="1540" y="264" font-size="12" font-weight="600" fill="#b91c1c">✘ 禁止 跳门禁 · tag 打偏 · ★ 漏合回 develop</text>
+
+  <rect x="460" y="850" width="360" height="160" rx="10" fill="#f0fdf4" stroke="#86efac"/>
+  <text x="480" y="880" font-size="13.5" font-weight="700" fill="#0f172a">D2 · 提交前（本机）</text>
+  <text x="480" y="912" font-size="12" font-weight="600" fill="#15803d">✔ 允许</text>
+  <text x="480" y="934" font-size="11.5" fill="#166534">改代码 · 同步事实层</text>
+  <text x="480" y="956" font-size="11.5" fill="#166534">当场补坑 · 加技能与守卫</text>
+  <text x="480" y="984" font-size="12" font-weight="600" fill="#b91c1c">✘ 禁止 绕门禁 · 只合代码不带规则</text>
+
+  <rect x="1140" y="850" width="360" height="160" rx="10" fill="#fffbeb" stroke="#fcd34d"/>
+  <text x="1160" y="880" font-size="13.5" font-weight="700" fill="#0f172a">D4 · 冻结（切 release）</text>
+  <text x="1160" y="912" font-size="12" font-weight="600" fill="#15803d">✔ 允许</text>
+  <text x="1160" y="934" font-size="11.5" fill="#166534">版本号 · 发布说明 · 格式冻结</text>
+  <text x="1160" y="964" font-size="12" font-weight="600" fill="#b91c1c">✘ 禁止 改行为性规则</text>
+  <text x="1160" y="986" font-size="11.5" fill="#b91c1c">（冻结期改规则 ＝ 让这次发布变性）</text>
+
+  <rect x="1800" y="850" width="360" height="160" rx="10" fill="#fef2f2" stroke="#fca5a5"/>
+  <text x="1820" y="880" font-size="13.5" font-weight="700" fill="#0f172a">D6 · 归档回灌</text>
+  <text x="1820" y="912" font-size="12" font-weight="600" fill="#15803d">✔ 允许</text>
+  <text x="1820" y="934" font-size="11.5" fill="#166534">草案 → 顶层 · 登记索引 · 清在制品</text>
+  <text x="1820" y="964" font-size="12" font-weight="600" fill="#b91c1c">✘ 禁止 未验证的假设进顶层</text>
+
+  <rect x="300" y="310" width="640" height="480" fill="#f0fdf4"/>
+  <rect x="940" y="310" width="760" height="480" fill="#fffbeb"/>
+  <rect x="1700" y="310" width="410" height="480" fill="#fef2f2"/>
+
+  <line x1="250" y1="480" x2="2110" y2="480" stroke="#5eead4" stroke-width="2.5"/>
+  <line x1="250" y1="660" x2="2110" y2="660" stroke="#93c5fd" stroke-width="2.5"/>
+  <line x1="1320" y1="570" x2="1710" y2="570" stroke="#86efac" stroke-width="2.5"/>
+  <line x1="1780" y1="750" x2="2010" y2="750" stroke="#fca5a5" stroke-width="2.5"/>
+  <line x1="1780" y1="660" x2="1780" y2="750" stroke="#fca5a5" stroke-width="1.5" stroke-dasharray="5 5"/>
+  <circle cx="1780" cy="750" r="7" fill="#dc2626"/>
+  <circle cx="1850" cy="750" r="7" fill="#dc2626"/>
+  <path d="M1850,742 L1850,672" stroke="#dc2626" stroke-width="2" fill="none"/>
+  <path d="M1960,742 L1960,492" stroke="#dc2626" stroke-width="1.6" stroke-dasharray="5 5" fill="none"/>
+  <text x="1800" y="778" font-size="11" fill="#b91c1c">救火支线（hotfix：合 main + 合回 develop）</text>
+
+  <text x="40" y="396" font-size="16" font-weight="700" fill="#7c3aed">feature/*</text>
+  <text x="40" y="486" font-size="16" font-weight="700" fill="#0f766e">develop</text>
+  <text x="40" y="576" font-size="16" font-weight="700" fill="#16a34a">release/*</text>
+  <text x="40" y="666" font-size="16" font-weight="700" fill="#1d4ed8">main</text>
+  <text x="40" y="756" font-size="14" font-weight="700" fill="#dc2626">hotfix/*</text>
+
+  <line x1="340" y1="290" x2="340" y2="850" stroke="#fca5a5" stroke-width="1.5" stroke-dasharray="5 6"/>
+  <line x1="640" y1="290" x2="640" y2="850" stroke="#fca5a5" stroke-width="1.5" stroke-dasharray="5 6"/>
+  <line x1="940" y1="290" x2="940" y2="850" stroke="#fca5a5" stroke-width="1.5" stroke-dasharray="5 6"/>
+  <line x1="1320" y1="290" x2="1320" y2="850" stroke="#fca5a5" stroke-width="1.5" stroke-dasharray="5 6"/>
+  <line x1="1700" y1="290" x2="1700" y2="850" stroke="#fca5a5" stroke-width="1.5" stroke-dasharray="5 6"/>
+  <line x1="1980" y1="290" x2="1980" y2="850" stroke="#fca5a5" stroke-width="1.5" stroke-dasharray="5 6"/>
+
+  <path d="M340,390 L940,390 L940,480 L1320,480 L1320,570 L1700,570 L1700,660 L2010,660" stroke="#ffffff" stroke-width="11" fill="none" stroke-linejoin="round"/>
+  <path d="M340,390 L940,390 L940,480 L1320,480 L1320,570 L1700,570 L1700,660 L2000,660" stroke="#0f172a" stroke-width="5.5" fill="none" stroke-linejoin="round"/>
+  <path d="M2000,660 L2028,660" stroke="#0f172a" stroke-width="5.5" fill="none"/>
+  <path d="M2028,650 L2050,660 L2028,670 z" fill="#0f172a"/>
+  <path d="M758,382 L778,390 L758,398 z" fill="#0f172a"/>
+  <path d="M1168,472 L1188,480 L1168,488 z" fill="#0f172a"/>
+  <path d="M1528,562 L1548,570 L1528,578 z" fill="#0f172a"/>
+  <path d="M1838,652 L1858,660 L1838,668 z" fill="#0f172a"/>
+
+  <circle cx="340" cy="390" r="9" fill="#0f172a"/>
+  <text x="300" y="366" font-size="11.5" fill="#334155">改动从这里开始</text>
+  <circle cx="640" cy="390" r="7" fill="#dc2626"/>
+  <circle cx="940" cy="390" r="7" fill="#dc2626"/>
+  <circle cx="940" cy="480" r="7" fill="#dc2626"/>
+  <circle cx="1320" cy="480" r="7" fill="#dc2626"/>
+  <circle cx="1320" cy="570" r="7" fill="#dc2626"/>
+  <circle cx="1700" cy="570" r="7" fill="#dc2626"/>
+  <circle cx="1700" cy="660" r="7" fill="#dc2626"/>
+  <circle cx="1980" cy="660" r="7" fill="#dc2626"/>
+
+  <circle cx="560" cy="390" r="12" fill="#b91c1c"/>
+  <text x="560" y="395" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">人</text>
+  <text x="560" y="368" font-size="11" fill="#b91c1c" text-anchor="middle">取舍 / 验收</text>
+  <circle cx="1264" cy="480" r="12" fill="#b91c1c"/>
+  <text x="1264" y="485" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">人</text>
+  <text x="1246" y="462" font-size="11" fill="#b91c1c" text-anchor="middle">决定「可以发了」</text>
+  <circle cx="1644" cy="570" r="12" fill="#b91c1c"/>
+  <text x="1644" y="575" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">人</text>
+  <text x="1620" y="552" font-size="11" fill="#b91c1c" text-anchor="middle">点头发布</text>
+  <circle cx="1930" cy="660" r="12" fill="#b91c1c"/>
+  <text x="1930" y="665" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">人</text>
+  <text x="1912" y="642" font-size="11" fill="#b91c1c" text-anchor="middle">验收</text>
+
+  <text x="906" y="412" font-size="11.5" fill="#7c3aed">① 做功能</text>
+  <text x="1150" y="502" font-size="11.5" fill="#0f766e">② 集成到 develop</text>
+  <text x="1470" y="592" font-size="11.5" fill="#16a34a">③ 冻结后走发布</text>
+  <text x="1716" y="638" font-size="11.5" fill="#1d4ed8">④ 上线 → 归档</text>
+
+  <text x="620" y="822" font-size="12.5" font-weight="700" fill="#15803d" text-anchor="middle">开发期 · 分支内可自由改</text>
+  <text x="1320" y="822" font-size="12.5" font-weight="700" fill="#b45309" text-anchor="middle">集成与冻结 · 权限收紧</text>
+  <text x="1905" y="822" font-size="12.5" font-weight="700" fill="#b91c1c" text-anchor="middle">发布之后 · 只许归档</text>
+
+  <text x="40" y="1046" font-size="13.5" fill="#334155">· 粗线是主角：一个改动从 feature 出发 → 合进 develop → 冻成 release → 落到 main → 归档。要看流向，只看这一条</text>
+  <text x="40" y="1074" font-size="13.5" fill="#334155">· 六道关卡压在这条粗线上：上方三块（D1 开工 / D3 合流 / D5 发布）与下方三块（D2 提交 / D4 冻结 / D6 归档），每块写着能过什么、不能带什么</text>
+  <text x="40" y="1102" font-size="13.5" font-weight="600" fill="#0f766e">· 底色是权限带：越往右越紧 —— 开发期随便改，集成与冻结期收紧，发布之后只剩归档</text>
+</svg>
