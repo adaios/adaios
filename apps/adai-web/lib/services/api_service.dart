@@ -1019,6 +1019,43 @@ class ApiService {
     return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
   }
 
+  /// 案例候选（GET /trading/cases/candidates，2026-10-08 UI/UX 批 ③）：
+  /// {pending: 等你认的候选（从你的记录里长出来）, accepted: 已经收下的}——
+  /// 候选每次现算（数据变了候选跟着变），你认了才算；「不要」= 墓碑（下次刷新不复活）。
+  Future<Map<String, List<Map<String, dynamic>>>> getCaseCandidates() async {
+    final resp = await _client.get(
+        Uri.parse('$baseUrl/api/v1/trading/cases/candidates'), headers: _headers);
+    _check(resp);
+    final data = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    List<Map<String, dynamic>> rows(dynamic v) =>
+        ((v as List?) ?? const []).cast<Map<String, dynamic>>();
+    return {'pending': rows(data['pending']), 'accepted': rows(data['accepted'])};
+  }
+
+  /// 收下一条候选（POST /trading/cases/candidates/{id}/accept；title 非空 = 「改一改」改名）。
+  /// 幂等：重复收下原样返回（第一次决定为准）。
+  Future<Map<String, dynamic>> acceptCaseCandidate(String id, {String? title}) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/cases/candidates/$id/accept'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: jsonEncode({
+        if (title != null && title.isNotEmpty) 'title': title,
+      }),
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 不要一条候选（POST /trading/cases/candidates/{id}/dismiss）：墓碑——下次刷新不复活；幂等。
+  Future<void> dismissCaseCandidate(String id) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/cases/candidates/$id/dismiss'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: '{}',
+    );
+    _check(resp);
+  }
+
   /// RFC 20260817：确认交易日志落库（今日候选逐笔入账）。
   /// B11-4（2026-08-23，P1-交易18）：返回完整结果（含失败明细——失败候选保留，可丢弃）。
   Future<TradeLogConfirmResult> confirmTradeLog() async {

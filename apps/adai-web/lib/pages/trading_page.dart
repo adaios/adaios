@@ -234,6 +234,7 @@ class _TradingPageState extends State<TradingPage> {
     _loadAll();
     _loadRules();
     _loadCases();
+    _loadCaseCandidates();
     _loadMarketStage();
     _loadPlan();
     _loadTodayDayStatus();
@@ -3176,6 +3177,13 @@ class _TradingPageState extends State<TradingPage> {
   bool _casesLoaded = false;
   bool _casesLoadFailed = false;
 
+  // 批 ③（2026-10-08）案例候选：「从你的记录里长出来的 —— 我不替你定，你认了才算」。
+  // pending 每次现算（数据变了候选跟着变）；accepted = 你收下的（决定落盘）。
+  // 失败静默：候选拿不到就整区不显示——宁可不显示，也不弹错打扰（零噪音是默认）。
+  List<Map<String, dynamic>> _caseCandidates = [];
+  List<Map<String, dynamic>> _caseAccepted = [];
+  bool _caseCandidatesLoaded = false;
+
   /// 加载案例列表（GET /trading/cases；失败显示重试，C4「保活页陈旧」同类信号）。
   Future<void> _loadCases() async {
     try {
@@ -3189,6 +3197,22 @@ class _TradingPageState extends State<TradingPage> {
       }
     } catch (_) {
       if (mounted) setState(() => _casesLoadFailed = true);
+    }
+  }
+
+  /// 加载案例候选（GET /trading/cases/candidates）。失败静默——候选是增强项，
+  /// 拿不到就整区不显示，不打断案例版块（宁可不显示，也不弹错）。
+  Future<void> _loadCaseCandidates() async {
+    try {
+      final r = await widget.api.getCaseCandidates();
+      if (!mounted) return;
+      setState(() {
+        _caseCandidates = r['pending'] ?? const [];
+        _caseAccepted = r['accepted'] ?? const [];
+        _caseCandidatesLoaded = true;
+      });
+    } catch (_) {
+      // 静默降级：候选拿不到 ≠ 案例坏了（零噪音是默认）
     }
   }
 
@@ -3214,6 +3238,8 @@ class _TradingPageState extends State<TradingPage> {
       );
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      // 批 ③：候选半区（从记录里长出来 + 已经收下的）在案例列表上方——先认新的，再看库
+      ..._buildCaseCandidateSection(),
       Row(children: [
         const Text('完美买点案例', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
         const SizedBox(width: 8),
@@ -3265,6 +3291,261 @@ class _TradingPageState extends State<TradingPage> {
       else
         ..._cases.map((c) => _buildCaseRow(c)),
     ]);
+  }
+
+  /// 案例候选半区（批 ③）：候选卡（等你认）+「已经收下的」四列小表。
+  /// 没候选且没收下过 → 整区不显示（沉默是默认）；加载失败同样不显示。
+  List<Widget> _buildCaseCandidateSection() {
+    if (!_caseCandidatesLoaded) return const [];
+    if (_caseCandidates.isEmpty && _caseAccepted.isEmpty) return const [];
+    return [
+      if (_caseCandidates.isNotEmpty) ...[
+        Row(children: [
+          const Text('从你的记录里长出来的',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+          const SizedBox(width: 8),
+          Text('我不替你定，你认了才算 · 等你认 ${_caseCandidates.length} 条',
+              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+        ]),
+        const SizedBox(height: 6),
+        ..._caseCandidates.map((c) => _buildCandidateCard(c)),
+      ],
+      if (_caseAccepted.isNotEmpty) ...[
+        if (_caseCandidates.isNotEmpty) const SizedBox(height: 10),
+        Row(children: [
+          const Text('已经收下的',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+          const SizedBox(width: 8),
+          Text('${_caseAccepted.length} 条 · 案例是规则的出口',
+              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+        ]),
+        const SizedBox(height: 6),
+        _buildAcceptedHeader(),
+        ..._caseAccepted.map((c) => _buildAcceptedRow(c)),
+      ],
+      const SizedBox(height: 12),
+    ];
+  }
+
+  /// 一条候选卡：结果签 + 标题 + 卡体文案（对照句 / 事实句）+ 三动作（收下 / 改一改 / 不要）。
+  Widget _buildCandidateCard(Map<String, dynamic> c) {
+    final id = '${c["id"]}';
+    final outcome = '${c["outcome"] ?? ''}';
+    final title = '${c["title"] ?? ''}';
+    final notes = ((c['notes'] as List?) ?? const []).map((e) => '$e').toList();
+    final outcomeColor = _candidateOutcomeColor(outcome);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Flexible(
+            child: Text(title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+          ),
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            decoration: BoxDecoration(
+              color: outcomeColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: outcomeColor.withValues(alpha: 0.45)),
+            ),
+            child: Text(_candidateOutcomeLabel(outcome),
+                style: TextStyle(fontSize: 10.5, color: outcomeColor)),
+          ),
+        ]),
+        for (final n in notes)
+          Padding(
+            padding: const EdgeInsets.only(top: 3),
+            child: Text(n, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+          ),
+        const SizedBox(height: 6),
+        Row(children: [
+          _candidateActionButton('收下', () => _acceptCaseCandidate(id), primary: true),
+          const SizedBox(width: 8),
+          _candidateActionButton('改一改', () => _openRenameCandidateDialog(id, title)),
+          const SizedBox(width: 8),
+          _candidateActionButton('不要', () => _dismissCaseCandidate(id)),
+        ]),
+      ]),
+    );
+  }
+
+  /// 候选三动作小按钮（收下 = 绿色主按钮；改一改 / 不要 = 灰描边）。
+  Widget _candidateActionButton(String label, VoidCallback onPressed, {bool primary = false}) {
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: primary ? AppColors.darkGreen : AppColors.darkGrey3,
+        side: BorderSide(color: primary ? AppColors.darkGreen : AppColors.darkGrey5),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      child: Text(label, style: const TextStyle(fontSize: 12)),
+    );
+  }
+
+  /// 「已经收下的」小表表头（四列：案例 / 票·日期 / 类型 / 它支持或反对哪条规则）。
+  Widget _buildAcceptedHeader() {
+    return Padding(
+      padding: const EdgeInsets.only(left: 10, right: 10, bottom: 4),
+      child: Row(children: [
+        const SizedBox(
+            width: 260,
+            child: Text('案例', style: TextStyle(fontSize: 10.5, color: AppColors.darkGrey5))),
+        const SizedBox(
+            width: 150,
+            child: Text('票 / 日期', style: TextStyle(fontSize: 10.5, color: AppColors.darkGrey5))),
+        const SizedBox(
+            width: 100,
+            child: Text('类型', style: TextStyle(fontSize: 10.5, color: AppColors.darkGrey5))),
+        const Expanded(
+            child: Text('它支持或反对哪条规则',
+                style: TextStyle(fontSize: 10.5, color: AppColors.darkGrey5))),
+      ]),
+    );
+  }
+
+  /// 一条已收下的案例（四列：标题 / 票·日期 / 类型 / 对照规则）。
+  Widget _buildAcceptedRow(Map<String, dynamic> c) {
+    final title = '${c["title"] ?? ''}';
+    final symbol = '${c["symbol"] ?? ''}';
+    final name = '${c["name"] ?? ''}';
+    final date = '${c["date"] ?? ''}';
+    final outcome = '${c["outcome"] ?? ''}';
+    final ruleRel = c['ruleRel'] as String?;
+    final ruleText = '${c["ruleText"] ?? ''}';
+    final relWord = ruleRel == 'SUPPORT' ? '支持' : '反对';
+    final relText = (ruleRel == null || ruleText.isEmpty) ? '—' : '$relWord「$ruleText」';
+    final outcomeColor = _candidateOutcomeColor(outcome);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
+      ),
+      child: Row(children: [
+        SizedBox(
+          width: 260,
+          child: Text(title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+        ),
+        SizedBox(
+          width: 150,
+          child: Text(name.isNotEmpty ? '$name $symbol · $date' : '$symbol · $date',
+              style: const TextStyle(fontSize: 12, color: AppColors.darkGrey2)),
+        ),
+        SizedBox(
+          width: 100,
+          child: Text(_candidateOutcomeLabel(outcome),
+              style: TextStyle(fontSize: 11, color: outcomeColor)),
+        ),
+        Expanded(
+          child: Text(relText,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+        ),
+      ]),
+    );
+  }
+
+  /// 候选结果 → 人话标签（买点：成功 / 失败；卖点：走早了 / 走对了——不出现枚举值）。
+  String _candidateOutcomeLabel(String outcome) {
+    switch (outcome) {
+      case 'SUCCESS':
+        return '买点 · 成功';
+      case 'FAILED':
+        return '买点 · 失败';
+      case 'EARLY':
+        return '卖点 · 走早了';
+      case 'RIGHT':
+        return '卖点 · 走对了';
+      default:
+        return outcome;
+    }
+  }
+
+  /// 结果配色：成功 / 走对 = 绿，失败 = 红，走早 = 橙。
+  Color _candidateOutcomeColor(String outcome) {
+    switch (outcome) {
+      case 'FAILED':
+        return AppColors.darkRed;
+      case 'EARLY':
+        return AppColors.darkOrange;
+      default:
+        return AppColors.darkGreen;
+    }
+  }
+
+  /// 收下一条候选（title 非空 = 「改一改」改名收下）。成功后刷新候选区 + 回执。
+  Future<void> _acceptCaseCandidate(String id, {String? title}) async {
+    try {
+      await widget.api.acceptCaseCandidate(id, title: title);
+      if (!mounted) return;
+      _toast('收下了 —— 它成了你的一条案例');
+      await _loadCaseCandidates();
+    } catch (e) {
+      if (!mounted) return;
+      _toast('没放下：${extractApiErrorMessage(e)}');
+    }
+  }
+
+  /// 不要一条候选（墓碑——下次刷新不复活；幂等）。
+  Future<void> _dismissCaseCandidate(String id) async {
+    try {
+      await widget.api.dismissCaseCandidate(id);
+      if (!mounted) return;
+      _toast('好，这条不再出现');
+      await _loadCaseCandidates();
+    } catch (e) {
+      if (!mounted) return;
+      _toast('没放下：${extractApiErrorMessage(e)}');
+    }
+  }
+
+  /// 「改一改」：收下前顺手改名（原型三按钮的中间那个）。清空后收下 = 保持原标题。
+  Future<void> _openRenameCandidateDialog(String id, String currentTitle) async {
+    final ctrl = TextEditingController(text: currentTitle);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.darkSurface2,
+        title: const Text('改一改，再收下', style: TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: '起个你自己的名字（原来的是描述，你可以改成教训）'),
+          style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, ctrl.text.trim()),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.darkGreen),
+            child: const Text('收下'),
+          ),
+        ],
+      ),
+    );
+    // 不显式 dispose controller：pop 后对话框退场动画期间 TextField 仍会读它
+    // （实测「A TextEditingController was used after being disposed」）；与 _markPsychology 同惯例。
+    if (result != null && mounted) {
+      await _acceptCaseCandidate(id, title: result.isEmpty ? null : result);
+    }
   }
 
   Widget _buildCaseRow(Map<String, dynamic> c) {

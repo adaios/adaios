@@ -2422,6 +2422,38 @@ void main() {
         },
       };
 
+  // 批 ③（2026-10-08）：案例候选（GET /trading/cases/candidates 的 pending/accepted 元素）。
+  Map<String, dynamic> candidateJson({
+    String id = 'sell-603993-2026-08-19',
+    String kind = 'SELL',
+    String outcome = 'EARLY',
+    String symbol = '603993',
+    String name = '洛阳钼业',
+    String date = '2026-08-19',
+    String title = '洛阳钼业 08-19 卖了之后又涨 18.4%',
+    double? changePct = 18.44,
+    String? ruleRel,
+    String? ruleText,
+    List<String>? notes,
+  }) =>
+      {
+        'id': id,
+        'state': 'CANDIDATE',
+        'kind': kind,
+        'outcome': outcome,
+        'symbol': symbol,
+        'name': name,
+        'date': date,
+        'title': title,
+        'changePct': changePct,
+        'ruleRel': ruleRel,
+        'ruleId': null,
+        'ruleText': ruleText,
+        'notes': notes ?? ['卖掉之后到现在 +18.4%。'],
+        'createdAt': '2026-10-08T10:00',
+        'updatedAt': '2026-10-08T10:00',
+      };
+
   testWidgets('案例 Tab：initState 加载案例列表（GET /trading/cases）', (tester) async {
     final getRequests = <String>[];
     final client = MockClient((request) async {
@@ -2436,6 +2468,216 @@ void main() {
     await tester.pumpAndSettle();
     expect(getRequests, contains('/api/v1/trading/cases'),
         reason: 'initState 应请求案例列表');
+  });
+
+  testWidgets('批 ③ 案例候选：候选卡 + 已收下小表渲染（买点/卖点标签、对照、计数）', (tester) async {
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/v1/trading/cases' && request.method == 'GET') {
+        return _json(<Map<String, dynamic>>[]);
+      }
+      if (request.url.path == '/api/v1/trading/cases/candidates' && request.method == 'GET') {
+        return _json({
+          'pending': [
+            candidateJson(),
+            candidateJson(
+              id: 'buy-601899-2026-08-12',
+              kind: 'BUY',
+              outcome: 'SUCCESS',
+              symbol: '601899',
+              name: '紫金矿业',
+              date: '2026-08-12',
+              title: '紫金矿业 08-12 买在 5 日线上方',
+              changePct: 6.1,
+              ruleRel: 'SUPPORT',
+              ruleText: '不在 5 日线上方不加',
+              notes: ['支持你写的「不在 5 日线上方不加」—— 这一笔之后涨了 6.1%。', '买了之后到现在 +6.1%。'],
+            ),
+          ],
+          'accepted': [
+            candidateJson(
+              id: 'sell-600048-2026-03-27',
+              kind: 'SELL',
+              outcome: 'RIGHT',
+              symbol: '600048',
+              name: '保利发展',
+              date: '2026-03-27',
+              title: '跌破止损就走，没扛',
+              changePct: -4.2,
+              ruleRel: 'SUPPORT',
+              ruleText: '跌破止损先减一半',
+              notes: ['支持你写的「跌破止损先减一半」—— 这一笔卖后跌了 4.2%。'],
+            ),
+          ],
+        });
+      }
+      return _tradingHandler(request);
+    });
+    final api = ApiService(baseUrl: 'http://test', client: client);
+    await _pumpTrading(tester, api);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('案例'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('从你的记录里长出来的'), findsOneWidget);
+    expect(find.text('我不替你定，你认了才算 · 等你认 2 条'), findsOneWidget,
+        reason: '计数如实（pending = 2）');
+    expect(find.text('洛阳钼业 08-19 卖了之后又涨 18.4%'), findsOneWidget);
+    expect(find.text('卖点 · 走早了'), findsOneWidget);
+    expect(find.text('紫金矿业 08-12 买在 5 日线上方'), findsOneWidget);
+    expect(find.text('买点 · 成功'), findsOneWidget);
+    expect(find.text('支持你写的「不在 5 日线上方不加」—— 这一笔之后涨了 6.1%。'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, '收下'), findsNWidgets(2));
+    expect(find.widgetWithText(OutlinedButton, '改一改'), findsNWidgets(2));
+    expect(find.widgetWithText(OutlinedButton, '不要'), findsNWidgets(2));
+
+    expect(find.text('已经收下的'), findsOneWidget);
+    expect(find.text('跌破止损就走，没扛'), findsOneWidget, reason: '收下时改过的名字留下');
+    expect(find.text('保利发展 600048 · 2026-03-27'), findsOneWidget);
+    expect(find.text('卖点 · 走对了'), findsOneWidget);
+    expect(find.text('支持「跌破止损先减一半」'), findsOneWidget);
+  });
+
+  testWidgets('批 ③ 案例候选：点「收下」→ POST accept（不带 title）+ 回执', (tester) async {
+    final acceptCalls = <String>[];
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/v1/trading/cases' && request.method == 'GET') {
+        return _json(<Map<String, dynamic>>[]);
+      }
+      if (request.url.path == '/api/v1/trading/cases/candidates' && request.method == 'GET') {
+        return _json({
+          'pending': [candidateJson()],
+          'accepted': <Map<String, dynamic>>[],
+        });
+      }
+      if (request.url.path == '/api/v1/trading/cases/candidates/sell-603993-2026-08-19/accept') {
+        acceptCalls.add('${request.method} ${request.body}');
+        return _json({'candidate': candidateJson()});
+      }
+      return _tradingHandler(request);
+    });
+    final api = ApiService(baseUrl: 'http://test', client: client);
+    await _pumpTrading(tester, api);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('案例'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(OutlinedButton, '收下').first);
+    await tester.pumpAndSettle();
+
+    expect(acceptCalls.length, 1, reason: '点一次只发一次 accept（幂等由后端兜底，前端不重复发）');
+    expect(acceptCalls.single, startsWith('POST'));
+    expect(acceptCalls.single, isNot(contains('title')),
+        reason: '直接收下不传 title（保持原型标题）');
+    expect(find.text('收下了 —— 它成了你的一条案例'), findsOneWidget, reason: '要有回执');
+  });
+
+  testWidgets('批 ③ 案例候选：「改一改」→ 对话框改名后收下（accept 带 title）', (tester) async {
+    String acceptBody = '';
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/v1/trading/cases' && request.method == 'GET') {
+        return _json(<Map<String, dynamic>>[]);
+      }
+      if (request.url.path == '/api/v1/trading/cases/candidates' && request.method == 'GET') {
+        return _json({
+          'pending': [candidateJson()],
+          'accepted': <Map<String, dynamic>>[],
+        });
+      }
+      if (request.url.path == '/api/v1/trading/cases/candidates/sell-603993-2026-08-19/accept') {
+        acceptBody = request.body;
+        return _json({'candidate': candidateJson()});
+      }
+      return _tradingHandler(request);
+    });
+    final api = ApiService(baseUrl: 'http://test', client: client);
+    await _pumpTrading(tester, api);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('案例'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(OutlinedButton, '改一改').first);
+    await tester.pumpAndSettle();
+
+    final dialog = find.byType(AlertDialog);
+    expect(dialog, findsOneWidget, reason: '应先打开改名对话框');
+    final field = find.descendant(of: dialog, matching: find.byType(TextField));
+    await tester.enterText(field, '卖飞案例：到线才放');
+    await tester.tap(find.descendant(of: dialog, matching: find.widgetWithText(FilledButton, '收下')));
+    await tester.pumpAndSettle();
+
+    expect(acceptBody, contains('卖飞案例：到线才放'), reason: '「改一改」收下应带新名字');
+  });
+
+  testWidgets('批 ③ 案例候选：点「不要」→ POST dismiss（墓碑不复活）+ 回执', (tester) async {
+    var dismissCalled = false;
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/v1/trading/cases' && request.method == 'GET') {
+        return _json(<Map<String, dynamic>>[]);
+      }
+      if (request.url.path == '/api/v1/trading/cases/candidates' && request.method == 'GET') {
+        return _json({
+          'pending': [candidateJson()],
+          'accepted': <Map<String, dynamic>>[],
+        });
+      }
+      if (request.url.path == '/api/v1/trading/cases/candidates/sell-603993-2026-08-19/dismiss') {
+        dismissCalled = true;
+        return _json({'dismissed': true, 'id': 'sell-603993-2026-08-19'});
+      }
+      return _tradingHandler(request);
+    });
+    final api = ApiService(baseUrl: 'http://test', client: client);
+    await _pumpTrading(tester, api);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('案例'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(OutlinedButton, '不要').first);
+    await tester.pumpAndSettle();
+
+    expect(dismissCalled, isTrue, reason: '「不要」应落成墓碑（POST dismiss）');
+    expect(find.text('好，这条不再出现'), findsOneWidget, reason: '要有回执');
+  });
+
+  testWidgets('批 ③ 案例候选：拿不到（旧后端 404）→ 整区静默不显示，案例区照常', (tester) async {
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/v1/trading/cases' && request.method == 'GET') {
+        return _json(<Map<String, dynamic>>[]);
+      }
+      return _tradingHandler(request); // candidates 未 mock → 404（旧后端场景）
+    });
+    final api = ApiService(baseUrl: 'http://test', client: client);
+    await _pumpTrading(tester, api);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('案例'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('从你的记录里长出来的'), findsNothing, reason: '拿不到就整区不显示（零噪音）');
+    expect(find.text('已经收下的'), findsNothing);
+    expect(find.text('完美买点案例'), findsOneWidget, reason: '不打断案例版块');
+  });
+
+  testWidgets('批 ③ 案例候选：没有候选也没有收下过 → 整区不显示', (tester) async {
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/v1/trading/cases' && request.method == 'GET') {
+        return _json(<Map<String, dynamic>>[]);
+      }
+      if (request.url.path == '/api/v1/trading/cases/candidates' && request.method == 'GET') {
+        return _json({'pending': <Map<String, dynamic>>[], 'accepted': <Map<String, dynamic>>[]});
+      }
+      return _tradingHandler(request);
+    });
+    final api = ApiService(baseUrl: 'http://test', client: client);
+    await _pumpTrading(tester, api);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('案例'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('从你的记录里长出来的'), findsNothing, reason: '没数据不占位（沉默是默认）');
+    expect(find.text('已经收下的'), findsNothing);
   });
 
   testWidgets('P2-交易71：标注弹窗只打字不点下拉 → 弹窗内明说原因、不发 POST、输入不丢', (tester) async {

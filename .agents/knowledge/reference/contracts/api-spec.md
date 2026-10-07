@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-10-08
 status: active
-lines: 3415
+lines: 3477
 depends-on: []
 related: []
 tags: [fact, reference]
@@ -15,7 +15,7 @@ tags: [fact, reference]
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v4.01 | 最后更新：2026-10-08**
+**文档版本：v4.02 | 最后更新：2026-10-08**
 
 ---
 
@@ -23,6 +23,7 @@ tags: [fact, reference]
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-10-08 | v4.02 | **案例候选（交易插件 web 端 UI/UX 重做批 ③「案例候选」）——新 3 端点**：`GET /trading/cases/candidates`——案例区上半区「从你的记录里长出来的——我不替你定，你认了才算」：候选**每次现算**（读不落盘）——卖点类清仓「卖掉之后到现在」复用 `SoldAfterCloseService` 口径 + 买点类轮「买入之后到现在」（收盘对收盘）；显著性 **\|变化\| ≥ 8%**；四方向（买成功/买失败/卖走早/卖对）各 top2、一次最多 8；规则对照先看 user-rules（已认/自定义，参数形状嗅探止损/盈转亏/被套不补仓/超期）再看轮引擎命中 R55/R66/R69/R53——**能机械对照才贴，贴不上 `ruleRel=null` 不硬编**（`SUPPORT` 只出现在止损规则上）；返回 `{pending = 现算−你的决定, accepted 按 updatedAt 倒序}` · `POST /trading/cases/candidates/{id}/accept`——收下（body `{title?}` = 「改一改」顺手改名）→ 落盘 `trading/case-candidates.json`；**幂等**（已收再收原样返回）；**弃过的再收 400（墓碑不复活）** · `POST /trading/cases/candidates/{id}/dismiss`——不要 = 墓碑（幂等；已收下的反悔也走这里；候选随数据消失记**最小墓碑**——从 id 还原票+日期）。**文件 = 你的决定的真相源**（候选现算不落盘）；accept/dismiss 取 GET 时会话快照（TTL 10 分钟，过期/重启重算兜底——所见即所认）。web 案例 Tab 加候选区（结果签 买点·成功/失败、卖点·走早了/走对了 + 收下/改一改/不要 三动作 + 「已经收下的」四列小表；没数据整区不显示，零噪音是默认）。**端点 188 → 191**；后端 **2617 → 2640**（+23）· web **423 → 429**（+6）。 |
 | 2026-10-08 | v4.01 | **清仓「卖掉之后到现在」（交易插件 web 端 UI/UX 重做批）——新端点 `GET /trading/sold/after-close`**：每笔清仓给出**卖出日收盘 → 最新收盘**的涨跌幅——基准 = 卖出日（或其后第一根，容差 10 天）K 线收盘（刻意不用流水成交价：import 行没有流水，K 线是每一行都拿得到的统一基准）；`direction` = `up` 走早了 / `down` 走对了 / `flat` 没动（**按 1 位小数判**，`pct` 保留 2 位——前端文案由 direction 驱动，杜绝「显示 0.0% 却标 ↑」）；拿不到一律 `pct=null` + `note` 人话不编；单笔失败不炸整批；响应**与 `sold` 数组同序**（前端按索引对齐）。web 清仓表加该列 + 顶部「又涨/又跌」两数。**端点 187 → 188**；后端 **2607 → 2617**（+10）· web **420 → 423**（+3）。 |
 | 2026-10-06 | v4.00 | **交易插件重做（R-05/R-06/R-07/R-08/R-12；需求文稿定稿 → design-final，编码批 2026-10-06）——插件从「你有一套交易系统」改成「人人可用」**：没有交易系统的人也能先用起来——**先如实记录，规则从你自己的数据里照出来**（候选每条带据、由你认下或改写），系统**不再拿别人的规则替你判**。① **统一导入入口**（R-12「一次把导出的文件交给它就行」）：`POST /trading/import`——multipart 一次多选（内部排序 **快照先于流水**：资金股份 → 持仓股 → 历史成交 → 清仓股 → 自选股），逐份识别（表头 fail-closed）+ 逐份回执（**一份失败不拖累其他**）；认不出的文件先留存、后如实拒绝；`dryRun=true` 只报「会做什么」不落盘。② **流水纠错就地改/删**（R-08）：`PUT`/`DELETE /trading/trades/{tradeId}`——**用户面不留痕**（纠错不是新记录）、系统侧写不可见审计（**审计写不进则整个纠错中止**）；改价/量/方向/日期后持仓与现金**自动重算**；撤销会算成负数 / 清仓成本底账已不在等**不可精确回推的场景 → 400 指路重导快照**。③ **规则集三态**（R-06，6 端点）：**候选**（系统从你的数据照出来、每条带据 how/facts/roundIds/dates）→ **已认**（你勾选 / 改写）→ **自定义**（你写）；**弃掉 = 墓碑**（留痕不删、下次生成不复活）；与既有 `GET/PUT /trading/rules`（参数化阈值 rules.yaml）**并存不冲突**——那是「你设的参数」，这是「你的规则条文」。④ **分析总结三粒度**（R-05）：`GET /trading/analysis/{scope}`（global/symbol/round）——缺数据 `value=null` **不出 0** · 每个数字带 `trace` · **只陈述不评价不建议**；无规则用户 `contrast.hasRules=false` 并明说「判不了守没守」。⑤ **三环**（R-07）：`GET /trading/advisory/{ring}`（buy 对照你写的计划〔`?date=` 缺省今天〕/ hold 用你的线说话 / sell 按你的尺子 + 卖飞了没）——**契约层不含建议字段**。⑥ **轮次人工边界**：`POST /trading/rounds/boundaries`（cut/merge/auto，**人工 > 自动**）+ `PUT /trading/rounds/{id}`（加/清备注）。**端点 173 → 186**；后端 2462 → **2597**（+135）。 |
 | 2026-10-05 | v3.99 | **learn 域三条收口（REVIEW P2-learn34 / P2-分享4 / P2-learn33）**——① **新增 2 端点**：`POST /learn/cards/expand`（把索引卡展开成**衍生**全文卡 + 三行要点：原卡不动 · 幂等不重烧模型 · 无素材人话拒绝 · **同步 LLM**）与 `GET /learn/cards/expansions`（「待展开」可见状态清单，`hasSource=false` 时前端不给入口）· ② **新增 2 个任务状态值**：**`expired`**（`needs_confirmation` 的 30 分钟确认窗口过期后，**内存清理与落盘账标记同一时刻成立**——治「决策入口 30 分钟即消失、账上却永久留『待确认』」的僵尸任务；读账路径亦懒清理）与 **`not_queued`**（连续分享时第二条**如实说「没排上」**并**单独入账**，不再假装 `running`；Feed 与 iOS 分享扩展同步按此短路，不再把「另一条读好了」当自己的结果报出来）· ③ 两个状态值出现在 `GET /learn/digest/jobs`、`GET /learn/digest/status` 与 `POST /learn/digest` 的响应与文案里。**端点 170 → 173**（含 v3.98 的 `POST /trading/plans/{date}/status`）。 |
@@ -1863,6 +1864,67 @@ LLM 读案例特征画像 + K 线统计 → 结构化「为什么这是完美买
 > 需 trading 插件（403）。
 
 删除案例文件 + 清单条目；不存在 → 400「案例不存在」。响应 `{"deleted":true,"caseId":"..."}`。
+
+### `GET /api/v1/trading/cases/candidates` — 案例候选（2026-10-08 UI/UX 批 ③）
+> 需 trading 插件（403）。设计稿 uiux-discovery §十一：「**从你的记录里长出来的 —— 我不替你定，你认了才算**」。
+
+候选**每次现算**（读不落盘）：卖点类从清仓笔长（「卖掉之后到现在」复用 `SoldAfterCloseService`〔`GET /trading/sold/after-close`〕口径：卖出日收盘 → 最新收盘）、买点类从轮长（「买入之后到现在」，收盘对收盘）；**显著性 |变化| ≥ 8%** 才算（不硬凑）；四个结果方向（买成功 / 买失败 / 卖走早 / 卖对）各取幅度最大 2 条，一次最多 8 条。第二层**规则对照**：先对照你写的规则（user-rules 已认/自定义，按参数形状嗅探止损 / 盈转亏 / 被套不补仓 / 超期），再对照轮自带的引擎命中（R55 / R66 / R69 / R53）；**能机械对照才贴，贴不上 `ruleRel=null` 不硬编**（`SUPPORT` 只出现在止损规则上——「亏在线内平掉」是唯一机械可判的「做到了」）。
+
+**Response（200）**
+
+```json
+{
+  "pending": [
+    { "id": "sell-603993-2026-08-19", "state": "CANDIDATE", "kind": "SELL", "outcome": "EARLY",
+      "symbol": "603993", "name": "洛阳钼业", "date": "2026-08-19",
+      "title": "洛阳钼业 08-19 卖了之后又涨 18.4%", "changePct": 18.44,
+      "ruleRel": null, "ruleId": null, "ruleText": null,
+      "notes": ["卖掉之后到现在 +18.4%。"], "createdAt": "2026-10-08T10:00", "updatedAt": "2026-10-08T10:00" }
+  ],
+  "accepted": [
+    { "id": "sell-600048-2026-03-27", "state": "ACCEPTED", "kind": "SELL", "outcome": "RIGHT",
+      "symbol": "600048", "name": "保利发展", "date": "2026-03-27",
+      "title": "跌破止损就走，没扛", "changePct": -4.2,
+      "ruleRel": "SUPPORT", "ruleId": "cand-stoploss", "ruleText": "跌破止损先减一半",
+      "notes": ["支持你写的「跌破止损先减一半」—— 这一笔卖后跌了 4.2%。"],
+      "createdAt": "2026-10-08T10:00", "updatedAt": "2026-10-08T10:00" }
+  ]
+}
+```
+
+- `id` 稳定形状 `buy|sell-{symbol}-{date}`（同一天同票只有一个候选）
+- `outcome` 四值 ↔ 前端结果签：`SUCCESS`（买点 · 成功）/ `FAILED`（买点 · 失败）/ `EARLY`（卖点 · 走早了）/ `RIGHT`（卖点 · 走对了）
+- `ruleRel`：`SUPPORT`（做到了）/ `AGAINST`（没做到）/ `null`（对照不上，卡片只摆走势事实）
+- `pending` = 现算候选 − 你的决定（收下 / 弃掉都不再出现）；`accepted` 按 `updatedAt` 倒序（最新收下在前）
+- 候选零条且无已收下 → 两侧都空数组（前端整区不显示，零噪音是默认）
+
+### `POST /api/v1/trading/cases/candidates/{id}/accept` — 收下一条候选（可改名）
+> 需 trading 插件（403）。
+
+收下 = 它成为你的一条案例，落盘 `data/{userId}/trading/case-candidates.json`（只记决定——`ACCEPTED` / `DISMISSED`）。
+
+**Request Body（可空）**
+
+```json
+{ "title": "卖飞案例：到线才放" }
+```
+
+`title` 非空 = 原型「改一改」（收下时顺手改名，空串视同不改）；body 缺省 / 空 = 保持原型标题。
+
+**Response（200）**：`{"candidate": {…}}`（收下后的完整形状，同列表项）。
+
+**语义**：accept / dismiss 取「你看到的那次 GET」的候选详情（会话内快照 TTL 10 分钟；过期 / 重启 → 重算兜底，所见即所认）；**幂等**——已收下的同 id 再收 → 原样返回（双击 / 重复请求无害；不再改 title，第一次决定为准）。
+
+**错误**：id 空 → 400「候选 id 不能为空」；**已弃的再收 → 400「找不到这条候选（可能已弃掉）」（墓碑不复活）**；候选随数据变了不在列表 → 400「这个候选已经不在列表里了（数据变了，刷新看看）」。
+
+### `POST /api/v1/trading/cases/candidates/{id}/dismiss` — 不要一条候选（墓碑）
+> 需 trading 插件（403）。
+
+不要 = **墓碑**（下次现算同 id 不再出现；已收下的反悔也走这里——收下 → 弃掉 = 转墓碑）。**幂等**：已弃的再弃 / 候选随数据消失都算成功——记**最小墓碑**（仅从 id 还原票 + 日期 + 状态；「你的不要不能被系统无视」，数据变了也照记）。
+
+**Response（200）**：`{"dismissed": true, "id": "sell-603993-2026-08-19"}`。
+
+**错误**：id 空 → 400「候选 id 不能为空」；id 不成形状（无法解析出票 + 日期）→ 400「候选 id 不合法：…」。
 
 ### `GET /api/v1/admin/trading/knowledge/conflicts` — 检测规则矛盾（需登录 + role=admin，REVIEW #178）
 

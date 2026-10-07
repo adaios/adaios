@@ -3,9 +3,9 @@ title: 数据格式冻结（Data Format Freeze）— v1.0.0
 description: 📦 `data/` 全部文件格式契约 + 变更规则（v1.0.0 冻结）
 version: 1
 created: 2026-08-15
-updated: 2026-10-04
+updated: 2026-10-08
 status: active
-lines: 587
+lines: 609
 depends-on: []
 related: []
 tags: [fact, reference]
@@ -585,3 +585,25 @@ RRULE 脏数据按「不命中」处理（不炸简报）。**状态只有 activ
 **.gitignore**：`data/*/rhythm/`（本批同步）；**顺带补漏** `data/*/todos/`（RFC 20260917 迁移时只保留 project 旧规则、漏了 todos）。
 
 **版本**：新增目录 → **MINOR**（见 §三 变更规则）。
+
+### 2.25 用户规则集 `trading/user-rules.json`（R-06/rules 批，2026-10-06 新增；2026-10-08 补登记）
+
+| 项 | 值 |
+|:--|:--|
+| 路径 | `trading/user-rules.json`（每用户一个）|
+| 格式 | JSON `{"rules":[...]}`——条目 `{id, state, text, source, params{...}, evidence{how, facts[], roundIds[], dates[]}, createdAt, updatedAt}`；`state`：CANDIDATE（系统提、每条带据）/ ACCEPTED（你勾选或改）/ CUSTOM（你写）/ DISMISSED（弃掉 = 墓碑）；`source`：DATA（从数据里长出来）/ USER（自己写；导入未实现——无规格不预置空壳）|
+| 真相源 | `UserRuleRepository`（infrastructure，per-user 16 条带锁）|
+| 变更 | **MINOR（2026-10-06，R-06/rules 批）**：新增——**2026-10-08（案例候选批）补登记**：rules 批 api-spec 已登记（端点区 L1328+），本 freeze 当时遗漏 |
+
+**语义**：只存**文本 + 参数**（规则不是可执行代码——判定仍由引擎 / 分析层完成）。**永不覆盖**：系统刷新只动「仍是候选」的条目，已认 / 自定义的文本是用户的（`refreshed` 只作用于候选态）。**弃掉 = 墓碑**（P1-交易93）：留痕不删——不再出现在任何视图分组、重新生成候选时不复活（防「划掉的候选下次刷新又出现」= 用户操作被系统无视）。**只从你自己的数据照出来**，样本不足宁可不出（不硬凑）。读写：同 id **原位替换**（保持列表顺序稳定——候选刷新不跳位）；无文件 → 空 list；损坏 → **先备份 `.bak-corrupt` 再降级空**（P2-交易95：防「损坏 + 写侧全量重写」丢残余）；写失败抛 `StorageException`（fail-visible）。消费方：`TradingUserRuleController`（GET `/trading/rules/user` 等 6 端点）、**案例候选对照**（`CaseCandidateService.activeRules`——已认 / 自定义参与规则对照，候选 / 墓碑不算）。
+
+### 2.26 案例候选决定 `trading/case-candidates.json`（UI/UX 批 ③，2026-10-08 新增）
+
+| 项 | 值 |
+|:--|:--|
+| 路径 | `trading/case-candidates.json`（每用户一个）|
+| 格式 | JSON `{"records":[...]}`——条目 `{id, state, kind, outcome, symbol, name, date, title, changePct, ruleRel, ruleId, ruleText, notes[], createdAt, updatedAt}`；`state`：**只有 ACCEPTED（收下）/ DISMISSED（弃掉）两态**（候选 CANDIDATE 现算不落盘）；`id` 稳定形状 `buy\|sell-{symbol}-{date}`；`kind`：BUY/SELL；`outcome`：SUCCESS/FAILED/EARLY/RIGHT；`ruleRel`：SUPPORT/AGAINST/null（对照不上不硬编）|
+| 真相源 | `CaseCandidateFileRepository`（domain 端口 `CaseCandidateRepository`，per-user 16 条带锁）——**文件 = 你的决定的真相源**：数据没变、你没做决定，文件就不变 |
+| 变更 | **MINOR（2026-10-08，UI/UX 批 ③）**：新增 |
+
+**语义**：候选每次**现算**（读不落盘；卖点类复用 `SoldAfterCloseService` 口径 + 买点类轮「买入之后到现在」）；**只落盘你的决定**。同 id **原位替换**（保序）；**读取宽容**：缺 id/symbol/date 的行跳过、state/kind/outcome 不认识的行跳过、**`ruleRel` 不认识 → 归 null**（对照丢了不毁案例主体——宽容梯度与其他字段的 skip 口径不同）；整体不可解析 → 原文备份 `.bak-corrupt` 后降级空（P2-交易95）；写失败抛 `StorageException`。**最小墓碑**：候选随数据消失时「不要」照记（仅从 id 还原票 + 日期 + 状态，占位字段形状合法）；DISMISSED 条目**不进任何视图、永不复活**（与 §2.25 同口径）。**内存快照**：accept / dismiss 取「你看到的那次 GET」的候选详情（per-user 快照 TTL 10 分钟；过期 / 重启 → 重算兜底）——快照只是「所见即所认」缓存，丢了不影响一致性。消费方：`CaseCandidateService`（GET `/trading/cases/candidates` 合并你的决定 + accept/dismiss）、案例区「已经收下的」。
