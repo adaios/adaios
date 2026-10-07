@@ -5,7 +5,7 @@ version: 2
 created: 2026-10-04
 updated: 2026-10-08
 status: active
-lines: 160
+lines: 162
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index, workspace]
@@ -27,7 +27,7 @@ tags: [meta, index, workspace]
 
 > **规则**：**一个分支 = 一个目录 = 一个任务**（主键唯一 ⇒ **零冲突**）；目录里**需要什么才有什么**（轻活就一个 `LEDGER.md`）。
 
-## 文件清单（121 项）
+## 文件清单（123 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -86,6 +86,7 @@ tags: [meta, index, workspace]
 | `trading-plugin/decisions.md` | 历轮 adai 拍板：设计 v1 的 6 项未决（U1–U6）+ 审核 v1 战略级 2 条（S1/S2）+ v… | active |
 | `trading-plugin/design-final-20261006.md` | 交易线设计 final 稿——以 v2 正文为底合并 v3 增量与两份 v3 审核的整改，收 4 类阻塞项（§9… | draft |
 | `trading-plugin/design-kline-r04-20261007.md` | 把「案例专图」泛化成横切四个地方的通用 K 线——四区（主图+量+MACD+KDJ）、我的买卖点标记、止损线/峰… | active |
+| `trading-plugin/design-uiux-20261007.md` | UI/UX 这一轮的**设计规格**——把散在方向稿/批注/决算/实施清单里的已拍板决定收成一份可对照的设计稿：… | active |
 | `trading-plugin/design-v1-20261006.md` | 交易插件重做 · 设计稿 v1（设计文档编写者）——本轮回应 · 设计（归属分层 / 六模块 / 四条数据流 /… | draft |
 | `trading-plugin/design-v2-20261006.md` | 交易插件重做 · 设计稿 v2（设计文档编写者）——本轮回应 13 条（S1/S2 · P1×3 · P2×5 … | draft |
 | `trading-plugin/design-v3-20261006.md` | 设计第 3 轮的增量稿——正文仍看 design-v2；本稿只写"本轮改什么"（战略级 3 · P1×8 已改；… | draft |
@@ -150,6 +151,7 @@ tags: [meta, index, workspace]
 | `trading-plugin/review-v4-backend-20261006.md` | 后端面收敛性审核——只判上轮 2 条战略（S1 闸门 / S2 §9 基线）+ 6 条 P1 是否真闭环 + 本… | active |
 | `trading-plugin/review-web-uiux-20261007.md` | 以「本地真机渲染 + 原型可点稿逐屏比对」审核 web 端重构——8 屏对照结论、与护栏口径的核对（涨红跌绿/打… | active |
 | `trading-plugin/scope-frontend-20261006.md` | 交付完备性机制首跑——设计 §6「三端呈现」逐条对照：本批= R-12 统一导入 + R-05 web 三粒度分… | active |
+| `trading-plugin/scope-uiux-20261008.md` | 本轮（IA 重构 + 交互/视觉收口 + 7 批实施）的交付完备性表——从设计 §6 逐条抄条目，填计划/状态/… | active |
 | `trading-plugin/thinking-log.md` | 本分支 AI 的思考过程落盘——每轮写「看到什么 → 怎么判断 → 为什么这么选 → 放弃了什么」；与产物（re… | active |
 | `trading-plugin/uiux-discovery-20261007.md` | 双端 UI/UX 重构的当前方向总稿——背景 · 组织原则 · 已定约束（护栏）· 三问（场景/痛点/第一眼）·… | draft |
 
