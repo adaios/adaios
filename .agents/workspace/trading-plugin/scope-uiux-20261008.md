@@ -31,12 +31,12 @@ tags: [workspace, trading, scope]
 | `R-02` | 对账（差额可见 + 断点定位） | web | 非本任务 | — | — | 非本任务 |
 | `R-03` | 一笔（人工切笔） | web | 非本任务 | — | — | 非本任务 |
 | `R-04` | 图表 · **K 线统一组件**（四处共用 + B/T/S + 图例行 + 放宽） | web | 本批 | 已交付 | `apps/adai-web/lib/widgets/case_kline_chart.dart#B 买,T 加仓,S 卖`; `apps/adai-web/lib/pages/trading_page.dart#K 线` | — |
-| `R-05` | 分析 · **默认带持仓第一只 + 嵌入买卖点图** | web | 本批 | 已交付 | `apps/adai-web/lib/pages/trading_page.dart#这只票`; `apps/adai-web/lib/services/api_service.dart#fetchTradingKline` | — |
+| `R-05` | 分析 · **默认带持仓第一只 + 嵌入买卖点图 + 标题带名称（批 8 R7）** | web | 本批 | 已交付 | `apps/adai-web/lib/pages/trading_page.dart#这只票,_analysisLabel`; `apps/adai-web/lib/services/api_service.dart#fetchTradingKline` | — |
 | `R-06` | 规则 · **三态接入（自建 / 从数据里长）+ 活跃市值条移入** | web | 本批 | 已交付 | `apps/adai-web/lib/pages/trading_page.dart#从你的数据里长出来` | — |
 | `R-07` | 三环（web 看依据） | web | 非本任务 | — | — | 非本任务 |
 | `R-08` | 纠错（web 就地改） | web | 非本任务 | — | — | 非本任务 |
 | `R-09` | 自选 · **独立成一级区 + 买点信号列** | web | 本批 | 已交付 | `apps/adai-web/lib/pages/trading_page.dart#买点信号,B1=回调缩量低吸` | — |
-| `R-10` | 案例 · **页内分段（等你认 / 已收下）+ 顶部 4 格** | web | 本批 | 未交付 | — | LEDGER 🟥 · 批 8 |
+| `R-10` | 案例 · **4 格状态条提到首屏**（已收下 / 成功·失败 / 本周新增 / 等你认） | web | 本批 | 已交付 | `apps/adai-web/lib/pages/trading_page.dart#_buildCaseStatStrip,caseStatAccepted` | — |
 | `R-11` | 提醒（app 收提醒） | app | 非本任务 | — | — | 非本任务 |
 | `R-12` | 一次交文件（导入） | web | 非本任务 | — | — | 非本任务 |
 | `R-13` | 画像（页面） | web | 非本任务 | — | — | 非本任务 |

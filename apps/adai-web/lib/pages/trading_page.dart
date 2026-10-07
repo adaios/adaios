@@ -3369,6 +3369,10 @@ class _TradingPageState extends State<TradingPage>
                       defaultSymbol: _positions.isNotEmpty
                           ? _positions.first.symbol
                           : null,
+                      // 批 8（R7）：分析标题用本地名称显示（后端只给代码）
+                      symbolNames: {
+                        for (final p in _positions) p.symbol: p.name,
+                      },
                       onScopeChanged: (s) {
                         if (s != _analysisScope && mounted)
                           setState(() => _analysisScope = s);
@@ -5408,6 +5412,10 @@ class _TradingPageState extends State<TradingPage>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // 批 8（2026-10-08 · 走查 R6 更正）：四格屏条提到**最前**——原先挂在「完美买点案例」
+        // 标题下方（候选列表之后 ≈1242px 处），首屏看不见 ⇒ 用户视角「已收下多少」无处可查。
+        // 位置对齐原型 web-5（四格在页头之下、两个半区之上）。全空时本函数自返回空，不叠空壳。
+        ..._buildCaseStatStrip(),
         // 批 ③：候选半区（从记录里长出来 + 已经收下的）在案例列表上方——先认新的，再看库
         ..._buildCaseCandidateSection(),
         Row(
@@ -5477,9 +5485,6 @@ class _TradingPageState extends State<TradingPage>
             ),
           ],
         ),
-        const SizedBox(height: 8),
-        // m3b：四格屏条（已收下 / 成功·失败 / 本周新增 / 等你认）——原型案例屏 .wd-strip
-        ..._buildCaseStatStrip(),
         if (_cases.isEmpty)
           Padding(
             padding: const EdgeInsets.all(16),
@@ -9708,12 +9713,18 @@ class _AnalysisSection extends StatefulWidget {
   /// 批 5（R1 · 2026-10-08）：进屏默认带的那只（当前持仓第一只）；null = 没有持仓。
   final String? defaultSymbol;
 
+  /// 批 8（R7 · 2026-10-08）：标的代码 → 名称（来自父页已加载的持仓）。
+  /// 只用于把后端拼的标题「002428 · 做完 0 笔」换成「云南锗业 002428 · 做完 0 笔」；
+  /// 查不到名称就原样显示（**不编**）。
+  final Map<String, String> symbolNames;
+
   const _AnalysisSection({
     required this.api,
     required this.revealed,
     this.requestedScope,
     this.onScopeChanged,
     this.defaultSymbol,
+    this.symbolNames = const {},
   });
 
   @override
@@ -9721,6 +9732,18 @@ class _AnalysisSection extends StatefulWidget {
 }
 
 class _AnalysisSectionState extends State<_AnalysisSection> {
+  /// 批 8（R7 · 2026-10-08）：单标的标题的 symbol 前缀换成本地名称——
+  /// 后端给的是「002428 · 做完 0 笔」，已知名称时显示「云南锗业 002428 · 做完 0 笔」；
+  /// 名称缺失 / 非单标的粒度 → 原样返回（不编）。
+  String _analysisLabel(String label) {
+    if (_data?.scope != 'symbol') return label;
+    final sym = _symbolCtl.text.trim();
+    if (sym.isEmpty || !label.startsWith(sym)) return label;
+    final name = widget.symbolNames[sym];
+    if (name == null || name.isEmpty) return label;
+    return '$name $sym${label.substring(sym.length)}';
+  }
+
   String _scope = 'symbol';
   final _symbolCtl = TextEditingController();
   final _roundCtl = TextEditingController();
@@ -9976,7 +9999,7 @@ class _AnalysisSectionState extends State<_AnalysisSection> {
           )
         else if (_data != null) ...[
           Text(
-            _data!.label,
+            _analysisLabel(_data!.label),
             style: const TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,

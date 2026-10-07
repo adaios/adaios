@@ -7936,7 +7936,9 @@ void _marketStageGroup() {
       expect(find.byKey(const Key('analysisSymbol')), findsOneWidget);
       expect(find.byKey(const Key('analysisRound')), findsNothing);
       expect(
-        find.text('600123 · 做完 0 笔'),
+        // 批 8（R7 · 2026-10-08）：标题由「代码 · 做完 N 笔」改为「名称 代码 · 做完 N 笔」
+        // —— 名称取自父页已加载的持仓（此处 mock 为立昂微）；名称查不到时 `_analysisLabel` 早退为原样
+        find.text('立昂微 600123 · 做完 0 笔'),
         findsOneWidget,
         reason: 'R1：进屏自动带持仓第一只（600123）出统计',
       );
@@ -8060,7 +8062,7 @@ void _marketStageGroup() {
       await tester.tap(find.byKey(const Key('tabItem5')));
       await tester.pumpAndSettle();
       expect(
-        find.text('600123 · 做完 0 笔'),
+        find.text('立昂微 600123 · 做完 0 笔'),   // 批 8（R7）：标题带名称
         findsOneWidget,
         reason: '统计到了照常显示',
       );
