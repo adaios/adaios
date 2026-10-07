@@ -5,7 +5,7 @@ version: 2
 created: 2026-10-04
 updated: 2026-10-07
 status: active
-lines: 86
+lines: 126
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index, workspace]
@@ -27,7 +27,7 @@ tags: [meta, index, workspace]
 
 > **规则**：**一个分支 = 一个目录 = 一个任务**（主键唯一 ⇒ **零冲突**）；目录里**需要什么才有什么**（轻活就一个 `LEDGER.md`）。
 
-## 文件清单（47 项）
+## 文件清单（87 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -62,6 +62,46 @@ tags: [meta, index, workspace]
 | `trading-plugin/frontend-gap-20261006.md` | 编码段只交付后端（67/78 文件），设计 §6「三端呈现」的 web/app 范围 0 实现——补做清单 + … | active |
 | `trading-plugin/handoff-20261007.md` | 给下一个 AI 工具的交接：目标 · 已完成（含 commit）· 未完成清单 · 必读约束与坑 · 验证与本地… | active |
 | `trading-plugin/input.md` | 归位之后剩下的"怎么做"——数据现实与处理 / 去重 / 顺序 / 表头识别 / 送股兜底 / 同日行序陷阱 /… | active |
+| `trading-plugin/mockups/README.md` | 2026-10-07 夜做的一批 UI/UX 原型——6 个自包含 HTML（可在浏览器直接打开、可点、可切方向… | active |
+| `trading-plugin/mockups/png/A-default.png` | — | active |
+| `trading-plugin/mockups/png/A-empty.png` | — | active |
+| `trading-plugin/mockups/png/A-revealed.png` | — | active |
+| `trading-plugin/mockups/png/B-default.png` | — | active |
+| `trading-plugin/mockups/png/B-empty.png` | — | active |
+| `trading-plugin/mockups/png/C-default.png` | — | active |
+| `trading-plugin/mockups/png/C-empty.png` | — | active |
+| `trading-plugin/mockups/png/app-1.png` | — | active |
+| `trading-plugin/mockups/png/app-2.png` | — | active |
+| `trading-plugin/mockups/png/app-3.png` | — | active |
+| `trading-plugin/mockups/png/app-4.png` | — | active |
+| `trading-plugin/mockups/png/app-5.png` | — | active |
+| `trading-plugin/mockups/png/appA-revealed.png` | — | active |
+| `trading-plugin/mockups/png/appA.png` | — | active |
+| `trading-plugin/mockups/png/appB-empty.png` | — | active |
+| `trading-plugin/mockups/png/appB.png` | — | active |
+| `trading-plugin/mockups/png/appC.png` | — | active |
+| `trading-plugin/mockups/png/flow-1.png` | — | active |
+| `trading-plugin/mockups/png/flow-2.png` | — | active |
+| `trading-plugin/mockups/png/flow-3.png` | — | active |
+| `trading-plugin/mockups/png/flow-4.png` | — | active |
+| `trading-plugin/mockups/png/ref-1-revealed.png` | — | active |
+| `trading-plugin/mockups/png/ref-1.png` | — | active |
+| `trading-plugin/mockups/png/ref-2-revealed.png` | — | active |
+| `trading-plugin/mockups/png/ref-2.png` | — | active |
+| `trading-plugin/mockups/png/web-1.png` | — | active |
+| `trading-plugin/mockups/png/web-2.png` | — | active |
+| `trading-plugin/mockups/png/web-3.png` | — | active |
+| `trading-plugin/mockups/png/web-4.png` | — | active |
+| `trading-plugin/mockups/png/web-5.png` | — | active |
+| `trading-plugin/mockups/png/web-6.png` | — | active |
+| `trading-plugin/mockups/png/web-7.png` | — | active |
+| `trading-plugin/mockups/png/web-8.png` | — | active |
+| `trading-plugin/mockups/trading-app-directions.html` | — | active |
+| `trading-plugin/mockups/trading-app-entry-flow.html` | — | active |
+| `trading-plugin/mockups/trading-app-refined.html` | — | active |
+| `trading-plugin/mockups/trading-app-rest.html` | — | active |
+| `trading-plugin/mockups/trading-ui-directions.html` | — | active |
+| `trading-plugin/mockups/trading-web-full.html` | — | active |
 | `trading-plugin/overview.md` | trading 插件的「一页总览」——定位与整体现状 · 功能全景 · 全部相关 RFC · 未修与待办 · 未… | active |
 | `trading-plugin/requirement-review-20261006-r2.md` | 第一轮问题修复后的复审——12 条判据全部通过，结论：收敛（无 P0/P1），可送人签字；仅剩 P3（一笔生命周… | active |
 | `trading-plugin/requirement-review-20261006-r3.md` | A 归位（业务规则并回需求、机制留给设计）之后的复审——12 条判据全过 + 归位核对通过；结论：收敛，可送人签… | active |
