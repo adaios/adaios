@@ -2118,6 +2118,30 @@ class _TradingPageState extends State<TradingPage> {
     );
   }
 
+  /// m3b（2026-10-07 · 原型 .wd-strip 屏条）：label 上（11px 灰）/ 值下（15px w600）——与状态条格子同型。
+  /// `valueKey` 供测试锚定「值」文本（标题文字不锚，防两处 strip 撞文案）。
+  Widget _stripCell(String label, String value, {Color? color, Key? valueKey}) => Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+          const SizedBox(height: 3),
+          Text(value,
+              key: valueKey,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w600, color: color ?? AppColors.darkGrey1)),
+        ]),
+      );
+
+  /// m3b：买入日 → 「X季度」（原型清仓屏「二季度 61 天」里那个季度 = 在哪个季度买的）。
+  /// 日期认不出 → 空串（只显示天数，绝不猜季度）。
+  String _quarterLabel(String? date) {
+    final d = date == null ? null : DateTime.tryParse(date);
+    if (d == null) return '';
+    const names = ['一', '二', '三', '四'];
+    return '${names[(d.month - 1) ~/ 3]}季度';
+  }
+
   // ══════════════════════════════════════════════════════════════════════════
   // 骨架重排（2026-10-08 · ② 彻底版）：**9 个平铺 Tab → 6 个分区**
   //   持仓（含 自选 / 清仓 筛选）· 账（资金 ‖ 历史成交）· 分析 · 规则 · 案例 · 计划
@@ -2528,6 +2552,18 @@ class _TradingPageState extends State<TradingPage> {
     // flat（没动）与拿不到（null）都不计——两数只在有数据且 >0 时显示，不编「0 只」
     final soldAfterUp = _soldAfter.where((a) => a.direction == 'up').length;
     final soldAfterDown = _soldAfter.where((a) => a.direction == 'down').length;
+    // m3b（2026-10-07 · 原型清仓屏五格）：「合计」= 各笔持仓期涨幅直接相加（你口语里
+    // 「这一串操作总共赚了几个点」的口径——不做资金加权）；「最长拿着」= 持仓天数最大的一笔
+    // + 它的买入季度（原型「二季度 61 天」）。日期认不出只显示天数，不猜季度。
+    final sumPct = _sold.fold<double>(0, (a, s) => a + s.holdPnlPct);
+    SoldTradeDto? longest;
+    for (final s in _sold) {
+      if (longest == null || s.holdDays > longest.holdDays) longest = s;
+    }
+    final longestQuarter = longest == null ? '' : _quarterLabel(longest.buyDate);
+    final longestText = longest == null
+        ? '—'
+        : '${longestQuarter.isEmpty ? '' : '$longestQuarter '}${longest.holdDays} 天';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -2536,6 +2572,23 @@ class _TradingPageState extends State<TradingPage> {
         border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // m3b：五格屏条（原型 .wd-strip）——统计抢主位；下面小字保留规则细节（R66/R53/胜率…）
+        Row(children: [
+          _stripCell('清仓', '$total 只', valueKey: const Key('soldStatCount')),
+          _stripCell('合计', '${sumPct > 0 ? '+' : ''}${sumPct.toStringAsFixed(2)}%',
+              color: sumPct > 0
+                  ? AppColors.darkRed
+                  : (sumPct < 0 ? AppColors.darkGreen : AppColors.darkGrey3),
+              valueKey: const Key('soldStatTotal')),
+          _stripCell('卖掉之后又跌', soldAfterDown > 0 ? '$soldAfterDown 只 · 走对了' : '—',
+              color: soldAfterDown > 0 ? AppColors.darkGreen : AppColors.darkGrey4,
+              valueKey: const Key('soldStatAfterDown')),
+          _stripCell('卖掉之后又涨', soldAfterUp > 0 ? '$soldAfterUp 只 · 走早了' : '—',
+              color: soldAfterUp > 0 ? AppColors.darkOrange : AppColors.darkGrey4,
+              valueKey: const Key('soldStatAfterUp')),
+          _stripCell('最长拿着', longestText, valueKey: const Key('soldStatLongest')),
+        ]),
+        const SizedBox(height: 8),
         // P2-UI4（2026-08-29）：统计标题行改 Wrap——窄窗口自动换行不再 RenderFlex 溢出，
         // 且保留各段独立 Text（R66/R53 橙色重点）
         Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 12, runSpacing: 4, children: [
@@ -2558,13 +2611,7 @@ class _TradingPageState extends State<TradingPage> {
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
                     color: (total - r66 - r53) / total >= 0.5 ? AppColors.darkGreen : AppColors.darkOrange)),
           ],
-          // 2026-10-08：卖掉之后两数——绿「走对了」在前、橙「走早了」在后（同原型顺序）
-          if (soldAfterDown > 0)
-            Text('卖掉之后又跌 $soldAfterDown 只（走对了）',
-                style: const TextStyle(fontSize: 12, color: AppColors.darkGreen)),
-          if (soldAfterUp > 0)
-            Text('卖掉之后又涨 $soldAfterUp 只（走早了）',
-                style: const TextStyle(fontSize: 12, color: AppColors.darkOrange)),
+          // （m3b：原「卖掉之后又跌/又涨」两段小字已上提为屏条格子，此处不再重复）
         ]),
         // D2 行为模式（心理标注聚合，标注后自动归类；P3：Wrap 防窄窗口溢出，无命中不显示该行）
         if (marked.isNotEmpty && patternCounts.isNotEmpty) ...[
@@ -3422,6 +3469,25 @@ class _TradingPageState extends State<TradingPage> {
     }
   }
 
+  /// m3b（2026-10-07 · 原型案例屏「本周新增」）：本周（周一起算）收下的候选数。
+  /// 返回 null = 算不了（候选端点没拿到 / accepted 全都没有时间字段）——该格直接不显示，不编 0。
+  int? _acceptedThisWeek() {
+    if (!_caseCandidatesLoaded) return null;
+    final now = DateTime.now();
+    final monday = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - 1));
+    var parsedAny = false;
+    var count = 0;
+    for (final c in _caseAccepted) {
+      final d = DateTime.tryParse('${c['updatedAt'] ?? c['createdAt'] ?? ''}');
+      if (d == null) continue;
+      parsedAny = true;
+      if (!d.isBefore(monday)) count++;
+    }
+    if (_caseAccepted.isNotEmpty && !parsedAny) return null;
+    return count;
+  }
+
   Widget _buildCaseSection() {
     if (!_casesLoaded && !_casesLoadFailed) {
       return const Padding(
@@ -3483,6 +3549,8 @@ class _TradingPageState extends State<TradingPage> {
         ),
       ]),
       const SizedBox(height: 8),
+      // m3b：四格屏条（已收下 / 成功·失败 / 本周新增 / 等你认）——原型案例屏 .wd-strip
+      ..._buildCaseStatStrip(),
       if (_cases.isEmpty)
         Padding(
           padding: const EdgeInsets.all(16),
@@ -3497,6 +3565,39 @@ class _TradingPageState extends State<TradingPage> {
       else
         ..._cases.map((c) => _buildCaseRow(c)),
     ]);
+  }
+
+  /// m3b（2026-10-07 · 原型案例屏四格 .wd-strip）：已收下 / 成功·失败 / 本周新增 / 等你认。
+  /// 「本周新增」与「等你认」来自候选端点——没拿到就少这两格（不编 0）；
+  /// 整库全空（没案例也没候选）→ 整条不显示（空态文案已够，不叠空壳）。
+  List<Widget> _buildCaseStatStrip() {
+    if (_cases.isEmpty && _caseCandidates.isEmpty && _caseAccepted.isEmpty) return const [];
+    final failed = _cases.where((c) => '${c['buyType']}' == 'FAILED').length;
+    final weekNew = _acceptedThisWeek();
+    return [
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          color: AppColors.darkSurface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
+        ),
+        child: Row(children: [
+          _stripCell('已收下', '${_cases.length}', valueKey: const Key('caseStatAccepted')),
+          _stripCell('成功 / 失败', '${_cases.length - failed} / $failed',
+              valueKey: const Key('caseStatSuccessFail')),
+          if (weekNew != null)
+            _stripCell('本周新增', '$weekNew',
+                color: weekNew > 0 ? AppColors.darkRed : AppColors.darkGrey3,
+                valueKey: const Key('caseStatWeekNew')),
+          if (_caseCandidatesLoaded)
+            _stripCell('等你认', '${_caseCandidates.length}',
+                color: _caseCandidates.isNotEmpty ? AppColors.darkOrange : AppColors.darkGrey3,
+                valueKey: const Key('caseStatPending')),
+        ]),
+      ),
+      const SizedBox(height: 8),
+    ];
   }
 
   /// 案例候选半区（批 ③）：候选卡（等你认）+「已经收下的」四列小表。

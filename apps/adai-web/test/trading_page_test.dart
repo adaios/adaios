@@ -1626,9 +1626,9 @@ void main() {
       expect(find.text('+18.4% ↑ 走早了'), findsOneWidget);
       expect(find.text('-1.1% ↓ 走对了'), findsOneWidget);
       expect(find.text('0.0% 没动'), findsOneWidget);
-      // 顶部两数：只计涨/跌（flat 不计）
-      expect(find.text('卖掉之后又涨 1 只（走早了）'), findsOneWidget);
-      expect(find.text('卖掉之后又跌 1 只（走对了）'), findsOneWidget);
+      // m3b：顶部两数上屏条（只计涨/跌，flat 不计；键锚「值」文本，改文案不碎测试）
+      expect(tester.widget<Text>(find.byKey(const Key('soldStatAfterUp'))).data, '1 只 · 走早了');
+      expect(tester.widget<Text>(find.byKey(const Key('soldStatAfterDown'))).data, '1 只 · 走对了');
     });
 
     testWidgets('单笔拿不到：该行「—」+ tooltip 说原因；其余照常、统计只计有数的', (tester) async {
@@ -1677,8 +1677,9 @@ void main() {
       expect(find.descendant(of: find.byType(DataTable), matching: find.text('—')), findsOneWidget);
       // 好的一笔照常，统计只计有数的
       expect(find.text('+18.4% ↑ 走早了'), findsOneWidget);
-      expect(find.text('卖掉之后又涨 1 只（走早了）'), findsOneWidget);
-      expect(find.textContaining('卖掉之后又跌'), findsNothing);
+      expect(tester.widget<Text>(find.byKey(const Key('soldStatAfterUp'))).data, '1 只 · 走早了');
+      expect(tester.widget<Text>(find.byKey(const Key('soldStatAfterDown'))).data, '—',
+          reason: '拿不到的笔不计，也绝不编「0 只」');
     });
 
     testWidgets('整批拿不到（404）：列全「—」、无统计两数、页面主体正常', (tester) async {
@@ -1712,9 +1713,154 @@ void main() {
 
       expect(find.text('卖掉之后到现在'), findsOneWidget, reason: '列头照在');
       expect(find.descendant(of: find.byType(DataTable), matching: find.text('—')), findsOneWidget);
-      expect(find.textContaining('卖掉之后又涨'), findsNothing);
-      expect(find.textContaining('卖掉之后又跌'), findsNothing);
+      // m3b：整批拿不到 → 屏条两格如实说「—」（不编「0 只」，也不拆掉格子）
+      expect(tester.widget<Text>(find.byKey(const Key('soldStatAfterUp'))).data, '—');
+      expect(tester.widget<Text>(find.byKey(const Key('soldStatAfterDown'))).data, '—');
       expect(find.text('清仓股复盘'), findsOneWidget, reason: '页面主体正常，不炸');
+    });
+  });
+
+  // ── m3b（2026-10-07）：屏条补齐 —— 清仓五格 + 案例四格（原型 .wd-strip）──
+  //
+  // 原型口径（trading-web-full.html）：清仓屏五格 = 清仓 N 只 / 合计（各笔相加）/
+  // 卖掉之后又跌 N 只·走对了 / 卖掉之后又涨 N 只·走早了 / 最长拿着（买入季度 + 天数）；
+  // 案例屏四格 = 已收下 N / 成功·失败 N/M / 本周新增 N / 等你认 N。
+  // 拿不到就「—」或该格不显示（绝不编 0）；「值」文本挂 Key 锚，改文案不碎测试。
+  group('m3b 屏条补齐（2026-10-07）', () {
+    testWidgets('清仓五格：数量 / 合计 / 卖掉之后两格 / 最长拿着（含买入季度）', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold') {
+          return _json([
+            {'symbol': '603993', 'name': '洛阳钼业', 'buyDate': '2026-07-20', 'sellDate': '2026-08-19',
+             'holdDays': 30, 'tradeCount': '1+1', 'holdPnlPct': 18.4, 'verdict': '盈利了结', 'psychology': ''},
+            {'symbol': '000725', 'name': '京东方A', 'buyDate': '2026-05-01', 'sellDate': '2026-05-26',
+             'holdDays': 25, 'tradeCount': '1+1', 'holdPnlPct': -6.0, 'verdict': 'R53', 'psychology': ''},
+            {'symbol': '600519', 'name': '贵州茅台', 'buyDate': '2026-08-01', 'sellDate': '2026-08-11',
+             'holdDays': 10, 'tradeCount': '1+1', 'holdPnlPct': 0.5, 'verdict': '盈利了结', 'psychology': ''},
+          ]);
+        }
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/sold/after-close') {
+          return _json([
+            {'symbol': '603993', 'name': '洛阳钼业', 'sellDate': '2026-08-19', 'baseDate': '2026-08-19',
+             'baseClose': 12.34, 'latestDate': '2026-10-07', 'latestClose': 14.61, 'pct': 18.4, 'direction': 'up'},
+            {'symbol': '000725', 'name': '京东方A', 'sellDate': '2026-05-26', 'baseDate': '2026-05-26',
+             'baseClose': 10.0, 'latestDate': '2026-10-07', 'latestClose': 9.89, 'pct': -1.1, 'direction': 'down'},
+          ]);
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+      await tester.tap(find.byKey(const Key('posFilter2')));
+      await tester.pumpAndSettle();
+
+      Text stripCell(Key k) => tester.widget<Text>(find.byKey(k));
+      expect(stripCell(const Key('soldStatCount')).data, '3 只');
+      expect(stripCell(const Key('soldStatTotal')).data, '+12.90%',
+          reason: '合计 = 各笔持仓期涨幅直接相加（18.4 - 6.0 + 0.5）');
+      expect(stripCell(const Key('soldStatAfterDown')).data, '1 只 · 走对了');
+      expect(stripCell(const Key('soldStatAfterUp')).data, '1 只 · 走早了');
+      expect(stripCell(const Key('soldStatLongest')).data, '三季度 30 天',
+          reason: '拿最久的一笔（07-20 买 = 三季度，30 天）');
+    });
+
+    testWidgets('最长拿着：买入日认不出 → 只显示天数，不猜季度', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold') {
+          return _json([
+            {'symbol': '600157', 'name': '永泰能源', 'buyDate': null, 'sellDate': '2025-06-20',
+             'holdDays': 19, 'tradeCount': '1+1', 'holdPnlPct': 3.0, 'verdict': '盈利了结', 'psychology': ''},
+            {'symbol': '603993', 'name': '洛阳钼业', 'buyDate': '不是日期', 'sellDate': '2026-08-19',
+             'holdDays': 5, 'tradeCount': '1+1', 'holdPnlPct': 1.0, 'verdict': '盈利了结', 'psychology': ''},
+          ]);
+        }
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+      await tester.tap(find.byKey(const Key('posFilter2')));
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<Text>(find.byKey(const Key('soldStatLongest'))).data, '19 天',
+          reason: '买入日认不出就不缀季度（只报天数）');
+    });
+
+    testWidgets('案例四格：已收下 / 成功·失败 / 本周新增 / 等你认', (tester) async {
+      final now = DateTime.now();
+      // 数据内联（caseJson/candidateJson 是 main() 局部函数、声明在本组之后——Dart 不许先用后声明）
+      final client = MockClient((request) async {
+        if (request.url.path == '/api/v1/trading/cases' && request.method == 'GET') {
+          return _json([
+            {'id': '2026-08-03_000725', 'symbol': '000725', 'name': '京东方A',
+             'buyDate': '2026-08-03', 'buyType': 'B1'},
+            {'id': '2026-08-10_600519', 'symbol': '600519', 'name': '贵州茅台',
+             'buyDate': '2026-08-10', 'buyType': 'FAILED'},
+          ]);
+        }
+        if (request.url.path == '/api/v1/trading/cases/candidates' && request.method == 'GET') {
+          return _json({
+            'pending': [
+              {'id': 'p1', 'outcome': 'EARLY', 'title': '洛阳钼业 08-19 卖了之后又涨 18.4%', 'notes': <String>[]},
+              {'id': 'p2', 'outcome': 'SUCCESS', 'title': '紫金矿业 08-12 买在 5 日线上方', 'notes': <String>[]},
+            ],
+            'accepted': [
+              // 本周收下的 1 条 + 上周的 1 条 → 「本周新增」只计本周
+              {'id': 'a1', 'outcome': 'RIGHT', 'title': '跌破止损就走，没扛', 'notes': <String>[],
+               'updatedAt': now.toIso8601String()},
+              {'id': 'a2', 'outcome': 'RIGHT', 'title': '上周收下的那条', 'notes': <String>[],
+               'updatedAt': now.subtract(const Duration(days: 7)).toIso8601String()},
+            ],
+          });
+        }
+        return _tradingHandler(request);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('案例'));
+      await tester.pumpAndSettle();
+
+      Text stripCell(Key k) => tester.widget<Text>(find.byKey(k));
+      expect(stripCell(const Key('caseStatAccepted')).data, '2', reason: '案例库总数（1 B1 + 1 FAILED）');
+      expect(stripCell(const Key('caseStatSuccessFail')).data, '1 / 1');
+      expect(stripCell(const Key('caseStatWeekNew')).data, '1', reason: '本周（周一起算）收下 1 条；上周那条不计');
+      expect(stripCell(const Key('caseStatPending')).data, '2', reason: '等你认 = pending 数');
+    });
+
+    testWidgets('案例候选拿不到（404）：本周新增/等你认 两格不显示（不编 0）；已收下照常', (tester) async {
+      final client = MockClient((request) async {
+        if (request.url.path == '/api/v1/trading/cases' && request.method == 'GET') {
+          return _json([
+            {'id': '2026-08-03_000725', 'symbol': '000725', 'name': '京东方A',
+             'buyDate': '2026-08-03', 'buyType': 'B1'},
+          ]);
+        }
+        return _tradingHandler(request);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('案例'));
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<Text>(find.byKey(const Key('caseStatAccepted'))).data, '1');
+      expect(tester.widget<Text>(find.byKey(const Key('caseStatSuccessFail'))).data, '1 / 0');
+      expect(find.byKey(const Key('caseStatWeekNew')), findsNothing, reason: '算不了就不显示，不编 0');
+      expect(find.byKey(const Key('caseStatPending')), findsNothing);
     });
   });
 
