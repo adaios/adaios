@@ -50,15 +50,19 @@ public class TradingKlineAppService {
     private final TradingHistoryRepository historyRepository;
     private final PositionRepository positionRepository;
     private final SoldTradeRepository soldTradeRepository;
+    /** 批次止损来源（2026-10-08 补：原实现只读成交记录，见 {@link #stopLine}）。 */
+    private final TradingLotService lotService;
 
     public TradingKlineAppService(KlineService klineService,
                                   TradingHistoryRepository historyRepository,
                                   PositionRepository positionRepository,
-                                  SoldTradeRepository soldTradeRepository) {
+                                  SoldTradeRepository soldTradeRepository,
+                                  TradingLotService lotService) {
         this.klineService = klineService;
         this.historyRepository = historyRepository;
         this.positionRepository = positionRepository;
         this.soldTradeRepository = soldTradeRepository;
+        this.lotService = lotService;
     }
 
     /** 组装一张图的全部原料。window 为交易日根数（30~400，默认 90）。 */
@@ -99,7 +103,7 @@ public class TradingKlineAppService {
         List<TradeRecord> trades = tradesIn(userId, sym, from, to);
 
         out.put("marks", marks(trades));
-        out.put("stopLine", stopLine(trades));
+        out.put("stopLine", stopLine(userId, sym, trades));
         out.put("peakLine", peakLine(trades, candles));
         out.put("context", context(userId, sym, trades));
         return out;
@@ -127,20 +131,40 @@ public class TradingKlineAppService {
         return marks;
     }
 
-    // ── 你定的止损：取最近一次买入时定的那条（有就画，没有就不画） ──
+    // ── 你定的止损：先看成交记录，再看**批次止损**（有就画，没有就不画） ──
 
-    private Map<String, Object> stopLine(List<TradeRecord> trades) {
+    private Map<String, Object> stopLine(String userId, String symbol, List<TradeRecord> trades) {
+        // ① 成交记录里最近一次买入定下的那条
         for (int i = trades.size() - 1; i >= 0; i--) {
             TradeRecord t = trades.get(i);
             if (t.direction() == TradeDirection.BUY && t.stopLossPrice() != null) {
-                Map<String, Object> line = new LinkedHashMap<>();
-                line.put("price", t.stopLossPrice().doubleValue());
-                line.put("from", t.entryDate() == null ? null : t.entryDate().toString());
-                line.put("note", "你定的止损");
-                return line;
+                return line(t.stopLossPrice(), t.entryDate(), "你定的止损");
             }
         }
+        // ② 批次止损 —— 2026-10-08 补。原实现只看了 ①，于是「在 app 里给某一批单独设过止损」
+        //    的票在图上画不出线（本地实测：云南锗业 stopLine=null，而它设过批次止损）。
+        try {
+            TradingLotService.TradingLotView hit = null;
+            for (TradingLotService.TradingLotView v : lotService.lots(userId, "open")) {
+                if (!symbol.equals(v.symbol()) || v.closed() || v.stopLossPrice() == null) continue;
+                if (hit == null
+                        || (v.buyDate() != null && hit.buyDate() != null && v.buyDate().isAfter(hit.buyDate()))) {
+                    hit = v;
+                }
+            }
+            if (hit != null) return line(hit.stopLossPrice(), hit.buyDate(), "你给这一批定的止损");
+        } catch (Exception e) {
+            // 批次推导失败 → 如实当作「没定过」，不凭空给一条线（承接「缺数据不编」）
+        }
         return null;
+    }
+
+    private Map<String, Object> line(BigDecimal price, LocalDate from, String note) {
+        Map<String, Object> line = new LinkedHashMap<>();
+        line.put("price", price.doubleValue());
+        line.put("from", from == null ? null : from.toString());
+        line.put("note", note);
+        return line;
     }
 
     // ── 峰值浮盈线：持有期内最高收盘 × (1 − 回吐阈值)；没有持有期就没有这条线 ──

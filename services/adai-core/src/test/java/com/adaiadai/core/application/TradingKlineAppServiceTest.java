@@ -40,18 +40,18 @@ class TradingKlineAppServiceTest {
     private static final LocalDate D = LocalDate.of(2026, 8, 3);
 
     private record Mocks(TradingHistoryRepository history, PositionRepository positions,
-                         SoldTradeRepository sold) {}
+                         SoldTradeRepository sold, TradingLotService lots) {}
 
     private Mocks mocks() {
         return new Mocks(mock(TradingHistoryRepository.class), mock(PositionRepository.class),
-                mock(SoldTradeRepository.class));
+                mock(SoldTradeRepository.class), mock(TradingLotService.class));
     }
 
     private TradingKlineAppService service(KlineService kline, Mocks m) {
         when(m.history().findAll(anyString())).thenReturn(List.of());
         when(m.positions().findBySymbol(anyString(), anyString())).thenReturn(Optional.empty());
         when(m.sold().findAll(anyString())).thenReturn(List.of());
-        return new TradingKlineAppService(kline, m.history(), m.positions(), m.sold());
+        return new TradingKlineAppService(kline, m.history(), m.positions(), m.sold(), m.lots());
     }
 
     private static List<Candle> candles(double... closes) {
@@ -109,7 +109,7 @@ class TradingKlineAppServiceTest {
                 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 24.0, 23.0, 22.0, 21.0, 20.0, 19.5, 19.0,
                 18.5, 18.0, 17.8, 17.6, 17.4, 17.2, 17.0, 16.8, 16.6, 16.4, 17.0, 18.0));
 
-        Map<String, Object> r = new TradingKlineAppService(kline, m.history(), m.positions(), m.sold())
+        Map<String, Object> r = new TradingKlineAppService(kline, m.history(), m.positions(), m.sold(), m.lots())
                 .kline("u", SYM, 30);
 
         @SuppressWarnings("unchecked")
@@ -130,7 +130,7 @@ class TradingKlineAppServiceTest {
                 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 24.0, 23.0, 22.0, 21.0, 20.0, 19.0, 18.0,
                 17.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 26.0));
 
-        Map<String, Object> r = new TradingKlineAppService(kline, m.history(), m.positions(), m.sold())
+        Map<String, Object> r = new TradingKlineAppService(kline, m.history(), m.positions(), m.sold(), m.lots())
                 .kline("u", SYM, 30);
 
         @SuppressWarnings("unchecked")
@@ -149,7 +149,7 @@ class TradingKlineAppServiceTest {
                 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 24.0, 23.0, 22.0, 21.0, 20.0, 19.0, 18.0,
                 17.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 26.0));
 
-        Map<String, Object> r = new TradingKlineAppService(kline, m.history(), m.positions(), m.sold())
+        Map<String, Object> r = new TradingKlineAppService(kline, m.history(), m.positions(), m.sold(), m.lots())
                 .kline("u", SYM, 30);
         assertNull(r.get("stopLine"), "没定过止损就不该凭空给一条线");
     }
@@ -166,7 +166,7 @@ class TradingKlineAppServiceTest {
                 19.0, 18.0, 17.0, 16.0, 15.5, 15.4, 15.3, 15.2, 15.1, 15.0, 14.9, 14.8, 14.7,
                 14.6, 14.5, 14.4, 14.3, 14.2, 14.1, 14.0, 13.9, 13.8, 13.7, 13.6, 13.5));
 
-        Map<String, Object> r = new TradingKlineAppService(kline, m.history(), m.positions(), m.sold())
+        Map<String, Object> r = new TradingKlineAppService(kline, m.history(), m.positions(), m.sold(), m.lots())
                 .kline("u", SYM, 30);
 
         @SuppressWarnings("unchecked")
@@ -201,7 +201,7 @@ class TradingKlineAppServiceTest {
                 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 24.0, 23.0, 22.0, 21.0, 20.0, 19.0, 18.0,
                 17.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 26.0));
 
-        Map<String, Object> r = new TradingKlineAppService(kline, m.history(), m.positions(), m.sold())
+        Map<String, Object> r = new TradingKlineAppService(kline, m.history(), m.positions(), m.sold(), m.lots())
                 .kline("u", SYM, 30);
 
         @SuppressWarnings("unchecked")
@@ -224,7 +224,7 @@ class TradingKlineAppServiceTest {
                 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 24.0, 23.0, 22.0, 21.0, 20.0, 19.0, 18.0,
                 17.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 26.0));
 
-        Map<String, Object> r = new TradingKlineAppService(kline, m.history(), m.positions(), m.sold())
+        Map<String, Object> r = new TradingKlineAppService(kline, m.history(), m.positions(), m.sold(), m.lots())
                 .kline("u", SYM, 30);
 
         @SuppressWarnings("unchecked")
