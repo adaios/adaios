@@ -907,6 +907,75 @@ class ApiService {
     _check(resp);
   }
 
+  // ── R-06 规则集三态（2026-10-07 差异决算批 5 · P3-7 补对齐）──
+  // 与上面 GET/PUT /trading/rules（参数阈值 rules.yaml）**并存不冲突**：
+  // 那是「你设的数」，这是「你的规则条文」（只存文本 + 参数）。
+
+  /// 规则集全列表（GET /trading/rules/user）：{total, candidates, accepted, custom}——
+  /// 候选（系统提、每条带据）→ 已认（你勾选/改）→ 自定义（你写）；一次拿全。
+  Future<Map<String, dynamic>> getUserRules() async {
+    final resp = await _client.get(
+        Uri.parse('$baseUrl/api/v1/trading/rules/user'), headers: _headers);
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 从数据里照一遍候选（POST /trading/rules/candidates）：描述性统计 → 候选规则（每条带据），
+  /// 返回刷新后全列表。红线：候选是「描述」（你实际在做什么）不是「建议」；样本不足宁可不出。
+  Future<Map<String, dynamic>> generateRuleCandidates() async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/rules/candidates'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: '{}',
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 认下一条候选（POST /trading/rules/{id}/accept；text 非空 = 「改一改」认下时改）。
+  Future<Map<String, dynamic>> acceptUserRule(String id, {String? text}) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/rules/${Uri.encodeComponent(id)}/accept'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: jsonEncode({
+        if (text != null && text.isNotEmpty) 'text': text,
+      }),
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 改文本（PUT /trading/rules/{id}；仅已认/自定义——候选要先认下）。
+  Future<Map<String, dynamic>> editUserRule(String id, String text) async {
+    final resp = await _client.put(
+      Uri.parse('$baseUrl/api/v1/trading/rules/${Uri.encodeComponent(id)}'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: jsonEncode({'text': text}),
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 弃掉一条（DELETE /trading/rules/{id}）：墓碑——不再出现、生成不复活；幂等。
+  Future<void> dismissUserRule(String id) async {
+    final resp = await _client.delete(
+      Uri.parse('$baseUrl/api/v1/trading/rules/${Uri.encodeComponent(id)}'),
+      headers: _headers,
+    );
+    _check(resp);
+  }
+
+  /// 自己写一条（POST /trading/rules/custom，三态之自定义——三来源之「自建」）。
+  Future<Map<String, dynamic>> createCustomRule(String text) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/rules/custom'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: jsonEncode({'text': text}),
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
   /// v3.41（2026-09-04）：活跃市值区间（用户手动判定，GET /trading/market-stage）。
   /// 返回 {"exists":bool,"stage":"bull"|"bear"|null,"updatedAt":String|null}。
   Future<Map<String, dynamic>> getMarketStage() async {
