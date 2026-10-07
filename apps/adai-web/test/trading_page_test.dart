@@ -106,6 +106,7 @@ Future<http.Response> _tradingHandler(http.Request request) async {
   if (path == '/api/v1/trading/sold') return _json([]);
   if (path == '/api/v1/trading/buy-points') return _json([]);
   if (path == '/api/v1/trading/sold/score') return _json([]);
+  if (path == '/api/v1/trading/sold/after-close') return _json([]);
 
   if (path == '/api/v1/trading/equity-curve') {
     return _json({
@@ -1568,6 +1569,141 @@ void main() {
       expect(find.text('追高 1 笔'), findsOneWidget);
       expect(find.text('恐慌割肉 1 笔'), findsOneWidget);
       expect(find.text('套牢死扛 1 笔'), findsOneWidget);
+    });
+  });
+
+  group('清仓「卖掉之后到现在」（2026-10-08）', () {
+    testWidgets('表格列：↑走早了 / ↓走对了 / 没动；顶部两数只计涨跌', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold') {
+          return _json([
+            {'symbol': '603993', 'name': '洛阳钼业', 'buyDate': '2026-07-20', 'sellDate': '2026-08-19',
+             'holdDays': 30, 'tradeCount': '1+1', 'holdPnlPct': 18.4, 'verdict': '盈利了结', 'psychology': ''},
+            {'symbol': '000725', 'name': '京东方A', 'buyDate': '2026-05-01', 'sellDate': '2026-05-26',
+             'holdDays': 25, 'tradeCount': '1+1', 'holdPnlPct': -6.0, 'verdict': 'R53', 'psychology': ''},
+            {'symbol': '600519', 'name': '贵州茅台', 'buyDate': '2026-08-01', 'sellDate': '2026-08-11',
+             'holdDays': 10, 'tradeCount': '1+1', 'holdPnlPct': 0.5, 'verdict': '盈利了结', 'psychology': ''},
+          ]);
+        }
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/sold/after-close') {
+          return _json([
+            {'symbol': '603993', 'name': '洛阳钼业', 'sellDate': '2026-08-19', 'baseDate': '2026-08-19',
+             'baseClose': 12.34, 'latestDate': '2026-10-07', 'latestClose': 14.61, 'pct': 18.4, 'direction': 'up'},
+            {'symbol': '000725', 'name': '京东方A', 'sellDate': '2026-05-26', 'baseDate': '2026-05-26',
+             'baseClose': 10.0, 'latestDate': '2026-10-07', 'latestClose': 9.89, 'pct': -1.1, 'direction': 'down'},
+            {'symbol': '600519', 'name': '贵州茅台', 'sellDate': '2026-08-11', 'baseDate': '2026-08-11',
+             'baseClose': 1500.0, 'latestDate': '2026-10-07', 'latestClose': 1500.0, 'pct': 0.0, 'direction': 'flat'},
+          ]);
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('清仓'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('卖掉之后到现在'), findsOneWidget, reason: '列头可见');
+      // 三种方向文案（绿走对了/橙走早了语义色，与「这笔」涨跌色不同）
+      expect(find.text('+18.4% ↑ 走早了'), findsOneWidget);
+      expect(find.text('-1.1% ↓ 走对了'), findsOneWidget);
+      expect(find.text('0.0% 没动'), findsOneWidget);
+      // 顶部两数：只计涨/跌（flat 不计）
+      expect(find.text('卖掉之后又涨 1 只（走早了）'), findsOneWidget);
+      expect(find.text('卖掉之后又跌 1 只（走对了）'), findsOneWidget);
+    });
+
+    testWidgets('单笔拿不到：该行「—」+ tooltip 说原因；其余照常、统计只计有数的', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold') {
+          return _json([
+            {'symbol': '600157', 'name': '永泰能源', 'buyDate': '2025-06-01', 'sellDate': '2025-06-20',
+             'holdDays': 19, 'tradeCount': '1+1', 'holdPnlPct': 3.0, 'verdict': '盈利了结', 'psychology': ''},
+            {'symbol': '603993', 'name': '洛阳钼业', 'buyDate': '2026-07-20', 'sellDate': '2026-08-19',
+             'holdDays': 30, 'tradeCount': '1+1', 'holdPnlPct': 18.4, 'verdict': '盈利了结', 'psychology': ''},
+          ]);
+        }
+        if (path == '/api/v1/trading/sold/score') {
+          return _json([
+            {'symbol': '600157', 'name': '永泰能源', 'buyPointScore': 88, 'buyPointSignal': 'B1',
+             'buyPointExplain': '', 'executionScore': 90, 'executionExplain': '', 'totalScore': 89, 'verdict': '盈利了结'},
+            {'symbol': '603993', 'name': '洛阳钼业', 'buyPointScore': 88, 'buyPointSignal': 'B1',
+             'buyPointExplain': '', 'executionScore': 90, 'executionExplain': '', 'totalScore': 89, 'verdict': '盈利了结'},
+          ]);
+        }
+        if (path == '/api/v1/trading/sold/after-close') {
+          return _json([
+            {'symbol': '600157', 'name': '永泰能源', 'sellDate': '2025-06-20', 'baseDate': null,
+             'baseClose': null, 'latestDate': null, 'latestClose': null, 'pct': null, 'direction': null,
+             'note': '行情覆盖不到卖掉那天'},
+            {'symbol': '603993', 'name': '洛阳钼业', 'sellDate': '2026-08-19', 'baseDate': '2026-08-19',
+             'baseClose': 12.34, 'latestDate': '2026-10-07', 'latestClose': 14.61, 'pct': 18.4, 'direction': 'up'},
+          ]);
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('清仓'));
+      await tester.pumpAndSettle();
+
+      // 差的那笔：「—」+ tooltip 说清为什么（不拿邻近价格编）
+      expect(find.byTooltip('行情覆盖不到卖掉那天'), findsOneWidget);
+      expect(find.descendant(of: find.byType(DataTable), matching: find.text('—')), findsOneWidget);
+      // 好的一笔照常，统计只计有数的
+      expect(find.text('+18.4% ↑ 走早了'), findsOneWidget);
+      expect(find.text('卖掉之后又涨 1 只（走早了）'), findsOneWidget);
+      expect(find.textContaining('卖掉之后又跌'), findsNothing);
+    });
+
+    testWidgets('整批拿不到（404）：列全「—」、无统计两数、页面主体正常', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold') {
+          return _json([
+            {'symbol': '603993', 'name': '洛阳钼业', 'buyDate': '2026-07-20', 'sellDate': '2026-08-19',
+             'holdDays': 30, 'tradeCount': '1+1', 'holdPnlPct': 18.4, 'verdict': '盈利了结', 'psychology': ''},
+          ]);
+        }
+        if (path == '/api/v1/trading/sold/score') {
+          return _json([
+            {'symbol': '603993', 'name': '洛阳钼业', 'buyPointScore': 88, 'buyPointSignal': 'B1',
+             'buyPointExplain': '', 'executionScore': 90, 'executionExplain': '', 'totalScore': 89, 'verdict': '盈利了结'},
+          ]);
+        }
+        // 不 mock sold/after-close → 404 → 静默降级（该列回落「—」，不打断页面）
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('清仓'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('卖掉之后到现在'), findsOneWidget, reason: '列头照在');
+      expect(find.descendant(of: find.byType(DataTable), matching: find.text('—')), findsOneWidget);
+      expect(find.textContaining('卖掉之后又涨'), findsNothing);
+      expect(find.textContaining('卖掉之后又跌'), findsNothing);
+      expect(find.text('清仓股复盘'), findsOneWidget, reason: '页面主体正常，不炸');
     });
   });
 

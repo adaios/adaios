@@ -1153,6 +1153,16 @@ class ApiService {
     return (data as List).map((e) => SoldScoreDto.fromJson(e)).toList();
   }
 
+  /// 清仓「卖掉之后到现在」（GET /api/v1/trading/sold/after-close，2026-10-08 UI/UX 重做批）：
+  /// 卖出日收盘 → 最新收盘的涨跌幅（回答「我卖飞了没」：涨=走早了 / 跌=走对了）。
+  /// 按清仓列表顺序逐笔返回（前端按索引匹配，同 /sold/score）；拿不到的 pct=null + note。
+  Future<List<SoldAfterCloseDto>> getSoldAfterClose() async {
+    final resp = await _client.get(Uri.parse('$baseUrl/api/v1/trading/sold/after-close'), headers: _headers);
+    _check(resp);
+    final data = jsonDecode(utf8.decode(resp.bodyBytes));
+    return (data as List).map((e) => SoldAfterCloseDto.fromJson(e)).toList();
+  }
+
   /// 资金快照**对账**（POST /api/v1/trading/imports/cash + dryRun，RFC 20261003 C4）：
   /// **只读不落盘**——返回 {brokerCash, systemCash, diff, since[], ledgerOnlyCount, note}，
   /// 让人先看见「券商现金 vs 系统推算」差多少、差在哪，再决定要不要覆盖。
@@ -3124,6 +3134,35 @@ class SoldScoreDto {
       buyPointScore: (m['buyPointScore'] as num?)?.toInt(),
       executionScore: (m['executionScore'] as num?)?.toInt(),
       totalScore: (m['totalScore'] as num?)?.toDouble(),
+    );
+  }
+}
+
+/// 清仓「卖掉之后到现在」一行（GET /api/v1/trading/sold/after-close，2026-10-08 清仓列）。
+/// 基准 = 卖出日（或其后第一根）K 线收盘，最新 = 区间最后一根；
+/// pct/direction 为 null = 没算出来（note 说明原因人话，显示「—」不编）。
+class SoldAfterCloseDto {
+  final String symbol, name;
+  final String? sellDate, baseDate, latestDate, direction, note;
+  final double? baseClose, latestClose, pct;
+
+  SoldAfterCloseDto({required this.symbol, required this.name, this.sellDate,
+      this.baseDate, this.baseClose, this.latestDate, this.latestClose,
+      this.pct, this.direction, this.note});
+
+  factory SoldAfterCloseDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return SoldAfterCloseDto(
+      symbol: m['symbol']?.toString() ?? '',
+      name: m['name']?.toString() ?? '',
+      sellDate: m['sellDate']?.toString(),
+      baseDate: m['baseDate']?.toString(),
+      baseClose: (m['baseClose'] as num?)?.toDouble(),
+      latestDate: m['latestDate']?.toString(),
+      latestClose: (m['latestClose'] as num?)?.toDouble(),
+      pct: (m['pct'] as num?)?.toDouble(),
+      direction: m['direction']?.toString(),
+      note: m['note']?.toString(),
     );
   }
 }

@@ -166,6 +166,10 @@ class _TradingPageState extends State<TradingPage> {
   List<BuyPointDto> _buyPoints = []; // C2 自选股买点信号（B1/B2 命中）
   List<SoldScoreDto> _soldScores = []; // D3 清仓复盘三维打分
   bool _scoreLoading = false; // P2-10 打分请求在途标记（防重叠）
+  // 2026-10-08 清仓「卖掉之后到现在」：卖出日收盘 → 最新收盘（回答「我卖飞了没」）——
+  // 独立端点（同 /sold/score 的 enrich 模式：拉 K 线慢，不拖慢 /sold 基础数据）；按清单顺序索引匹配
+  List<SoldAfterCloseDto> _soldAfter = [];
+  bool _afterLoading = false; // 卖后涨跌请求在途标记（防重叠）
   bool _auxLoading = false; // 可降级请求在途标记（自选/买点/清仓，防并发覆盖）
   int _auxGen = 0; // 代际令牌：_loadDegradable 防乱序旧响应覆盖新数据
   List<SoldTradeDto> _sold = [];
@@ -500,6 +504,7 @@ class _TradingPageState extends State<TradingPage> {
       _auxLoading = false; // 无条件复位（锁只被本请求持有，串行安全）
     }
     if (gen == _auxGen) _loadSoldScore(); // 打分独立：162 笔 K 线耗时，失败也不影响
+    if (gen == _auxGen) _loadSoldAfterClose(); // 卖后涨跌同独立：也拉 K 线，与打分并行互不阻塞
   }
 
   /// D3 清仓三维打分（异步拉取，失败不打断页面——分数是参考）。
@@ -516,6 +521,23 @@ class _TradingPageState extends State<TradingPage> {
       // 打分失败静默：主数据已展示，打分列显示 —（数据不足不糊弄）
     } finally {
       _scoreLoading = false;
+    }
+  }
+
+  /// 2026-10-08 清仓「卖掉之后到现在」（GET /sold/after-close）：卖出日收盘 → 最新收盘。
+  /// 与打分同法：空列表短路 + 在途防重叠 + 失败静默（列显示「—」，拿不到行情不编）。
+  Future<void> _loadSoldAfterClose() async {
+    if (_sold.isEmpty) return; // 无清仓 → 不打空请求
+    if (_afterLoading) return; // 已有请求在途 → 不重复发起
+    _afterLoading = true;
+    try {
+      final rows = await widget.api.getSoldAfterClose();
+      if (!mounted) return;
+      setState(() => _soldAfter = rows);
+    } catch (_) {
+      // 失败静默：主数据已展示，该列回落「—」
+    } finally {
+      _afterLoading = false;
     }
   }
 
@@ -2358,6 +2380,10 @@ class _TradingPageState extends State<TradingPage> {
         }
       }
     }
+    // 2026-10-08 卖掉之后到现在（回答「我卖飞了没」）：涨=走早了（橙）/ 跌=走对了（绿）；
+    // flat（没动）与拿不到（null）都不计——两数只在有数据且 >0 时显示，不编「0 只」
+    final soldAfterUp = _soldAfter.where((a) => a.direction == 'up').length;
+    final soldAfterDown = _soldAfter.where((a) => a.direction == 'down').length;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -2388,6 +2414,13 @@ class _TradingPageState extends State<TradingPage> {
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
                     color: (total - r66 - r53) / total >= 0.5 ? AppColors.darkGreen : AppColors.darkOrange)),
           ],
+          // 2026-10-08：卖掉之后两数——绿「走对了」在前、橙「走早了」在后（同原型顺序）
+          if (soldAfterDown > 0)
+            Text('卖掉之后又跌 $soldAfterDown 只（走对了）',
+                style: const TextStyle(fontSize: 12, color: AppColors.darkGreen)),
+          if (soldAfterUp > 0)
+            Text('卖掉之后又涨 $soldAfterUp 只（走早了）',
+                style: const TextStyle(fontSize: 12, color: AppColors.darkOrange)),
         ]),
         // D2 行为模式（心理标注聚合，标注后自动归类；P3：Wrap 防窄窗口溢出，无命中不显示该行）
         if (marked.isNotEmpty && patternCounts.isNotEmpty) ...[
@@ -2523,13 +2556,16 @@ class _TradingPageState extends State<TradingPage> {
             style: TextStyle(fontSize: 12, color: AppColors.darkGrey5))
       else
         _scrollableTable(
-          minWidth: 1000,
+          minWidth: 1100,
           table: DataTable(
             headingRowHeight: 30, dataRowMinHeight: 32, dataRowMaxHeight: 32,
             columns: const [
               DataColumn(label: Text('代码')), DataColumn(label: Text('名称')),
               DataColumn(label: Text('介入→清仓')), DataColumn(label: Text('天数')),
-              DataColumn(label: Text('持仓期涨幅')), DataColumn(label: Text('规则对照')),
+              DataColumn(label: Text('持仓期涨幅')),
+              // 2026-10-08：卖掉之后到现在（↑走早了·↓走对了）——清仓独有的一列
+              DataColumn(label: Text('卖掉之后到现在')),
+              DataColumn(label: Text('规则对照')),
               DataColumn(label: Text('买点分')), DataColumn(label: Text('执行分')), DataColumn(label: Text('总分')),
               DataColumn(label: Text('心理标注')),
               DataColumn(label: Text('图')),
@@ -2564,6 +2600,7 @@ class _TradingPageState extends State<TradingPage> {
                 DataCell(Text('${s.holdDays}天', style: const TextStyle(fontSize: 12))),
                 DataCell(Text('${s.holdPnlPct.toStringAsFixed(2)}%', style: TextStyle(fontSize: 12,
                     color: s.holdPnlPct >= 0 ? AppColors.darkRed : AppColors.darkGreen))),
+                DataCell(_soldAfterCell(e.key)),
                 DataCell(Text(s.verdict, style: TextStyle(fontSize: 11,
                     color: s.verdict.contains('R66') ? AppColors.darkOrange
                         : s.verdict.contains('盈利') ? AppColors.darkGrey4 : AppColors.darkGrey5))),
@@ -2596,6 +2633,32 @@ class _TradingPageState extends State<TradingPage> {
           ),
         ),
     ]);
+  }
+
+  /// 2026-10-08 清仓「卖掉之后到现在」单元格（回答「我卖飞了没」）：
+  /// ↑ 走早了（橙）/ ↓ 走对了（绿）/ 没动（灰）；拿不到 → 「—」（tooltip 说原因，不编）。
+  /// 文案由后端 direction 驱动（与判据同源）——不会出现「显示 0.0% 却标 ↑」。
+  Widget _soldAfterCell(int index) {
+    final a = index < _soldAfter.length ? _soldAfter[index] : null;
+    if (a == null || a.pct == null) {
+      final t = Text('—', style: const TextStyle(fontSize: 12, color: AppColors.darkGrey5));
+      final note = a?.note;
+      return note == null ? t : Tooltip(message: note, child: t);
+    }
+    final mag = a.pct!.abs().toStringAsFixed(1);
+    final String text;
+    final Color color;
+    if (a.direction == 'up') {
+      text = '+$mag% ↑ 走早了';
+      color = AppColors.darkOrange; // 卖后涨 = 警示（与「这笔」的涨跌色语义不同）
+    } else if (a.direction == 'down') {
+      text = '-$mag% ↓ 走对了';
+      color = AppColors.darkGreen;
+    } else {
+      text = '0.0% 没动';
+      color = AppColors.darkGrey4;
+    }
+    return Text(text, style: TextStyle(fontSize: 12, color: color));
   }
 
   /// RFC 20260909 批1 清仓双轨：pending 横幅——流水已清仓但缺买入基线（条件 B 只提示不写脏），
