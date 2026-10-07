@@ -3,9 +3,9 @@ title: workspace/ 目录索引
 description: .agents/workspace/ 的清单与过期判断——**按「分支任务」组织**：一个分支一个目录（需求 / 设计 / 审核 / 决策都在它名下，需要才有）；模板在 _templates/、跨任务的在 _meta/
 version: 2
 created: 2026-10-04
-updated: 2026-10-07
+updated: 2026-10-08
 status: active
-lines: 149
+lines: 160
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index, workspace]
@@ -27,7 +27,7 @@ tags: [meta, index, workspace]
 
 > **规则**：**一个分支 = 一个目录 = 一个任务**（主键唯一 ⇒ **零冲突**）；目录里**需要什么才有什么**（轻活就一个 `LEDGER.md`）。
 
-## 文件清单（110 项）
+## 文件清单（121 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -71,8 +71,19 @@ tags: [meta, index, workspace]
 | `trading-plugin/audit-shots-20261007/16-plan.png` | — | active |
 | `trading-plugin/audit-shots-20261007/17-import.png` | — | active |
 | `trading-plugin/audit-shots-20261007/20-kline.png` | — | active |
+| `trading-plugin/audit-shots-20261008/01-holding.png` | — | active |
+| `trading-plugin/audit-shots-20261008/02-selfselect.png` | — | active |
+| `trading-plugin/audit-shots-20261008/03-cleared.png` | — | active |
+| `trading-plugin/audit-shots-20261008/04-funds.png` | — | active |
+| `trading-plugin/audit-shots-20261008/05-rules.png` | — | active |
+| `trading-plugin/audit-shots-20261008/06-analysis.png` | — | active |
+| `trading-plugin/audit-shots-20261008/07-cases.png` | — | active |
+| `trading-plugin/audit-shots-20261008/08-plan.png` | — | active |
+| `trading-plugin/audit-shots-20261008/09-kline.png` | — | active |
+| `trading-plugin/audit-shots-20261008/10-narrow-holding.png` | — | active |
+| `trading-plugin/audit-shots-20261008/12-cases-bottom.png` | — | active |
 | `trading-plugin/blueprint.md` | 交易插件的概念与流程，按我们逐步讨论的顺序记录——定位 · 规则 · 没有规则怎么办 · 清仓股+历史成交 · … | active |
-| `trading-plugin/decisions.md` | 设计 v1 的 6 项未决（U1–U6）+ 审核 v1 的战略级 2 条（S1/S2）+ 设计 v2 的 3 项… | active |
+| `trading-plugin/decisions.md` | 历轮 adai 拍板：设计 v1 的 6 项未决（U1–U6）+ 审核 v1 战略级 2 条（S1/S2）+ v… | active |
 | `trading-plugin/design-final-20261006.md` | 交易线设计 final 稿——以 v2 正文为底合并 v3 增量与两份 v3 审核的整改，收 4 类阻塞项（§9… | draft |
 | `trading-plugin/design-kline-r04-20261007.md` | 把「案例专图」泛化成横切四个地方的通用 K 线——四区（主图+量+MACD+KDJ）、我的买卖点标记、止损线/峰… | active |
 | `trading-plugin/design-v1-20261006.md` | 交易插件重做 · 设计稿 v1（设计文档编写者）——本轮回应 · 设计（归属分层 / 六模块 / 四条数据流 /… | draft |
