@@ -5,7 +5,7 @@ version: 2
 created: 2026-10-04
 updated: 2026-10-07
 status: active
-lines: 85
+lines: 86
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index, workspace]
@@ -27,7 +27,7 @@ tags: [meta, index, workspace]
 
 > **规则**：**一个分支 = 一个目录 = 一个任务**（主键唯一 ⇒ **零冲突**）；目录里**需要什么才有什么**（轻活就一个 `LEDGER.md`）。
 
-## 文件清单（46 项）
+## 文件清单（47 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -60,6 +60,7 @@ tags: [meta, index, workspace]
 | `trading-plugin/design-v2-20261006.md` | 交易插件重做 · 设计稿 v2（设计文档编写者）——本轮回应 13 条（S1/S2 · P1×3 · P2×5 … | draft |
 | `trading-plugin/design-v3-20261006.md` | 设计第 3 轮的增量稿——正文仍看 design-v2；本稿只写"本轮改什么"（战略级 3 · P1×8 已改；… | draft |
 | `trading-plugin/frontend-gap-20261006.md` | 编码段只交付后端（67/78 文件），设计 §6「三端呈现」的 web/app 范围 0 实现——补做清单 + … | active |
+| `trading-plugin/handoff-20261007.md` | 给下一个 AI 工具的交接：目标 · 已完成（含 commit）· 未完成清单 · 必读约束与坑 · 验证与本地… | active |
 | `trading-plugin/input.md` | 归位之后剩下的"怎么做"——数据现实与处理 / 去重 / 顺序 / 表头识别 / 送股兜底 / 同日行序陷阱 /… | active |
 | `trading-plugin/overview.md` | trading 插件的「一页总览」——定位与整体现状 · 功能全景 · 全部相关 RFC · 未修与待办 · 未… | active |
 | `trading-plugin/requirement-review-20261006-r2.md` | 第一轮问题修复后的复审——12 条判据全部通过，结论：收敛（无 P0/P1），可送人签字；仅剩 P3（一笔生命周… | active |
