@@ -226,6 +226,11 @@ class _TradingPageState extends State<TradingPage> {
   // （ok=true 或拿不到信息 = 零显示；三源全挂时用户本来只会看到资金曲线平了，毫无提示）
   MarketDataHealthDto? _marketHealth;
   bool _marketHealthExpanded = false;
+  // m3（2026-10-07 · 原型持仓主屏「近 20 日」列）：逐票拉取的近 20 日收盘（迷你走势数据）。
+  // 逐票复用 GET /trading/kline（window=20）；失败静默（无数据 → 「—」，绝不编走势）。
+  // 幂等：已缓存 / 在途的票不重复拉——_loadAll 每次静默刷新都调，靠这两个容器去重。
+  final Map<String, List<double>> _sparkCloses = {};
+  final Set<String> _sparkLoading = {};
 
   Timer? _autoRefresh;
 
@@ -327,6 +332,8 @@ class _TradingPageState extends State<TradingPage> {
     unawaited(_loadMarketHealth());
     // 2026-09-15：今日/本周/本月盈亏（增强项，失败静默——旧后端/网络抖动时整行不显示）
     unawaited(_loadPnlPeriods());
+    // m3（2026-10-07）：迷你走势（原型「近 20 日」列）——持仓到手先拉；自选由 _loadDegradable 后补拉
+    unawaited(_loadSparklines());
   }
 
   /// 2026-09-15：日 / 周 / 月盈亏（GET /trading/pnl-periods）。
@@ -507,6 +514,8 @@ class _TradingPageState extends State<TradingPage> {
     }
     if (gen == _auxGen) _loadSoldScore(); // 打分独立：162 笔 K 线耗时，失败也不影响
     if (gen == _auxGen) _loadSoldAfterClose(); // 卖后涨跌同独立：也拉 K 线，与打分并行互不阻塞
+    // m3（2026-10-07）：自选到手 → 补拉迷你走势（持仓那批 _loadAll 已发起；幂等去重）
+    if (gen == _auxGen) unawaited(_loadSparklines());
   }
 
   /// D3 清仓三维打分（异步拉取，失败不打断页面——分数是参考）。
@@ -541,6 +550,52 @@ class _TradingPageState extends State<TradingPage> {
     } finally {
       _afterLoading = false;
     }
+  }
+
+  /// m3（2026-10-07 · 原型持仓主屏「近 20 日」列）：逐票拉近 20 日收盘画迷你走势。
+  /// 复用 GET /trading/kline（window=20，与 K 线弹窗同一数据源）；失败静默（无数据 → 「—」）。
+  /// 幂等：_sparkCloses 去重「已缓存」、_sparkLoading 去重「在途」——静默刷新重复调无副作用。
+  Future<void> _loadSparklines() async {
+    final symbols = <String>{
+      for (final p in _positions) if (p.symbol.isNotEmpty) p.symbol,
+      for (final w in _watchlist) if (w.symbol.isNotEmpty) w.symbol,
+    }.where((s) => !_sparkCloses.containsKey(s) && !_sparkLoading.contains(s)).toList();
+    if (symbols.isEmpty) return;
+    _sparkLoading.addAll(symbols); // 同步落锁（无 await 前置），并发调用不会重复拉同一票
+    final got = <String, List<double>>{};
+    await Future.wait(symbols.map((s) async {
+      try {
+        final k = await widget.api.fetchTradingKline(s, window: 20);
+        final closes = <double>[
+          for (final c in k.candles)
+            if (c['close'] is num) (c['close'] as num).toDouble(),
+        ];
+        if (closes.length >= 2) got[s] = closes; // 一根画不出走势（首尾比较没意义）
+      } catch (_) {
+        // 静默降级：这一列回落「—」——拿不到行情不编形状，不弹错
+      }
+    }));
+    _sparkLoading.removeAll(symbols);
+    if (!mounted || got.isEmpty) return;
+    setState(() => _sparkCloses.addAll(got));
+  }
+
+  /// 「近 20 日」单元格：54×14 迷你走势（走红跌绿＝首尾比较，与原型同口径）；
+  /// 拿不到 → 「—」（不编形状、不占位）。
+  Widget _sparkCell(String symbol) {
+    final closes = _sparkCloses[symbol];
+    if (closes == null || closes.length < 2) {
+      return const Text('—', style: TextStyle(fontSize: 12, color: AppColors.darkGrey5));
+    }
+    final up = closes.last >= closes.first;
+    return SizedBox(
+      key: Key('spark_$symbol'),
+      width: 54,
+      height: 14,
+      child: CustomPaint(
+          painter: _SparkPainter(
+              closes: closes, color: up ? AppColors.darkRed : AppColors.darkGreen)),
+    );
   }
 
   // ── 记录交易（扩展：止损位/买点/目标价/原因，RFC 20260816） ──
@@ -1182,8 +1237,8 @@ class _TradingPageState extends State<TradingPage> {
           columnSpacing: 28,
           horizontalMargin: 16,
           columns: const [
-            DataColumn(label: Text('代码')),
-            DataColumn(label: Text('名称')),
+            // m3（2026-10-07 · 原型 .wd-name/.wd-code）：名称与代码合并一列（名在前、代码小号灰在后）
+            DataColumn(label: Text('代码 / 名称')),
             DataColumn(label: Text('数量'), numeric: true),
             DataColumn(label: Text('成本'), numeric: true),
             DataColumn(label: Text('现价'), numeric: true),
@@ -1194,10 +1249,12 @@ class _TradingPageState extends State<TradingPage> {
             DataColumn(label: Text('今日涨跌幅'), numeric: true),
             DataColumn(label: Text('盈亏'), numeric: true),
             DataColumn(label: Text('盈亏%'), numeric: true),
-              DataColumn(label: Text('止损'), numeric: true),
-              // 批 A（2026-10-08）：只显示**离你更近的那一条线**（全给会变成一堵墙）
-              DataColumn(label: Text('最近的那条线')),
-              DataColumn(label: Text('买点')),
+            DataColumn(label: Text('止损'), numeric: true),
+            // 批 A（2026-10-08）：只显示**离你更近的那一条线**（全给会变成一堵墙）
+            DataColumn(label: Text('最近的那条线')),
+            // m3：近 20 日迷你走势（54×14，走红跌绿＝首尾比较；拿不到「—」）
+            DataColumn(label: Text('近 20 日')),
+            DataColumn(label: Text('买点')),
             DataColumn(label: Text('角色')),
             DataColumn(label: Text('操作')),
           ],
@@ -1218,9 +1275,28 @@ class _TradingPageState extends State<TradingPage> {
                   ? '系统 ${slComputed.toStringAsFixed(3)}'
                   : '人工 ${slManual.toStringAsFixed(3)}');
             }
-            return DataRow(cells: [
-              DataCell(Text(p.symbol, style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1, fontWeight: FontWeight.w600))),
-              DataCell(Text(p.name, style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3))),
+            // m3（2026-10-07 · 原型 tr.on）：到线行标——破止损 / 到放飞（整行浅橙）
+            final onLine = _onLine(p);
+            final rowColor = onLine
+                ? WidgetStatePropertyAll<Color>(AppColors.darkOrange.withValues(alpha: 0.08))
+                : null;
+            // m3：首列合并「名称 代码」（名在前＝主色，代码小号灰在后）
+            final nameCode = Row(mainAxisSize: MainAxisSize.min, children: [
+              Text(p.name, style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1, fontWeight: FontWeight.w600)),
+              const SizedBox(width: 6),
+              Text(p.symbol, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+            ]);
+            return DataRow(color: rowColor, cells: [
+              // m3：到线行首橙条（原型 inset box-shadow 3px；Key 只在到线时存在＝测试锚）
+              DataCell(onLine
+                  ? Container(
+                      key: Key('online_${p.symbol}'),
+                      padding: const EdgeInsets.only(left: 6),
+                      decoration: const BoxDecoration(
+                          border: Border(left: BorderSide(color: AppColors.darkOrange, width: 3))),
+                      child: nameCode,
+                    )
+                  : nameCode),
               DataCell(Text('${p.quantity}', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3))),
               DataCell(Text(p.avgCost.toStringAsFixed(3), style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3))),
               DataCell(Text(p.currentPrice.toStringAsFixed(3), style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1))),
@@ -1258,6 +1334,8 @@ class _TradingPageState extends State<TradingPage> {
                 final nl = _nearestLine(p);
                 return Text(nl.text, style: TextStyle(fontSize: 12.5, color: nl.color));
               })),
+              // m3：近 20 日迷你走势（54×14；拿不到「—」）
+              DataCell(_sparkCell(p.symbol)),
               DataCell(Text(p.buyPoint ?? '—', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3))),
               DataCell(Text(p.role ?? '—', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3))),
               // RFC 20260825：批次明细入口（一买一批跟踪）+ 编辑
@@ -1972,6 +2050,16 @@ class _TradingPageState extends State<TradingPage> {
     return (text: '—', color: AppColors.darkGrey5);
   }
 
+  /// m3（2026-10-07 · 原型 .wd-table tr.on）：这一行到线了吗——破止损 / 到放飞
+  /// （与 _nearestLine 前两个分支同口径）。到线行＝整行浅橙 + 行首橙条。
+  bool _onLine(PositionItem p) {
+    final sl = p.effectiveStopLoss;
+    if (sl != null && sl > 0 && p.currentPrice <= sl) return true;
+    final tp = p.targetPrice;
+    if (tp != null && tp > 0 && p.currentPrice >= tp) return true;
+    return false;
+  }
+
   /// 状态条：资金与涨跌是**基础数据**（都在场），到线才是**重点**（抢主位）。
   Widget _buildStatusStrip() {
     final onLine = _positionsOnLineCount();
@@ -2042,11 +2130,14 @@ class _TradingPageState extends State<TradingPage> {
 
   /// 持仓区：三个持仓态收成一条筛选。
   Widget _buildPositionZone() {
-    const labels = ['持仓', '自选', '清仓'];
+    // m3（2026-10-07 · 原型 .wd-chips）：带计数 + Key 锚（测试不再依赖文案）；
+    // 「全部」混合视图不在本批（自选/清仓表列结构不同，硬混会换列）——留单独一批评估。
+    final labels = ['持仓 ${_positions.length}', '自选 ${_watchlist.length}', '清仓 ${_sold.length}'];
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Wrap(spacing: 8, runSpacing: 8, children: [
         for (var i = 0; i < labels.length; i++)
           ChoiceChip(
+            key: Key('posFilter$i'),
             label: Text(labels[i]),
             selected: _positionFilter == i,
             onSelected: (_) => setState(() => _positionFilter = i),
@@ -2320,17 +2411,24 @@ class _TradingPageState extends State<TradingPage> {
           table: DataTable(
             headingRowHeight: 30, dataRowMinHeight: 32, dataRowMaxHeight: 32,
             columns: const [
-              DataColumn(label: Text('代码')), DataColumn(label: Text('名称')),
-              DataColumn(label: Text('行业')), DataColumn(label: Text('长/中/短')),
+              // m3：名称与代码合并一列（原型口径，同持仓表）
+              DataColumn(label: Text('代码 / 名称')), DataColumn(label: Text('行业')),
+              DataColumn(label: Text('长/中/短')),
               DataColumn(label: Text('指标提示')), DataColumn(label: Text('买点信号')),
+              // m3：近 20 日迷你走势（54×14；拿不到「—」）
+              DataColumn(label: Text('近 20 日')),
               DataColumn(label: Text('图')), DataColumn(label: Text('')),
             ],
             rows: _watchlist.map((w) {
               // C2 买点信号：命中 B1/B2 显示红色徽标（判定是提示不是指令）
               final bp = _buyPoints.where((b) => b.symbol == w.symbol).toList();
               return DataRow(cells: [
-                DataCell(Text(w.symbol, style: const TextStyle(fontSize: 12))),
-                DataCell(Text(w.name, style: const TextStyle(fontSize: 12))),
+                // m3：名称在前（小号灰代码在后）——与持仓/清仓同一口径
+                DataCell(Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text(w.name, style: const TextStyle(fontSize: 12)),
+                  const SizedBox(width: 6),
+                  Text(w.symbol, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+                ])),
                 DataCell(Text(w.industry, style: const TextStyle(fontSize: 12))),
                 DataCell(Text('${w.longForm}/${w.midForm}/${w.shortForm}',
                     style: const TextStyle(fontSize: 12))),
@@ -2350,6 +2448,8 @@ class _TradingPageState extends State<TradingPage> {
                                 color: bp.first.buyPoint == 'case'
                                     ? AppColors.darkOrange
                                     : AppColors.darkRed)))),
+                // m3：近 20 日迷你走势（54×14；拿不到「—」）——插在买点信号后、图前
+                DataCell(_sparkCell(w.symbol)),
                 // 2026-10-07（批 6 小尾巴）：自选行「图」入口——样式与清仓表同一款
                 DataCell(TextButton(
                   onPressed: () => _openKline(w.symbol, w.name),
@@ -2600,11 +2700,13 @@ class _TradingPageState extends State<TradingPage> {
             style: TextStyle(fontSize: 12, color: AppColors.darkGrey5))
       else
         _scrollableTable(
-          minWidth: 1100,
+          // m3：名称/代码合并后少一列 → 同步收窄
+          minWidth: 1000,
           table: DataTable(
             headingRowHeight: 30, dataRowMinHeight: 32, dataRowMaxHeight: 32,
             columns: const [
-              DataColumn(label: Text('代码')), DataColumn(label: Text('名称')),
+              // m3：名称与代码合并一列（原型口径，同持仓表）
+              DataColumn(label: Text('代码 / 名称')),
               DataColumn(label: Text('介入→清仓')), DataColumn(label: Text('天数')),
               DataColumn(label: Text('持仓期涨幅')),
               // 2026-10-08：卖掉之后到现在（↑走早了·↓走对了）——清仓独有的一列
@@ -2621,9 +2723,11 @@ class _TradingPageState extends State<TradingPage> {
               final s = e.value;
               final score = e.key < _soldScores.length ? _soldScores[e.key] : null;
               return DataRow(cells: [
-                DataCell(Text(s.symbol, style: const TextStyle(fontSize: 12))),
+                // m3：名称与代码合并（名在前、代码小号灰在后）+ 来源徽标仍挂在名称行
                 DataCell(Row(mainAxisSize: MainAxisSize.min, children: [
                   Text(s.name, style: const TextStyle(fontSize: 12)),
+                  const SizedBox(width: 6),
+                  Text(s.symbol, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
                   // RFC 20260909 批 2 子项（2026-09-09 晚间批）：来源徽标——flow=由成交流水自动收录
                   if (s.provenance == 'flow') ...[
                     const SizedBox(width: 6),
@@ -4675,6 +4779,50 @@ class _TradingPageState extends State<TradingPage> {
       ),
     );
   }
+}
+
+/// m3（2026-10-07）：迷你走势画笔（54×14，原型持仓表「近 20 日」列）——
+/// 只给形状不给刻度：按收盘 min/max 归一化画折线，上下各留 1px。
+class _SparkPainter extends CustomPainter {
+  const _SparkPainter({required this.closes, required this.color});
+
+  final List<double> closes;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (closes.length < 2) return;
+    var min = closes.first;
+    var max = closes.first;
+    for (final v in closes) {
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    final span = max - min;
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1.3
+      ..style = PaintingStyle.stroke
+      ..strokeJoin = StrokeJoin.round;
+    final path = Path();
+    final step = (size.width - 3) / (closes.length - 1);
+    for (var i = 0; i < closes.length; i++) {
+      final x = 1.5 + i * step;
+      final y = span == 0
+          ? size.height / 2
+          : 1 + (1 - (closes[i] - min) / span) * (size.height - 2);
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _SparkPainter oldDelegate) =>
+      oldDelegate.closes != closes || oldDelegate.color != color;
 }
 
 // ─────────────────────────── 记录交易 Dialog ───────────────────────────

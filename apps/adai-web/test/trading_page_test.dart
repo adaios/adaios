@@ -1426,7 +1426,7 @@ void main() {
       await _pumpTrading(tester, api);
 
       // 切到自选 Tab
-      await tester.tap(find.text('自选'));
+      await tester.tap(find.byKey(const Key('posFilter1')));
       await tester.pumpAndSettle();
 
       // 命中：B1 87%（score 0-100 量纲，F53）
@@ -1466,7 +1466,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('自选'));
+      await tester.tap(find.byKey(const Key('posFilter1')));
       await tester.pumpAndSettle();
 
       // case 参考：显示「案例相似 92%」（取 caseMatches 最高相似度），不出现「case 0%」异常
@@ -1502,7 +1502,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('清仓'));
+      await tester.tap(find.byKey(const Key('posFilter2')));
       await tester.pumpAndSettle();
 
       // 三维打分列渲染（分数是参考不是指令）
@@ -1534,7 +1534,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('清仓'));
+      await tester.tap(find.byKey(const Key('posFilter2')));
       await tester.pumpAndSettle();
 
       expect(find.text('流水'), findsOneWidget, reason: '只有 provenance=flow 的行显示来源徽标');
@@ -1571,7 +1571,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('清仓'));
+      await tester.tap(find.byKey(const Key('posFilter2')));
       await tester.pumpAndSettle();
 
       // 行为模式归类：追高 1 笔 + 恐慌 1 笔（同一笔命中两个词）+ 死扛 1 笔
@@ -1618,7 +1618,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('清仓'));
+      await tester.tap(find.byKey(const Key('posFilter2')));
       await tester.pumpAndSettle();
 
       expect(find.text('卖掉之后到现在'), findsOneWidget, reason: '列头可见');
@@ -1669,7 +1669,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('清仓'));
+      await tester.tap(find.byKey(const Key('posFilter2')));
       await tester.pumpAndSettle();
 
       // 差的那笔：「—」+ tooltip 说清为什么（不拿邻近价格编）
@@ -1707,7 +1707,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('清仓'));
+      await tester.tap(find.byKey(const Key('posFilter2')));
       await tester.pumpAndSettle();
 
       expect(find.text('卖掉之后到现在'), findsOneWidget, reason: '列头照在');
@@ -1767,7 +1767,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('清仓'));
+      await tester.tap(find.byKey(const Key('posFilter2')));
       await tester.pumpAndSettle();
 
       expect(find.text('胜率 50%'), findsOneWidget);
@@ -1798,7 +1798,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('清仓'));
+      await tester.tap(find.byKey(const Key('posFilter2')));
       await tester.pumpAndSettle();
 
       expect(find.text('违反 R53 1 笔'), findsOneWidget);
@@ -1825,7 +1825,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.text('清仓'));
+      await tester.tap(find.byKey(const Key('posFilter2')));
       await tester.pumpAndSettle();
 
       // 「不贪心」不应归入贪心模式 → 行为模式行不出现（patternCounts 空）
@@ -4643,7 +4643,7 @@ void main() {
     Future<void> runSoldImport(WidgetTester tester, Map<String, dynamic> soldImport) async {
       await _pumpTrading(tester,
           ApiService(baseUrl: 'http://test', client: mock(soldImport)));
-      await tester.tap(find.text('清仓'));
+      await tester.tap(find.byKey(const Key('posFilter2')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('导入清仓'));
       await tester.pumpAndSettle();
@@ -4857,14 +4857,23 @@ void _marketStageGroup() {
           return http.Response('not found', 404);
         });
 
-    /// 定位持仓表（按首列代码 600123 认，避免误取其它 Tab 的表格）。
-    DataTable positionsTable(WidgetTester tester) => tester
-        .widgetList<DataTable>(find.byType(DataTable))
-        .firstWhere((t) => t.rows.any((r) =>
-            r.cells.isNotEmpty && r.cells.first.child is Text && (r.cells.first.child as Text).data == '600123'));
+    /// 定位持仓表（按首列名称+代码 600123 认，避免误取其它 Tab 的表格）。
+    /// m3（2026-10-07）：首列已合并「名称 代码」（到线行还包一层橙条 Container）→ 递归认代码。
+    DataTable positionsTable(WidgetTester tester) {
+      bool hasCode(Widget c) {
+        if (c is Text) return c.data == '600123';
+        if (c is Row) return c.children.any((w) => w is Text && w.data == '600123');
+        if (c is Container) return c.child != null && hasCode(c.child!);
+        return false;
+      }
 
-    // 列序：0 代码 / 1 名称 / 2 数量 / 3 成本 / 4 现价 / 5 市值 / 6 仓位占比 /
-    //       7 当日盈亏 / 8 今日涨跌幅 / 9 盈亏 / 10 盈亏% …
+      return tester
+          .widgetList<DataTable>(find.byType(DataTable))
+          .firstWhere((t) => t.rows.any((r) => r.cells.isNotEmpty && hasCode(r.cells.first.child)));
+    }
+
+    // 列序（m3 2026-10-07：名称/代码合并后）：0 名称+代码 / 1 数量 / 2 成本 / 3 现价 / 4 市值 /
+    //       5 仓位占比 / 6 当日盈亏 / 7 今日涨跌幅 / 8 盈亏 / 9 盈亏% …
     String cellText(DataTable t, int i) => (t.rows.first.cells[i].child as Text).data!;
     Color? cellColor(DataTable t, int i) => (t.rows.first.cells[i].child as Text).style?.color;
 
@@ -4910,9 +4919,9 @@ void _marketStageGroup() {
       await pumpDaily(tester,
           ApiService(baseUrl: 'http://test', client: dailyMock(dailyJson())));
       final t = positionsTable(tester);
-      expect(cellText(t, 6), '33.27%', reason: '仓位占比');
-      expect(cellText(t, 7), '756.00', reason: '当日盈亏（金额）');
-      expect(cellText(t, 8), '2.14%', reason: '今日涨跌幅');
+      expect(cellText(t, 5), '33.27%', reason: '仓位占比');
+      expect(cellText(t, 6), '756.00', reason: '当日盈亏（金额）');
+      expect(cellText(t, 7), '2.14%', reason: '今日涨跌幅');
       expect(find.text('仓位 62.24% · 现金 37.76%'), findsOneWidget, reason: '顶部总仓位一行');
     });
 
@@ -4920,17 +4929,17 @@ void _marketStageGroup() {
       await pumpDaily(tester,
           ApiService(baseUrl: 'http://test', client: dailyMock(dailyJson(todayPnl: 756.0, dayChangePct: 2.14))));
       var t = positionsTable(tester);
-      expect(cellColor(t, 7), AppColors.darkRed, reason: '赚=红');
-      expect(cellColor(t, 8), AppColors.darkRed, reason: '涨=红');
+      expect(cellColor(t, 6), AppColors.darkRed, reason: '赚=红');
+      expect(cellColor(t, 7), AppColors.darkRed, reason: '涨=红');
 
       await pumpDaily(tester,
           ApiService(baseUrl: 'http://test', client: dailyMock(dailyJson(todayPnl: -321.50, dayChangePct: -1.28))));
       t = positionsTable(tester);
-      expect(cellText(t, 7), '-321.50');
-      expect(cellText(t, 8), '-1.28%');
-      expect(cellColor(t, 7), AppColors.darkGreen, reason: '亏=绿');
-      expect(cellColor(t, 8), AppColors.darkGreen, reason: '跌=绿');
-      expect(cellColor(t, 6), AppColors.darkGrey3, reason: '仓位占比是中性灰，不借涨跌色');
+      expect(cellText(t, 6), '-321.50');
+      expect(cellText(t, 7), '-1.28%');
+      expect(cellColor(t, 6), AppColors.darkGreen, reason: '亏=绿');
+      expect(cellColor(t, 7), AppColors.darkGreen, reason: '跌=绿');
+      expect(cellColor(t, 5), AppColors.darkGrey3, reason: '仓位占比是中性灰，不借涨跌色');
     });
 
     testWidgets('三项 null → 全「—」且不崩；绝不渲染成 0 / 0.00%', (tester) async {
@@ -4945,11 +4954,11 @@ void _marketStageGroup() {
                   totalPositionRatio: null,
                   cashRatio: null))));
       final t = positionsTable(tester);
+      expect(cellText(t, 5), '—');
       expect(cellText(t, 6), '—');
       expect(cellText(t, 7), '—');
-      expect(cellText(t, 8), '—');
-      expect(cellText(t, 9), '160.00', reason: '累计浮盈列是另一口径，不受当日 null 影响');
-      expect(cellColor(t, 7), AppColors.darkGrey5, reason: '「—」不借涨跌色');
+      expect(cellText(t, 8), '160.00', reason: '累计浮盈列是另一口径，不受当日 null 影响');
+      expect(cellColor(t, 6), AppColors.darkGrey5, reason: '「—」不借涨跌色');
       expect(find.text('0.00'), findsNothing, reason: 'null 不许渲染成 0');
       expect(find.text('0.00%'), findsNothing, reason: 'null 不许渲染成 0.00%');
       expect(find.textContaining('仓位 '), findsNothing, reason: '总仓位 null → 整段不显示');
@@ -4970,9 +4979,9 @@ void _marketStageGroup() {
                 'notes': <String>[],
               })));
       final t = positionsTable(tester);
+      expect(cellText(t, 5), '—');
       expect(cellText(t, 6), '—');
       expect(cellText(t, 7), '—');
-      expect(cellText(t, 8), '—');
       expect(find.text('仓位 62.24% · 现金 37.76%'), findsOneWidget,
           reason: '整体比例仍可用（个股缺条目不影响总仓位）');
     });
@@ -5003,7 +5012,7 @@ void _marketStageGroup() {
         expect(find.text('600123'), findsOneWidget);
         expect(find.textContaining('加载失败'), findsNothing, reason: '不整页错误态');
         final t = positionsTable(tester);
-        expect(cellText(t, 7), '—', reason: '当日盈亏回落「—」');
+        expect(cellText(t, 6), '—', reason: '当日盈亏回落「—」');
         expect(find.textContaining('仓位 '), findsNothing);
       }
     });
@@ -5032,6 +5041,72 @@ void _marketStageGroup() {
       await pumpDaily(tester,
           ApiService(baseUrl: 'http://test', client: dailyMock(dailyJson())));
       expect(find.textContaining('有几笔今天的盈亏还没算全'), findsNothing);
+    });
+  });
+
+  // ── m3（2026-10-07）：持仓表对齐原型 —— 名称/代码合并 · 近 20 日走势 · 到线行标 · 筛选带计数 ──
+  //
+  // 原型口径（trading-web-full.html 持仓主屏）：首列「名称 代码」（名在前）、「近 20 日」列
+  // 54×14 迷你走势（走红跌绿＝首尾比较）、到线行浅橙 + 行首橙条（tr.on）、chips 带计数。
+  group('m3 持仓表对齐（2026-10-07）', () {
+    /// kline mock：返 N 根收盘（逐日 +0.3），其余回落基础 handler。
+    MockClient sparkMock({int bars = 20}) => MockClient((request) async {
+          if (request.url.path == '/api/v1/trading/kline') {
+            return _json({
+              'symbol': '600123',
+              'window': 20,
+              'candles': [
+                for (var i = 0; i < bars; i++)
+                  {'date': '2026-09-${(i + 1).toString().padLeft(2, '0')}', 'close': 20.0 + i * 0.3},
+              ],
+              'marks': <Object>[],
+            });
+          }
+          return _tradingHandler(request);
+        });
+
+    testWidgets('近 20 日：拿到 K 线 → 迷你走势（Key 锚，54×14 画布）', (tester) async {
+      await _pumpTrading(tester, ApiService(baseUrl: 'http://test', client: sparkMock()));
+      expect(find.byKey(const Key('spark_600123')), findsOneWidget);
+    });
+
+    testWidgets('近 20 日：拿不到（旧后端 404）→ 不渲染走势、不编形状；表格照常', (tester) async {
+      // 必须独立成条：若在同一 testWidgets 里先有后无地重 pump，State 会复用、
+      // 拿到过的走势留在缓存里继续渲染（这恰是产品要的：缓存的是真实数据，404 只是没重拉）。
+      await _pumpTrading(tester, ApiService(baseUrl: 'http://test', client: _tradingMock()));
+      expect(find.byKey(const Key('spark_600123')), findsNothing);
+      expect(find.textContaining('持仓 1 只'), findsOneWidget);
+    });
+
+    testWidgets('首列合并「名称 代码」（名在前）；「近 20 日」列头在场', (tester) async {
+      await _pumpTrading(tester, ApiService(baseUrl: 'http://test', client: _tradingMock()));
+      final row = tester.widget<Row>(find.ancestor(
+        of: find.text('600123'),
+        matching: find.byType(Row),
+      ).first);
+      expect((row.children[0] as Text).data, '立昂微', reason: '名称在前（原型 .wd-name）');
+      expect((row.children[2] as Text).data, '600123', reason: '代码在后（原型 .wd-code）');
+      expect(find.text('近 20 日'), findsOneWidget, reason: '近 20 日列头');
+      expect(find.text('代码 / 名称'), findsOneWidget);
+    });
+
+    testWidgets('到线行标：现价 ≤ 生效止损 → 行首橙条 Key（原型 tr.on）', (tester) async {
+      final client = MockClient((request) async {
+        if (request.url.path == '/api/v1/trading/positions') {
+          return _json([_positionJson(extra: {'effectiveStopLoss': 27.0})]);
+        }
+        return _tradingHandler(request);
+      });
+      await _pumpTrading(tester, ApiService(baseUrl: 'http://test', client: client));
+      expect(find.byKey(const Key('online_600123')), findsOneWidget);
+    });
+
+    testWidgets('不到线没有行标；筛选 chips 带计数', (tester) async {
+      await _pumpTrading(tester, ApiService(baseUrl: 'http://test', client: _tradingMock()));
+      expect(find.byKey(const Key('online_600123')), findsNothing, reason: '26.10 > 22.80 未到线');
+      expect(find.text('持仓 1'), findsOneWidget);
+      expect(find.text('自选 0'), findsOneWidget);
+      expect(find.text('清仓 0'), findsOneWidget);
     });
   });
 
