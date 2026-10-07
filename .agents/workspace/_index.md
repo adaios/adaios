@@ -5,7 +5,7 @@ version: 2
 created: 2026-10-04
 updated: 2026-10-07
 status: active
-lines: 136
+lines: 147
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index, workspace]
@@ -27,7 +27,7 @@ tags: [meta, index, workspace]
 
 > **规则**：**一个分支 = 一个目录 = 一个任务**（主键唯一 ⇒ **零冲突**）；目录里**需要什么才有什么**（轻活就一个 `LEDGER.md`）。
 
-## 文件清单（97 项）
+## 文件清单（108 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -52,6 +52,17 @@ tags: [meta, index, workspace]
 | `_templates/review-design.md` | 审核文件模板（设计 / 需求共用）：审核对象 · 结论 · 问题清单（P0–P3）· 收敛判定；每轮一份，与稿成… | active |
 | `_templates/scope.md` | 编码段「本批范围声明 → 交付声明」的模板——开工从设计 §6 逐条抄、填「计划」列（无表不开工）；收尾填「状态… | active |
 | `trading-plugin/LEDGER.md` | ② 交易线的分支账本——本批目标 + 并行作业纪律 + 待交接；一个分支一个目录（feat/trading-pl… | active |
+| `trading-plugin/audit-shots-20261007-v3/01-holding.png` | — | active |
+| `trading-plugin/audit-shots-20261007-v3/02-cleared.png` | — | active |
+| `trading-plugin/audit-shots-20261007-v3/03-account.png` | — | active |
+| `trading-plugin/audit-shots-20261007-v3/04-analysis.png` | — | active |
+| `trading-plugin/audit-shots-20261007-v3/05-rules.png` | — | active |
+| `trading-plugin/audit-shots-20261007-v3/06-cases.png` | — | active |
+| `trading-plugin/audit-shots-20261007-v3/07-plan.png` | — | active |
+| `trading-plugin/audit-shots-20261007-v3/08-analysis-filled.png` | — | active |
+| `trading-plugin/audit-shots-20261007-v3/09-narrow.png` | — | active |
+| `trading-plugin/audit-shots-20261007-v3/10-narrow-drawer.png` | — | active |
+| `trading-plugin/audit-shots-20261007-v3/14-watchlist.png` | — | active |
 | `trading-plugin/audit-shots-20261007/10-holding.png` | — | active |
 | `trading-plugin/audit-shots-20261007/11-cleared.png` | — | active |
 | `trading-plugin/audit-shots-20261007/12-account.png` | — | active |
