@@ -1832,6 +1832,13 @@ class _TradingPageState extends State<TradingPage> {
     final note = _planView?['note']?.toString() ?? '';
     // P2-交易72：这天事后回填的状态（"今天没动" / "想动，没动"）——与计划条目同一份记录里的两条信息。
     final planDayStatus = _planView?['dayStatus']?.toString() ?? '';
+    // m2b（2026-10-07）：已记下的密清单行（这天你记的 · 条目 · 自我约束）——空的项不占行。
+    final planLines = <({String text, Color color})>[
+      if (planDayStatus.isNotEmpty)
+        (text: '这天你记的是：${_dayStatusHuman(planDayStatus)}', color: AppColors.darkGreen),
+      for (final it in items) (text: _planItemText(it), color: AppColors.darkGrey1),
+      if (note.isNotEmpty) (text: '（你自己写的约束：$note）', color: AppColors.darkGrey5),
+    ];
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         const Text('计划日期', style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
@@ -1898,23 +1905,34 @@ class _TradingPageState extends State<TradingPage> {
               ? '这天还没有写计划。'
               : (items.isEmpty ? '这天没有写计划条目。' : '已记下 ${items.length} 条：'),
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-      if (planDayStatus.isNotEmpty)
-        Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Text('这天你记的是：${_dayStatusHuman(planDayStatus)}',
-              style: const TextStyle(fontSize: 12.5, color: AppColors.darkGreen)),
+      // m2b（2026-10-07 · 形态微调 · 保功能）：条目从松散段落 → 密清单卡（一行一条 ·
+      // 底分隔线），与规则区/原型 web 的密行语言一致；信息与文案一个不少。
+      if (planLines.isNotEmpty) ...[
+        const SizedBox(height: 6),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: AppColors.darkSurface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            for (var i = 0; i < planLines.length; i++)
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                decoration: i == planLines.length - 1
+                    ? null
+                    : BoxDecoration(
+                        border: Border(
+                            bottom: BorderSide(
+                                color: AppColors.darkBorder.withValues(alpha: 0.45)))),
+                child: Text(planLines[i].text,
+                    style: TextStyle(fontSize: 12.5, color: planLines[i].color)),
+              ),
+          ]),
         ),
-      for (final it in items)
-        Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Text('· ${_planItemText(it)}', style: const TextStyle(fontSize: 12.5)),
-        ),
-      if (note.isNotEmpty)
-        Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: Text('（你自己写的约束：$note）',
-              style: const TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
-        ),
+      ],
     ]);
   }
 
@@ -3040,6 +3058,71 @@ class _TradingPageState extends State<TradingPage> {
       'constraintRuleMin': '纪律硬约束：规则号下限',
       'constraintRuleMax': '纪律硬约束：规则号上限',
     };
+    // m2b（2026-10-07 · 形态微调 · 保功能）：参数从徽章墙 → 分组密清单——与原型 web 的
+    // 密行语言一致（小标题分节 · 左标签右值 · 底分隔线）；未登记的 key 兜底进「其它」，
+    // 后端今后加参数不静默吞。
+    const groups = <String, List<String>>{
+      '仓位与止损': ['positionLimitPercent', 'defaultStopLossRatio'],
+      '浮盈回吐': ['givebackPeakPct', 'givebackRatioPct'],
+      '短线与清仓': ['shortOverdueDays', 'soldStopLossPct', 'soldShortHoldDays'],
+      '买点': [
+        'buyPullbackPct',
+        'buyShrinkRatio',
+        'buyKdjLow',
+        'buyVolumeSurge',
+        'buyPriorHighDays'
+      ],
+      '打分与硬约束': [
+        'scoreBuyWeight',
+        'scoreExecWeight',
+        'constraintRuleMin',
+        'constraintRuleMax'
+      ],
+    };
+    final known = <String>{for (final l in groups.values) ...l};
+    final others = _ruleParams.keys.where((k) => !known.contains(k)).toList();
+
+    Widget ruleLine(String key, {bool last = false}) => Container(
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          decoration: last
+              ? null
+              : BoxDecoration(
+                  border: Border(
+                      bottom: BorderSide(color: AppColors.darkBorder.withValues(alpha: 0.45)))),
+          child: Row(children: [
+            Expanded(
+                child: Text(labels[key] ?? key,
+                    style: const TextStyle(fontSize: 12, color: AppColors.darkGrey3))),
+            Text(_ruleParams[key] ?? '',
+                style: const TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+          ]),
+        );
+    Widget ruleGroupTitle(String text, {bool first = false}) => Padding(
+          padding: EdgeInsets.only(top: first ? 2 : 12, bottom: 2),
+          child: Text(text,
+              style: const TextStyle(
+                  fontSize: 10.5, color: AppColors.darkGrey5, letterSpacing: 0.4)),
+        );
+
+    final sections = <Widget>[];
+    var firstSection = true;
+    for (final g in groups.entries) {
+      final keys = g.value.where(_ruleParams.containsKey).toList();
+      if (keys.isEmpty) continue;
+      sections.add(ruleGroupTitle(g.key, first: firstSection));
+      firstSection = false;
+      for (var i = 0; i < keys.length; i++) {
+        sections.add(ruleLine(keys[i], last: i == keys.length - 1));
+      }
+    }
+    if (others.isNotEmpty) {
+      sections.add(ruleGroupTitle('其它', first: firstSection));
+      for (var i = 0; i < others.length; i++) {
+        sections.add(ruleLine(others[i], last: i == others.length - 1));
+      }
+    }
+
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         Text('我的交易规则${_ruleExists ? '（已自定义）' : '（默认）'}',
@@ -3060,23 +3143,17 @@ class _TradingPageState extends State<TradingPage> {
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
         ),
       ]),
-      const SizedBox(height: 8),
-      Wrap(
-        spacing: 8,
-        runSpacing: 6,
-        children: _ruleParams.entries.map((e) {
-          final label = labels[e.key] ?? e.key;
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppColors.darkSurface,
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
-            ),
-            child: Text('$label：${e.value}',
-                style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
-          );
-        }).toList(),
+      const SizedBox(height: 10),
+      // 密清单卡：组标题 + 左标签右值行（sections 已按组排好）
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: AppColors.darkSurface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: sections),
       ),
     ]);
   }
