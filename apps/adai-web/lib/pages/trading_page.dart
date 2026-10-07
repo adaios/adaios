@@ -3803,62 +3803,32 @@ class _TradingPageState extends State<TradingPage>
       error = extractApiErrorMessage(e);
     }
     if (!mounted) return;
+    // 批 4（D5 · 2026-10-07）：四处 K 线弹窗收成一个壳（KlinePanel）——标题 / 图例 / 宽度
+    // 统一；这里只给数据 + 图下一句话（案例专属块由案例调用点作为 bottom 追加）。
+    final d = data;
     await showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.darkSurface,
-        title: Text(
-          '$name $symbol · K 线',
-          style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1),
-        ),
-        content: SizedBox(
-          width: 760,
-          child: data == null
-              ? Text(
-                  error ?? '取不到这只票的行情',
+      builder: (ctx) => KlinePanel(
+        name: name,
+        symbol: symbol,
+        kline: (d != null && d.hasData) ? d.candles : const [],
+        marks: (d != null && d.hasData) ? d.marks : const [],
+        stopLine: (d != null && d.hasData) ? d.stopLine : null,
+        peakLine: (d != null && d.hasData) ? d.peakLine : null,
+        emptyNote: d == null
+            ? (error ?? '取不到这只票的行情')
+            : (d.note ?? '暂时取不到这只票的行情'),
+        bottom: (d != null && d.hasData)
+            ? [
+                Text(
+                  _klineSummary(d),
                   style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.darkGrey4,
+                    fontSize: 11,
+                    color: AppColors.darkGrey5,
                   ),
-                )
-              : (!data.hasData
-                    ? Text(
-                        data.note ?? '暂时取不到这只票的行情',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.darkGrey4,
-                        ),
-                      )
-                    : Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SizedBox(
-                            height: 430,
-                            child: CaseKlineChart(
-                              kline: data.candles,
-                              marks: data.marks,
-                              stopLine: data.stopLine,
-                              peakLine: data.peakLine,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            _klineSummary(data),
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: AppColors.darkGrey5,
-                            ),
-                          ),
-                        ],
-                      )),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('关掉'),
-          ),
-        ],
+                ),
+              ]
+            : const [],
       ),
     );
   }
@@ -8809,198 +8779,182 @@ class _CaseDetailDialogState extends State<_CaseDetailDialog> {
     final buyDate = '${record["buyDate"] ?? ''}';
     final insightSummary = '${insight["summary"] ?? ''}';
     final hasInsight = insightSummary.isNotEmpty;
-    return AlertDialog(
-      backgroundColor: AppColors.darkSurface2,
-      title: Text(
-        '${record["name"] ?? record["symbol"]}（${record["symbol"]}）· ${record["buyType"] ?? ''} · $buyDate',
-        style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1),
-      ),
-      content: SizedBox(
-        width: 620,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CaseKlineChart(
-                kline: _kline,
-                buyDate: buyDate,
-                indicators: _indicators,
+    // 批 4（D5 · 2026-10-07）：壳统一为 KlinePanel（标题「名称（代码）· 买点」、图例、
+    // 宽度上限 1280）；案例专属块（描述 / 指标明细 / 绩效 / AI 理解）作为 bottom 原样保留。
+    final noteParts = [
+      if ('${record["buyType"] ?? ''}'.isNotEmpty) '${record["buyType"]}',
+      if (buyDate.isNotEmpty) buyDate,
+    ];
+    return KlinePanel(
+      name: '${record["name"] ?? record["symbol"]}',
+      symbol: '${record["symbol"]}',
+      note: noteParts.join(' · '),
+      kline: _kline,
+      buyDate: buyDate,
+      indicators: _indicators,
+      emptyNote: '这只票的行情暂时取不到——先看下面的明细',
+      bottom: [
+        if ('${record["description"] ?? ''}'.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              '「${record["description"]}」',
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.darkGrey2,
               ),
-              const SizedBox(height: 10),
-              if ('${record["description"] ?? ''}'.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(
-                    '「${record["description"]}」',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.darkGrey2,
+            ),
+          ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          children: [
+            _chip(
+              '回撤 ${fmt(features["drawdownFromHighPct"], suffix: '%')}',
+            ),
+            _chip('量比 ${fmt(features["volumeShrinkRatio"])}'),
+            _chip('KDJ.J ${fmt(features["kdjJ"])}'),
+            _chip('距60日线 ${fmt(features["distToMa60Pct"], suffix: '%')}'),
+            _chip('黄白线 ${features["yellowLineState"] ?? '—'}'),
+            _chip('盘整 ${fmt(features["sidewaysDays"], suffix: '天')}'),
+            _chip(
+              '破前高 ${features["breakoutFromHigh"] == true ? '是' : '否'}',
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          children: [
+            _chip(
+              '+5d ${fmt(verify["+5dReturnPct"], suffix: '%')}',
+              highlight: true,
+            ),
+            _chip(
+              '+10d ${fmt(verify["+10dReturnPct"], suffix: '%')}',
+              highlight: true,
+            ),
+            _chip(
+              '最大回撤 ${fmt(verify["maxDrawdownAfterBuyPct"], suffix: '%')}',
+              highlight: true,
+            ),
+            _chip(
+              '破止损 ${verify["stopLossHit"] == true ? '是' : '否'}',
+              highlight: true,
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // 环 3：AI 理解（aiInsight）
+        if (hasInsight)
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.darkSurface,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: AppColors.darkGreen.withValues(alpha: 0.4),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Text(
+                      '阿呆的理解',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.darkGreen,
+                      ),
                     ),
+                    const Spacer(),
+                    Text(
+                      '置信度 ${fmt(insight["confidence"])}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.darkGrey5,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  insightSummary,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.darkGrey2,
+                    height: 1.5,
                   ),
                 ),
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                children: [
-                  _chip(
-                    '回撤 ${fmt(features["drawdownFromHighPct"], suffix: '%')}',
-                  ),
-                  _chip('量比 ${fmt(features["volumeShrinkRatio"])}'),
-                  _chip('KDJ.J ${fmt(features["kdjJ"])}'),
-                  _chip('距60日线 ${fmt(features["distToMa60Pct"], suffix: '%')}'),
-                  _chip('黄白线 ${features["yellowLineState"] ?? '—'}'),
-                  _chip('盘整 ${fmt(features["sidewaysDays"], suffix: '天')}'),
-                  _chip(
-                    '破前高 ${features["breakoutFromHigh"] == true ? '是' : '否'}',
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                children: [
-                  _chip(
-                    '+5d ${fmt(verify["+5dReturnPct"], suffix: '%')}',
-                    highlight: true,
-                  ),
-                  _chip(
-                    '+10d ${fmt(verify["+10dReturnPct"], suffix: '%')}',
-                    highlight: true,
-                  ),
-                  _chip(
-                    '最大回撤 ${fmt(verify["maxDrawdownAfterBuyPct"], suffix: '%')}',
-                    highlight: true,
-                  ),
-                  _chip(
-                    '破止损 ${verify["stopLossHit"] == true ? '是' : '否'}',
-                    highlight: true,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              // 环 3：AI 理解（aiInsight）
-              if (hasInsight) ...[
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppColors.darkSurface,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: AppColors.darkGreen.withValues(alpha: 0.4),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Text(
-                            '阿呆的理解',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.darkGreen,
+                if ((insight['keyFeatures'] as List<dynamic>?)
+                        ?.isNotEmpty ??
+                    false) ...[
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: (insight['keyFeatures'] as List<dynamic>)
+                        .map(
+                          (k) => Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
                             ),
-                          ),
-                          const Spacer(),
-                          Text(
-                            '置信度 ${fmt(insight["confidence"])}',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: AppColors.darkGrey5,
+                            decoration: BoxDecoration(
+                              color: AppColors.darkSurface2,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color: AppColors.darkBorder,
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        insightSummary,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.darkGrey2,
-                          height: 1.5,
-                        ),
-                      ),
-                      if ((insight['keyFeatures'] as List<dynamic>?)
-                              ?.isNotEmpty ??
-                          false) ...[
-                        const SizedBox(height: 6),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 4,
-                          children: (insight['keyFeatures'] as List<dynamic>)
-                              .map(
-                                (k) => Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.darkSurface2,
-                                    borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(
-                                      color: AppColors.darkBorder,
-                                    ),
-                                  ),
-                                  child: Text(
-                                    '$k',
-                                    style: const TextStyle(
-                                      fontSize: 10,
-                                      color: AppColors.darkGrey4,
-                                    ),
-                                  ),
-                                ),
-                              )
-                              .toList(),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ] else
-                OutlinedButton.icon(
-                  onPressed: _generating ? null : _generate,
-                  icon: _generating
-                      ? const SizedBox(
-                          width: 12,
-                          height: 12,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 1.5,
-                            color: AppColors.darkGreen,
+                            child: Text(
+                              '$k',
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: AppColors.darkGrey4,
+                              ),
+                            ),
                           ),
                         )
-                      : const Icon(
-                          Icons.auto_awesome,
-                          size: 14,
-                          color: AppColors.darkGreen,
-                        ),
-                  label: Text(
-                    _generating ? '理解中…' : '生成 AI 理解',
-                    style: const TextStyle(fontSize: 12),
+                        .toList(),
                   ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.darkGrey1,
-                    side: const BorderSide(color: AppColors.darkGrey4),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
+                ],
+              ],
+            ),
+          )
+        else
+          OutlinedButton.icon(
+            onPressed: _generating ? null : _generate,
+            icon: _generating
+                ? const SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 1.5,
+                      color: AppColors.darkGreen,
                     ),
+                  )
+                : const Icon(
+                    Icons.auto_awesome,
+                    size: 14,
+                    color: AppColors.darkGreen,
                   ),
-                ),
-            ],
+            label: Text(
+              _generating ? '理解中…' : '生成 AI 理解',
+              style: const TextStyle(fontSize: 12),
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.darkGrey1,
+              side: const BorderSide(color: AppColors.darkGrey4),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 4,
+              ),
+            ),
           ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text(
-            '关闭',
-            style: TextStyle(fontSize: 13, color: AppColors.darkGrey5),
-          ),
-        ),
       ],
     );
   }

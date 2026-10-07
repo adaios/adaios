@@ -63,7 +63,8 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: SizedBox(
-          height: 430,
+          // 批 4：图例行后组件整体变高（切换行 + 图 430 + 图例）——给够高度
+          height: 520,
           child: CaseKlineChart(
             kline: d.candles,
             marks: d.marks,
@@ -76,5 +77,43 @@ void main() {
     await tester.pump();
     expect(tester.takeException(), isNull);
     expect(find.byType(CaseKlineChart), findsOneWidget);
+  });
+
+  testWidgets('R-04：统一壳 KlinePanel —— 标题「名称（代码）· 说明」+ 图例（批 4 · D5）', (
+    tester,
+  ) async {
+    final d = TradingKlineDto.fromJson(payload());
+    await tester.pumpWidget(MaterialApp(
+      home: KlinePanel(
+        name: '云南锗业',
+        symbol: '002428',
+        kline: d.candles,
+        marks: d.marks,
+        stopLine: d.stopLine,
+        peakLine: d.peakLine,
+      ),
+    ));
+    await tester.pump();
+    expect(
+      find.text('云南锗业（002428）· K 线'),
+      findsOneWidget,
+      reason: '四处共用同一标题口径（名称（代码）· 说明）',
+    );
+    expect(find.textContaining('你定的止损 14.80'), findsOneWidget, reason: '图例行有你定的止损');
+    expect(find.textContaining('B 买'), findsOneWidget, reason: '买卖点图例字母口径');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('R-04：KlinePanel 行情取不到——只显示人话，不画空图（批 4）', (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: KlinePanel(
+        name: '云南锗业',
+        symbol: '002428',
+        emptyNote: '暂时取不到这只票的行情',
+      ),
+    ));
+    await tester.pump();
+    expect(find.textContaining('取不到'), findsOneWidget);
+    expect(find.byType(CaseKlineChart), findsNothing, reason: '不画空图');
   });
 }
