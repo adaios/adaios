@@ -394,6 +394,10 @@ void main() {
 
       await tester.tap(find.text('分析'));
       await tester.pumpAndSettle();
+      // m6（2026-10-07 · 原型 .wd-eye「👁 看金额」）：分析列表项金额默认打码——
+      // 先点页头 👁 显形再断原值（掩码态断言在 trading_page_test 的 m6 组已覆盖）
+      await tester.tap(find.byKey(const Key('revealToggle')));
+      await tester.pumpAndSettle();
 
       // 单笔：一笔的过程
       await tester.tap(find.text('单笔'));

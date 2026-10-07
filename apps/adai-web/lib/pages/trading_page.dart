@@ -53,6 +53,15 @@ String _fmtShortDate(String yyyyMmDd) {
 String _fmtDailyMoney(double? v) => v == null ? '—' : v.toStringAsFixed(2);
 String _fmtDailyPct(double? v) => v == null ? '—' : '${v.toStringAsFixed(2)}%';
 
+/// m6（2026-10-07 · 原型 .wd-eye「👁 看金额」）：**金额与数量类默认打码**——
+/// 设计口径：数量与成本打码、现价与止损保留（uiux-discovery §隐私层）；
+/// 页头 👁 本地解开显形（服务「递手机给人看」场景），不持久化。
+/// 掩码 = 固定 `••••`（原型 .masked 点数手写随意、无算法；设计文字即 `••••`）。
+/// `'—'` / 空串 = 「没有数据」，不是金额 → 原样透出（掩码与缺数据是两回事）。
+const kAmountMask = '••••';
+String maskIf(String s, bool revealed) =>
+    (revealed || s == '—' || s.isEmpty) ? s : kAmountMask;
+
 /// 盈亏/涨跌着色：本项目**红涨绿亏**（token 名含 darkRed）＝正红负绿，
 /// 不是 A 股默认的绿涨红跌。null → 灰（「—」不借涨跌色）。
 Color _dailyUpDownColor(double? v) =>
@@ -222,6 +231,9 @@ class _TradingPageState extends State<TradingPage> {
   IntegrityReportDto? _integrity;
   // 2026-10-08 账三合一：账区自证条的「断点明细」展开开关
   bool _accountProofExpanded = false;
+  // m6（2026-10-07 · 原型 .wd-eye）：金额/数量打码——默认掩码（数量与成本类），
+  // 页头 👁 本地解开显形（服务递手机场景）；不持久化，刷新即回掩码。
+  bool _amountsRevealed = false;
   // RFC 20260923 D 批：行情（K 线）链路可用性（GET /trading/market-data/health）——ok=false 才显示横幅
   // （ok=true 或拿不到信息 = 零显示；三源全挂时用户本来只会看到资金曲线平了，毫无提示）
   MarketDataHealthDto? _marketHealth;
@@ -725,6 +737,8 @@ class _TradingPageState extends State<TradingPage> {
           reconcile: resp?.reconcile ?? const [],
           fee: resp?.fees[p.symbol],
           error: err,
+          // m6：弹窗打开时继承页头 👁 的当前状态（浏览类明细默认掩码）
+          revealed: _amountsRevealed,
         ),
       );
     } finally {
@@ -836,6 +850,15 @@ class _TradingPageState extends State<TradingPage> {
             icon: const Icon(Icons.refresh, size: 18),
             color: AppColors.darkGrey4,
             tooltip: '刷新',
+          ),
+          // m6（2026-10-07 · 原型 .wd-eye「👁 看金额」）：一处解开、全页显形——
+          // 默认掩码（数量与成本类），点这里本地解开（不持久化）；再点回掩码。
+          IconButton(
+            key: const Key('revealToggle'),
+            onPressed: () => setState(() => _amountsRevealed = !_amountsRevealed),
+            icon: Icon(_amountsRevealed ? Icons.visibility : Icons.visibility_outlined, size: 18),
+            color: _amountsRevealed ? AppColors.darkGreen : AppColors.darkGrey4,
+            tooltip: '看金额',
           ),
           Padding(
             padding: const EdgeInsets.only(right: 8),
@@ -1153,21 +1176,23 @@ class _TradingPageState extends State<TradingPage> {
                       child: nameCode,
                     )
                   : nameCode),
-              DataCell(Text('${p.quantity}', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3))),
-              DataCell(Text(p.avgCost.toStringAsFixed(3), style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3))),
+              // m6：数量/成本打码（现价保留——口径「数量与成本打码，现价与止损保留」）
+              DataCell(Text(maskIf('${p.quantity}', _amountsRevealed), style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3))),
+              DataCell(Text(maskIf(p.avgCost.toStringAsFixed(3), _amountsRevealed), style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3))),
               DataCell(Text(p.currentPrice.toStringAsFixed(3), style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1))),
-              DataCell(Text(p.marketValue.toStringAsFixed(2), style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1))),
+              DataCell(Text(maskIf(p.marketValue.toStringAsFixed(2), _amountsRevealed), style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1))),
               // 仓位占比：中性灰（不是涨跌，不借红绿）；null → 灰「—」
               DataCell(Text(_fmtDailyPct(d?.positionRatio),
                   style: TextStyle(fontSize: 13,
                       color: d?.positionRatio == null ? AppColors.darkGrey5 : AppColors.darkGrey3))),
               // 当日盈亏（券商口径＝今天真实赚亏）：正红负绿；null（缺昨收）→ 灰「—」，绝不写 0.00
-              DataCell(Text(_fmtDailyMoney(d?.todayPnl),
+              // m6：金额打码（「—」= 缺数据，原样透出）
+              DataCell(Text(maskIf(_fmtDailyMoney(d?.todayPnl), _amountsRevealed),
                   style: TextStyle(fontSize: 13, color: _dailyUpDownColor(d?.todayPnl), fontWeight: FontWeight.w600))),
               // 今日涨跌幅 %：同一套红涨绿亏；null（缺昨收）→ 灰「—」，绝不写 0.00%
               DataCell(Text(_fmtDailyPct(d?.dayChangePct),
                   style: TextStyle(fontSize: 13, color: _dailyUpDownColor(d?.dayChangePct)))),
-              DataCell(Text(p.pnl.toStringAsFixed(2), style: TextStyle(fontSize: 13, color: pnlColor, fontWeight: FontWeight.w600))),
+              DataCell(Text(maskIf(p.pnl.toStringAsFixed(2), _amountsRevealed), style: TextStyle(fontSize: 13, color: pnlColor, fontWeight: FontWeight.w600))),
               // 负/零成本 → pnlPercent 为 null → 「—」（不给 0.00%，那是谎报「不赚不亏」）
               DataCell(Text(p.pnlPercent == null ? '—' : '${p.pnlPercent!.toStringAsFixed(2)}%',
                   style: TextStyle(fontSize: 13, color: pnlColor))),
@@ -2102,9 +2127,10 @@ class _TradingPageState extends State<TradingPage> {
     final ir = _integrity;
     final clean = ir != null && !ir.hasIssue; // 拿不到对账（null）≠ 已经对上
     // 当日：金额 + 比例（比例与「当日盈亏」同源 pnl/periods；拿不到比例就不给——不编 0%）
+    // m6：金额打码（比例属涨跌，不打——口径「数量与成本打码，现价与止损保留」）
     final todayPnl = hasAccount ? a.todayPnl : 0.0;
     final todayPct = _pnlPeriods?.today?.pct;
-    final todayText = '¥${_thousands(todayPnl)}'
+    final todayText = '¥${maskIf(_thousands(todayPnl), _amountsRevealed)}'
         '${todayPct == null ? '' : ' ${todayPct >= 0 ? '+' : ''}${todayPct.toStringAsFixed(2)}%'}';
     // 总盈亏 = 资产 − 本金（principal=0 → null → 「—」+ 引导语，不编数）
     final totalPnl = hasAccount ? a.totalPnl : (p?.totalPnl ?? 0);
@@ -2117,7 +2143,7 @@ class _TradingPageState extends State<TradingPage> {
       ),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _stripCell('总资产',
-            '¥${_thousands(hasAccount ? a.assets : (p?.totalValue ?? 0) + (p?.cashBalance ?? 0))}',
+            '¥${maskIf(_thousands(hasAccount ? a.assets : (p?.totalValue ?? 0) + (p?.cashBalance ?? 0)), _amountsRevealed)}',
             valueKey: const Key('stripAssets')),
         _stripCell('当日', todayText,
             color: todayPnl >= 0 ? AppColors.darkRed : AppColors.darkGreen,
@@ -2125,15 +2151,17 @@ class _TradingPageState extends State<TradingPage> {
             note: hasAccount && todayPnl != 0
                 ? todayPnlSourceNote(a.todayPnlSource, a.snapshotDate)
                 : null),
-        _stripCell('总盈亏', totalPnl == null ? '—' : '¥${_thousands(totalPnl)}',
+        _stripCell('总盈亏', totalPnl == null ? '—' : '¥${maskIf(_thousands(totalPnl), _amountsRevealed)}',
             color: totalPnl == null
                 ? AppColors.darkGrey5
                 : (totalPnl >= 0 ? AppColors.darkRed : AppColors.darkGreen),
             valueKey: const Key('stripTotalPnl'),
             note: hasAccount
-                ? (a.principal > 0 ? '本金 ¥${_thousands(a.principal)}' : '还没记过转入/转出')
+                ? (a.principal > 0
+                    ? '本金 ¥${maskIf(_thousands(a.principal), _amountsRevealed)}'
+                    : '还没记过转入/转出')
                 : null),
-        _stripCell('持仓市值', '¥${_thousands(hasAccount ? a.marketValue : (p?.totalValue ?? 0))}',
+        _stripCell('持仓市值', '¥${maskIf(_thousands(hasAccount ? a.marketValue : (p?.totalValue ?? 0)), _amountsRevealed)}',
             valueKey: const Key('stripMarketValue')),
         _stripCell('到线', '$onLine 只',
             color: onLine > 0 ? AppColors.darkOrange : AppColors.darkGrey3,
@@ -2254,6 +2282,8 @@ class _TradingPageState extends State<TradingPage> {
         child: _HistorySection(
           key: _historyKey,
           api: widget.api,
+          // m6：浏览类明细金额/数量默认掩码，👁 状态由页头统一切换
+          revealed: _amountsRevealed,
           onImportSnapshot: _openPositionsImport,
           onImported: () => unawaited(_loadIntegrity()),
         ),
@@ -2308,7 +2338,7 @@ class _TradingPageState extends State<TradingPage> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           // 现金自证：数是券商导进来的（cashDate），健康度人话由后端给（空 = 正常）
-          cell('现金', a == null ? '—' : '¥${_thousands(a.cash)}',
+          cell('现金', a == null ? '—' : '¥${maskIf(_thousands(a.cash), _amountsRevealed)}',
               sub: cashNote.isNotEmpty
                   ? const Text('⚠ 有异常',
                       maxLines: 1,
@@ -2322,15 +2352,15 @@ class _TradingPageState extends State<TradingPage> {
                           color: cashDate.isNotEmpty ? AppColors.darkGreen : AppColors.darkGrey5))),
           // m5：账户卡退役后「可用 / 可取」在账区安家（贴原型账屏状态条的语义——
           // 资金侧基础数据，旁边就是转入/转出操作；主屏 6 格不再重复）
-          cell('可用', a == null ? '—' : '¥${_thousands(a.available)}',
-              sub: Text(a == null ? '' : '可取 ¥${_thousands(a.withdrawable)}',
+          cell('可用', a == null ? '—' : '¥${maskIf(_thousands(a.available), _amountsRevealed)}',
+              sub: Text(a == null ? '' : '可取 ¥${maskIf(_thousands(a.withdrawable), _amountsRevealed)}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5))),
           // 本金从数据推：= 转入 − 转出（后端含存量迁移调整）；总盈亏 = 资产 − 本金
-          cell('本金（转入/转出自动算）', principal > 0 ? '¥${_thousands(principal)}' : '—',
+          cell('本金（转入/转出自动算）', principal > 0 ? '¥${maskIf(_thousands(principal), _amountsRevealed)}' : '—',
               sub: principal > 0 && totalPnl != null
-                  ? Text('总盈亏 ${totalPnl >= 0 ? '+' : '-'}¥${_thousands(totalPnl.abs())}',
+                  ? Text('总盈亏 ${totalPnl >= 0 ? '+' : '-'}¥${maskIf(_thousands(totalPnl.abs()), _amountsRevealed)}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -2427,6 +2457,8 @@ class _TradingPageState extends State<TradingPage> {
                     SingleChildScrollView(
                         child: _AnalysisSection(
                       api: widget.api,
+                      // m6：分析列表项里的金额（回合盈亏/分桶盈亏）默认掩码
+                      revealed: _amountsRevealed,
                       requestedScope: _analysisScope,
                       onScopeChanged: (s) {
                         if (s != _analysisScope && mounted) setState(() => _analysisScope = s);
@@ -3268,8 +3300,8 @@ class _TradingPageState extends State<TradingPage> {
       const Text('现金余额是 R81 仓位判定的分母（总资产=持仓+现金）——资金查询导入后占比判定更准',
           style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
       const SizedBox(height: 10),
-      // 2026-09-04 资金曲线（决策方案 A）：净值 + 回撤迷你图
-      _EquityCurveCard(api: widget.api),
+      // 2026-09-04 资金曲线（决策方案 A）：净值 + 回撤迷你图（m6：总资产形态的「最新」金额打码）
+      _EquityCurveCard(api: widget.api, revealed: _amountsRevealed),
       // 2026-10-08 账三合一：本金行（原「设置本金」入口——后端已退役为 410，撤）/ cashNote /
       // principalNote 全部收进账区顶部「自证条」，这里不再重复渲染。
     ]);
@@ -5547,6 +5579,8 @@ class _LotsDialog extends StatefulWidget {
   /// 该标的累计手续费（买入/卖出/合计）；null = 旧后端/未取到（2026-09-16）
   final SymbolFee? fee;
   final String? error;
+  /// m6：金额/数量打码状态（打开时继承页头 👁）。
+  final bool revealed;
 
   const _LotsDialog({
     required this.api,
@@ -5556,6 +5590,7 @@ class _LotsDialog extends StatefulWidget {
     required this.reconcile,
     this.fee,
     this.error,
+    required this.revealed,
   });
 
   @override
@@ -5765,13 +5800,15 @@ class _LotsDialogState extends State<_LotsDialog> {
                               return DataRow(cells: [
                                 DataCell(Text(l.buyDate,
                                     style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1))),
-                                DataCell(Text('${_fmtThousandsInt(l.remaining)} / ${_fmtThousandsInt(l.volume)}',
+                                // m6：剩余/买入数量打码（现价/止损保留）
+                                DataCell(Text(
+                                    '${maskIf(_fmtThousandsInt(l.remaining), widget.revealed)} / ${maskIf(_fmtThousandsInt(l.volume), widget.revealed)}',
                                     style: const TextStyle(fontSize: 12, color: AppColors.darkGrey3))),
                                 DataCell(Column(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                  Text(l.costPrice.toStringAsFixed(3),
+                                  Text(maskIf(l.costPrice.toStringAsFixed(3), widget.revealed),
                                       style: const TextStyle(fontSize: 12, color: AppColors.darkGrey3)),
                                   if (l.buyFee > 0)
                                     Text('含手续费 ${l.buyFee.toStringAsFixed(2)}',
@@ -5779,7 +5816,10 @@ class _LotsDialogState extends State<_LotsDialog> {
                                 ])),
                                 DataCell(Text(l.currentPrice.toStringAsFixed(3),
                                     style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1))),
-                                DataCell(Text(l.closed ? '回合 ${_fmtThousands(l.realizedPnl)}' : _fmtThousands(l.pnl),
+                                DataCell(Text(
+                                    l.closed
+                                        ? '回合 ${maskIf(_fmtThousands(l.realizedPnl), widget.revealed)}'
+                                        : maskIf(_fmtThousands(l.pnl), widget.revealed),
                                     style: TextStyle(fontSize: 12, color: pnlColor, fontWeight: FontWeight.w600))),
                                 DataCell(Text(_lotPnlPctText(l),
                                     style: TextStyle(fontSize: 12, color: pnlColor))),
@@ -5818,10 +5858,11 @@ class _LotsDialogState extends State<_LotsDialog> {
                       // 2026-09-16：合计 + 该票累计手续费（卖出含印花税万 5，通常远大于买入）
                       if (visible.isNotEmpty) ...[
                         const SizedBox(height: 10),
+                        // m6：合计行数量/成本/浮动打码（手续费行不打——非规模信息）
                         Text(
-                          '合计 ${visible.fold<int>(0, (a, l) => a + l.remaining)} 股 · '
-                          '加权成本 ${_lotWeightedAvgCost(visible).toStringAsFixed(3)} · '
-                          '浮动 ${_fmtThousands(visible.fold<double>(0, (a, l) => a + l.pnl))}',
+                          '合计 ${maskIf('${visible.fold<int>(0, (a, l) => a + l.remaining)}', widget.revealed)} 股 · '
+                          '加权成本 ${maskIf(_lotWeightedAvgCost(visible).toStringAsFixed(3), widget.revealed)} · '
+                          '浮动 ${maskIf(_fmtThousands(visible.fold<double>(0, (a, l) => a + l.pnl)), widget.revealed)}',
                           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
                               color: AppColors.darkGrey2),
                         ),
@@ -6270,13 +6311,16 @@ class _TabHistoryRefreshListenerState extends State<_TabHistoryRefreshListener> 
 /// 进 Tab 自动加载 + 手动刷新，不做定时轮询（保活页陈旧问题，切页刷新兜底）。
 class _HistorySection extends StatefulWidget {
   final ApiService api;
+  /// m6：金额/数量打码状态（父页 👁 统一切换）——浏览类明细默认掩码。
+  final bool revealed;
   /// RFC 20260912：锚定缺失时的「先导快照」出路——关掉导入弹窗并打开持仓快照导入
   /// （「持仓股」导出即可建立锚定日）。可空：不传则只给引导文案。
   final VoidCallback? onImportSnapshot;
   /// RFC 20260912：确认落盘后回调（父页重算账实对账闸门——这次导入可能新增缺口）。
   final VoidCallback? onImported;
 
-  const _HistorySection({super.key, required this.api, this.onImportSnapshot, this.onImported});
+  const _HistorySection(
+      {super.key, required this.api, required this.revealed, this.onImportSnapshot, this.onImported});
 
   @override
   State<_HistorySection> createState() => _HistorySectionState();
@@ -6695,13 +6739,14 @@ class _HistorySectionState extends State<_HistorySection>
   /// 发生金额（源文件原生）：买入为负（扣款），卖出为正（到账）。
   /// 系统存储 fee = |发生金额 − 成交金额|，据此反推；fee 缺失（手动记录/旧数据）→ '—'。
   /// 股息类事件（P2-批次6）：amount 即发生金额绝对值，入账为正（现金流入）/ 税为负。
-  static String _occurredAmount(TradeRecordItem t) {
+  /// m6：金额打码（原 static → 实例方法，取 widget.revealed；'—' 不受影响）。
+  String _occurredAmount(TradeRecordItem t) {
     if (t.isDividendEvent) {
-      return _thousands(t.isBuy ? t.amount : -t.amount);
+      return maskIf(_thousands(t.isBuy ? t.amount : -t.amount), widget.revealed);
     }
     if (t.fee == null) return '—';
     final occurred = t.isBuy ? -(t.amount + t.fee!) : (t.amount - t.fee!);
-    return _thousands(occurred);
+    return maskIf(_thousands(occurred), widget.revealed);
   }
 
   Widget _buildTradeRow(TradeRecordItem t, List<double> widths) {
@@ -6745,10 +6790,11 @@ class _HistorySectionState extends State<_HistorySection>
         cell(timeStr, widths[1], color: AppColors.darkGrey5),
         cell(t.symbol, widths[2], color: AppColors.darkGrey1),
         cell(t.name, widths[3]),
-        cell('${t.volume}', widths[4], right: true),
+        // m6：数量/金额打码（价格/编号/费用不打——费用非规模信息，原型无此列）
+        cell(maskIf('${t.volume}', widget.revealed), widths[4], right: true),
         cell(t.price.toStringAsFixed(3), widths[5], right: true),
-        cell(_thousands(t.amount), widths[6], right: true), // 成交金额（源文件）
-        cell(_occurredAmount(t), widths[7], right: true), // 发生金额（源文件原生，推导自 fee）
+        cell(maskIf(_thousands(t.amount), widget.revealed), widths[6], right: true), // 成交金额（源文件）
+        cell(_occurredAmount(t), widths[7], right: true), // 发生金额（源文件原生，推导自 fee；已含 m6 掩码）
         cell(t.orderId ?? '—', widths[8], color: AppColors.darkGrey5),
         cell(t.fee != null ? t.fee!.toStringAsFixed(2) : '—', widths[9], right: true), // 系统计算放最后
       ]),
@@ -6764,13 +6810,17 @@ class _HistorySectionState extends State<_HistorySection>
 class _AnalysisSection extends StatefulWidget {
   final ApiService api;
 
+  /// m6：金额打码状态（父页 👁 统一切换）——列表项里的盈亏金额默认掩码。
+  final bool revealed;
+
   /// m4：父页（左侧导航子项 这一笔/这只票/这一段）请求的粒度；null = 不受控（保持内部状态）。
   final String? requestedScope;
 
   /// m4：粒度变化的回调——让导航子项高亮跟随（与内部 chips 双向同步）。
   final ValueChanged<String>? onScopeChanged;
 
-  const _AnalysisSection({required this.api, this.requestedScope, this.onScopeChanged});
+  const _AnalysisSection(
+      {required this.api, required this.revealed, this.requestedScope, this.onScopeChanged});
 
   @override
   State<_AnalysisSection> createState() => _AnalysisSectionState();
@@ -7059,7 +7109,10 @@ class _AnalysisSectionState extends State<_AnalysisSection> {
         final buf = StringBuffer('${m['id']}'.replaceFirst('_', ' '));
         if (m['end'] != null) buf.write(' 至 ${m['end']}');
         if (m['pnlPct'] is num) buf.write(' · ${_numText(m['pnlPct'])}%');
-        if (m['pnl'] is num) buf.write(' · ¥${_fmtThousands((m['pnl'] as num).toDouble())}');
+        // m6：盈亏金额掩码（% 与天数属涨跌/时长，不打）
+        if (m['pnl'] is num) {
+          buf.write(' · ¥${maskIf(_fmtThousands((m['pnl'] as num).toDouble()), widget.revealed)}');
+        }
         if (m['holdDays'] is num) buf.write(' · 持 ${m['holdDays']} 天');
         if (m['unresolved'] == true) buf.write(' · 未了结');
         return buf.toString();
@@ -7067,7 +7120,7 @@ class _AnalysisSectionState extends State<_AnalysisSection> {
       if (m.containsKey('period')) {
         final pnl = m['pnl'];
         return '${m['period']}：${m['count'] ?? 0} 笔'
-            '${pnl is num && pnl != 0 ? ' · ¥${_fmtThousands(pnl.toDouble())}' : ''}';
+            '${pnl is num && pnl != 0 ? ' · ¥${maskIf(_fmtThousands(pnl.toDouble()), widget.revealed)}' : ''}';
       }
       if (m.containsKey('avgPnlPct')) {
         return '${m['label'] ?? ''}：${m['count'] ?? 0} 笔 · 均 ${_numText(m['avgPnlPct'])}%';
@@ -8736,9 +8789,12 @@ class _PushSettingsDialogState extends State<_PushSettingsDialog> {
 /// 资金曲线迷你图：净值（或总资产，principal=0 时）折线 + 峰值参考线 + 最大回撤标注。
 /// 数据源 GET /trading/equity-curve（后端流水+快照锚定聚合）；空/失败 → 人话空态不打断资金区。
 class _EquityCurveCard extends StatefulWidget {
-  const _EquityCurveCard({required this.api});
+  const _EquityCurveCard({required this.api, required this.revealed});
 
   final ApiService api;
+
+  /// m6：金额打码状态（父页 👁 统一切换）——总资产形态的「最新 ¥x」默认掩码（净值是比率，不打）。
+  final bool revealed;
 
   @override
   State<_EquityCurveCard> createState() => _EquityCurveCardState();
@@ -8858,7 +8914,7 @@ class _EquityCurveCardState extends State<_EquityCurveCard> {
                     fontWeight: FontWeight.w600,
                     color: last.netValue! >= 1 ? AppColors.darkRed : AppColors.darkGreen)),
           if (!useNet)
-            Text('最新 ${_fmtThousands(last.totalAssets)}',
+            Text('最新 ${maskIf(_fmtThousands(last.totalAssets), widget.revealed)}',
                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGrey2)),
         ]),
         const SizedBox(height: 4),

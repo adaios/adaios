@@ -987,6 +987,9 @@ void main() {
       // RFC 20260823：历史成交从页头 Dialog 升级为第 5 Tab，点击 Tab 进入
       await tester.tap(find.text('账'));
       await tester.pumpAndSettle();
+      // m6：金额/数量默认掩码——本组验证字段级渲染 → 先点 👁 显形（掩码态断言在 m6 组）
+      await tester.tap(find.byKey(const Key('revealToggle')));
+      await tester.pumpAndSettle();
 
       // 日期分组（页面其它普通文本可能同日期字串，分组头按加粗精确匹配）
       expect(find.text('2026-08-12'), findsWidgets);
@@ -1109,6 +1112,9 @@ void main() {
       await _pumpTrading(tester, api);
 
       await tester.tap(find.text('账'));
+      await tester.pumpAndSettle();
+      // m6：发生金额（股息）默认掩码 → 先点 👁 显形
+      await tester.tap(find.byKey(const Key('revealToggle')));
       await tester.pumpAndSettle();
 
       // 类型标签取代「买入/卖出」，普通行不受影响
@@ -2003,6 +2009,10 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
+      // m6：金额默认掩码 → 先点 👁 显形再验千分位
+      await tester.tap(find.byKey(const Key('revealToggle')));
+      await tester.pumpAndSettle();
+
       // 总盈亏 = 资产 - 本金 = -39495.12 → 千分位显示
       expect(find.text('¥-39,495.12'), findsOneWidget);
       expect(find.textContaining('本金 ¥150,000'), findsOneWidget);
@@ -2289,6 +2299,9 @@ void main() {
       await _pumpTrading(tester, api);
 
       // m5：右栏入驻后主区变窄 → 表格横滚，操作列按钮可能滚出视口——先滚到它再点
+      // m6：批次明细属浏览类金额 → 默认掩码；本组验证字段级渲染 → 先点 👁 显形
+      await tester.tap(find.byKey(const Key('revealToggle')));
+      await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('批次'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('批次'));
@@ -3997,6 +4010,9 @@ void main() {
 
       await tester.tap(find.text('账'));
       await tester.pumpAndSettle();
+      // m6：金额默认掩码 → 先点 👁 显形再验格值
+      await tester.tap(find.byKey(const Key('revealToggle')));
+      await tester.pumpAndSettle();
 
       // 现金格：数是券商导进来的 → 标出对应快照日期（P2-交易69 同口径）
       expect(find.text('✓ 券商 2026-09-16 的余额'), findsOneWidget);
@@ -5076,6 +5092,9 @@ void _marketStageGroup() {
     testWidgets('正常渲染三样（当日盈亏 / 今日涨跌幅 / 仓位占比）+ 顶部「仓位 · 现金」一行', (tester) async {
       await pumpDaily(tester,
           ApiService(baseUrl: 'http://test', client: dailyMock(dailyJson())));
+      // m6：金额默认掩码 → 先点 👁 显形
+      await tester.tap(find.byKey(const Key('revealToggle')));
+      await tester.pumpAndSettle();
       final t = positionsTable(tester);
       expect(cellText(t, 5), '33.27%', reason: '仓位占比');
       expect(cellText(t, 6), '756.00', reason: '当日盈亏（金额）');
@@ -5092,6 +5111,9 @@ void _marketStageGroup() {
 
       await pumpDaily(tester,
           ApiService(baseUrl: 'http://test', client: dailyMock(dailyJson(todayPnl: -321.50, dayChangePct: -1.28))));
+      // m6：金额默认掩码 → 先点 👁 显形（重新 pump 后状态重置）
+      await tester.tap(find.byKey(const Key('revealToggle')));
+      await tester.pumpAndSettle();
       t = positionsTable(tester);
       expect(cellText(t, 6), '-321.50');
       expect(cellText(t, 7), '-1.28%');
@@ -5111,6 +5133,9 @@ void _marketStageGroup() {
                   dayChangePct: null,
                   totalPositionRatio: null,
                   cashRatio: null))));
+      // m6：金额默认掩码 → 先点 👁 显形（当日三列 null → 「—」不属金额，不受掩码影响）
+      await tester.tap(find.byKey(const Key('revealToggle')));
+      await tester.pumpAndSettle();
       final t = positionsTable(tester);
       expect(cellText(t, 5), '—');
       expect(cellText(t, 6), '—');
@@ -5518,6 +5543,9 @@ void _marketStageGroup() {
   group('m5 状态条 6 格 + 右栏三卡', () {
     testWidgets('六格值（Key 锚）：总资产/当日/总盈亏/市值/到线/账实 + 本金引导 note', (tester) async {
       await _pumpTrading(tester, ApiService(baseUrl: 'http://test', client: _tradingMock()));
+      // m6：金额默认掩码 → 先点 👁 显形（掩码态断言在 m6 组）
+      await tester.tap(find.byKey(const Key('revealToggle')));
+      await tester.pumpAndSettle();
 
       String cell(String key) => tester.widget<Text>(find.byKey(Key(key))).data!;
       expect(cell('stripAssets'), '¥110,504.88');
@@ -5579,6 +5607,146 @@ void _marketStageGroup() {
       expect(find.text('其它没有要动的。'), findsOneWidget);
       expect(tester.widget<Text>(find.byKey(const Key('stripOnline'))).data, '1 只',
           reason: '到放飞也算到线（m5 双向口径）');
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // m6（2026-10-07 · 原型 .wd-eye）：打码——金额与数量默认 ••••（状态条/持仓表/
+  // 自证条/流水/批次弹窗/曲线「最新」），现价/止损/涨跌% 不打；
+  // 页头 👁「看金额」一处解开全页显形、再点回掩码（不持久化）。
+  // 「—」= 没数据，不属金额 → 掩码与缺数据是两回事。
+  // ══════════════════════════════════════════════════════════════════════
+  group('m6 打码（👁 看金额）', () {
+    testWidgets('默认掩码：状态条/持仓表金额与数量 ••••，现价与盈亏% 不打', (tester) async {
+      await _pumpTrading(tester, ApiService(baseUrl: 'http://test', client: _tradingMock()));
+
+      String cell(String key) => tester.widget<Text>(find.byKey(Key(key))).data!;
+      expect(cell('stripAssets'), '¥••••');
+      expect(cell('stripToday'), '¥••••');
+      expect(cell('stripTotalPnl'), '—', reason: 'principal=0 → 「—」不属金额，不打（缺数据 vs 掩码）');
+      expect(cell('stripMarketValue'), '¥••••');
+
+      // 持仓表：数量/成本/市值/盈亏 打码；现价/止损/盈亏% 不打
+      expect(find.text('••••'), findsWidgets, reason: '数量/成本/市值/盈亏四处');
+      expect(find.text('200'), findsNothing);
+      expect(find.text('160.00'), findsNothing);
+      expect(find.text('5220.00'), findsNothing);
+      expect(find.text('26.100'), findsOneWidget, reason: '现价不打（口径：现价与止损保留）');
+      expect(find.text('22.800'), findsOneWidget, reason: '止损不打');
+      expect(find.text('3.16%'), findsOneWidget, reason: '盈亏% 属涨跌，不打');
+    });
+
+    testWidgets('点 👁 全页显形 → 再点回掩码（不持久化）', (tester) async {
+      await _pumpTrading(tester, ApiService(baseUrl: 'http://test', client: _tradingMock()));
+      String cell(String key) => tester.widget<Text>(find.byKey(Key(key))).data!;
+      expect(cell('stripAssets'), '¥••••');
+
+      await tester.tap(find.byKey(const Key('revealToggle')));
+      await tester.pumpAndSettle();
+      expect(cell('stripAssets'), '¥110,504.88', reason: '显形：金额恢复');
+      expect(find.text('200'), findsOneWidget, reason: '显形：数量恢复');
+      expect(find.text('160.00'), findsOneWidget, reason: '显形：盈亏恢复');
+
+      await tester.tap(find.byKey(const Key('revealToggle')));
+      await tester.pumpAndSettle();
+      expect(cell('stripAssets'), '¥••••', reason: '再点回掩码');
+      expect(find.text('110,504.88'), findsNothing);
+      expect(find.text('200'), findsNothing);
+    });
+
+    testWidgets('账页：自证条金额与流水数量/金额掩码，价格/编号/费用不打；👁 显形', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/trades') {
+          return _json([
+            {'id': 't1', 'symbol': '600123', 'name': '立昂微', 'direction': 'BUY',
+             'price': 25.3, 'volume': 200, 'amount': 5060.0, 'entryDate': '2026-08-12',
+             'tradeTime': '09:41:00', 'fee': 1.23, 'orderId': '69351117'},
+          ]);
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('账'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('¥••••'), findsWidgets, reason: '自证条：现金/可用/状态条 打码');
+      expect(find.text('可取 ¥••••'), findsOneWidget);
+      expect(find.text('••••'), findsWidgets, reason: '流水：数量/成交金额/发生金额 掩码');
+      expect(find.text('200'), findsNothing);
+      expect(find.text('5,060.00'), findsNothing);
+      expect(find.text('-5,061.23'), findsNothing);
+      expect(find.text('25.300'), findsOneWidget, reason: '价格不打');
+      expect(find.text('69351117'), findsOneWidget, reason: '成交编号不打');
+      expect(find.text('1.23'), findsOneWidget, reason: '费用不打（非规模信息）');
+
+      await tester.tap(find.byKey(const Key('revealToggle')));
+      await tester.pumpAndSettle();
+      expect(find.text('200'), findsOneWidget, reason: '显形：数量');
+      expect(find.text('5,060.00'), findsOneWidget, reason: '显形：成交金额');
+      expect(find.text('-5,061.23'), findsOneWidget, reason: '显形：发生金额');
+      expect(find.text('¥292.88'), findsWidgets, reason: '显形：现金/可用');
+    });
+
+    testWidgets('批次弹窗：默认 •••• / ••••（现价/止损不打）；先 👁 再开 → 原值', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/lots') {
+          return _json({
+            'lots': [
+              {'lotId': 'L1', 'symbol': '600123', 'name': '立昂微', 'buyDate': '2026-08-03',
+               'volume': 100, 'remaining': 100, 'costPrice': 25.0, 'currentPrice': 26.1,
+               'marketValue': 2610.0, 'pnl': 110.0, 'pnlPct': 4.4,
+               'stopLossPrice': 22.8, 'stopLossDistancePct': 12.63, 'buyPoint': 'B3', 'role': null,
+               'initial': false, 'closed': false, 'realizedPnl': 0.0},
+            ],
+            'reconcile': [],
+          });
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      // 默认掩码打开：剩余/买入 数量掩码；现价/止损 不打
+      await tester.ensureVisible(find.text('批次'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('批次'));
+      await tester.pumpAndSettle();
+      expect(find.text('•••• / ••••'), findsOneWidget, reason: '剩余/买入 掩码');
+      expect(find.descendant(of: find.byType(Dialog), matching: find.text('22.800')), findsOneWidget,
+          reason: '止损不打');
+      expect(find.text('110.00'), findsNothing);
+      await tester.tap(
+          find.descendant(of: find.byType(Dialog), matching: find.byIcon(Icons.close)));
+      await tester.pumpAndSettle();
+
+      // 先 👁 再开 → 原值（弹窗打开时继承页头状态）
+      await tester.tap(find.byKey(const Key('revealToggle')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('批次'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('批次'));
+      await tester.pumpAndSettle();
+      expect(find.text('100 / 100'), findsOneWidget, reason: '显形：剩余/买入');
+      expect(find.text('110.00'), findsOneWidget, reason: '显形：盈亏');
+      expect(find.text('25.000'), findsOneWidget, reason: '显形：成本');
     });
   });
 }
