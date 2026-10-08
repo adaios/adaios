@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-05
 updated: 2026-10-09
 status: active
-lines: 122
+lines: 123
 depends-on: []
 related: [../../records/REVIEW.md, ../../rules/guides/git-workflow.md, ../../rules/guides/worktree-workflow.md]
 tags: [workspace, task, trading, ledger]
@@ -94,6 +94,7 @@ tags: [workspace, task, trading, ledger]
 - ✅ **`U-5` 空账号态**：真机不可得（建号需 admin 会话 / 另两账号密码非 adai 的）⇒ 改**测试级证据**（新用例 `新用户（无持仓）→ 分析屏人话空态`；web 471 → **472** 全绿）
 - ✅ **`G3` 已取得（2026-10-09）**：根因＝案例库整块在语义树里被合并成一个巨型节点（33 行共用），脚本匹配到它、点它等于点行体 ⇒ 给行内入口加锚点 `caseKline:<symbol>|<date>` 后一次点中（`v11-g3-case-kline.png`）
 - ✅ **`R10` 已修（2026-10-09）**：案例详情弹窗的特征 chips 仍插原始 double（`回撤 10.892041356095207%`）——`fmt()` 改「整数原样 / 小数 1 位」，与批 9 的列表行口径统一
+- ✅ **`U-4` 决策：暂不合并**（adai 2026-10-09）——K 线标记「同簇合并 + 悬停展开」保持现状（同日同向已合并；相邻日合并 + hover 属增强，图可辨不阻塞）。**web 端至此无待办项**。
 - ✅ **走查工具化（2026-10-09）**：`.agents/mechanism/scripts/audit-web.py`（一键起环境 + 语义锚点定位）+ 一级 Tab 加 `tab:<id>` 锚点（`_zoneIds`）——把"每次重建环境 + 猜坐标"这两块慢的根因拆掉
 
 **🟥 项处置（2026-10-09）**：
