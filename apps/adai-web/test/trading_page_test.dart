@@ -1228,6 +1228,36 @@ void main() {
       },
     );
 
+    testWidgets('新用户（无持仓）→ 分析屏人话空态（U-5 空账号态 · 测试级证据）', (tester) async {
+      // 背景：真机取证空账号态需要 admin 建号或空账号密码（本轮两者都不可得），
+      // 故按「该断言的地方就断言」补一条 walk-through：持仓为空 ⇒ 分析屏给人话空态，
+      // 不逼用户先手输代码、也不编造数据（承接 design-uiux §三 I-6）。
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/trades') return _json([]);
+        if (path == '/api/v1/trading/cases') return _json([]);
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.byKey(const Key('tabItem5')));   // 5 = 分析
+      await tester.pumpAndSettle();
+      expect(
+        // 精确到「分析屏」那一句：右栏「阿呆说」在无持仓时也会说「还没有持仓。」（另一处空态，同样合理）
+        find.textContaining('先导入持仓股'),
+        findsOneWidget,
+        reason: '空账号进分析屏给人话空态（不逼手输代码、不编数据）',
+      );
+    });
+
     testWidgets('空区间 → 空态文案 + 导入入口', (tester) async {
       final client = MockClient((request) async {
         final path = request.url.path;
