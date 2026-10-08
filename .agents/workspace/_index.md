@@ -5,7 +5,7 @@ version: 2
 created: 2026-10-04
 updated: 2026-10-09
 status: active
-lines: 202
+lines: 203
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index, workspace]
@@ -27,7 +27,7 @@ tags: [meta, index, workspace]
 
 > **规则**：**一个分支 = 一个目录 = 一个任务**（主键唯一 ⇒ **零冲突**）；目录里**需要什么才有什么**（轻活就一个 `LEDGER.md`）。
 
-## 文件清单（163 项）
+## 文件清单（164 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -173,6 +173,7 @@ tags: [meta, index, workspace]
 | `trading-plugin/audit-shots-app-20261009/app-3-watchlist.png` | app 走查实拍③：**自选只读段**（名称 代码 · 行业 · 信号；端点无行情就不给涨跌） | active |
 | `trading-plugin/audit-shots-app-20261009/app-4-push-settings.png` | app 走查实拍④（批 4）：**推送设置页**——12 个开关 + 「默认只在该说的时候说一句」；原能力从主页 Feed 右滑搬到交易页可直达 | active |
 | `trading-plugin/audit-shots-app-20261009/app-5-review-history.png` | app 走查实拍⑤（批 4）：**复盘历史页**——日期倒序 + 「看这天的复盘 ›」；把此前**零入口**的能力接上（后端端点与 API 早已存在） | active |
+| `trading-plugin/audit-shots-app-20261009/app-6-push-landing.png` | app 走查实拍⑥（批 5）：**提醒落点**——模拟真实「点通知」后落在**有研新材**那一行并就地展开（另只保持收起）；与真实点击同一条深链路由 | active |
 | `trading-plugin/requirement-review-20261006-r2.md` | 第一轮问题修复后的复审——12 条判据全部通过，结论：收敛（无 P0/P1），可送人签字；仅剩 P3（一笔生命周… | active |
 | `trading-plugin/requirement-review-20261006-r3.md` | A 归位（业务规则并回需求、机制留给设计）之后的复审——12 条判据全过 + 归位核对通过；结论：收敛，可送人签… | active |
 | `trading-plugin/requirement-review-20261006.md` | 用「需求文稿审核官（草案）」的 12 条判据，对本分支需求文稿的第一轮审核——结论：不收敛（P1×2 / P2×… | active |

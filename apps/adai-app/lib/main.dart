@@ -12,6 +12,8 @@ import 'pages/account_select_page.dart';
 import 'pages/launcher_page.dart';
 import 'pages/login_page.dart';
 import 'pages/profile_page.dart';
+import 'pages/trading_page.dart';
+import 'utils/trading_deeplink.dart';
 import 'services/push_service.dart';
 import 'services/entry_intent_service.dart';
 import 'services/share_extension_service.dart';
@@ -392,9 +394,22 @@ class _DualWorldShellState extends State<DualWorldShell> {
     final status = await PushService.init(
       api: _api,
       onTap: (type, deepLink) {
-        // 点通知 → 回到 Feed 世界并刷新：让「点开看到的就是那条消息」成立
-        // （通知正文讲止损/收盘小结，落点却在背面 Launcher 会很怪）
         if (!mounted) return;
+        // 2026-10-09（批 5 · design-app §三 I-7「提醒落点」）：**交易类**告警（带 `trading:<symbol>`）
+        // 直接落到**那只票并就地展开**——「破了你的线 · 云南锗业」点开就该看见它，
+        // 而不是停在列表顶部自己找；依据仍在 web（展开态里有「这只票阿呆怎么说」）。
+        final focusSym = parseTradingDeepLink(deepLink);
+        if (focusSym != null) {
+          setState(() => _showWorldB = false); // 先回 Feed 世界，再压交易页（返回时落回 Feed）
+          _feedRefreshTick.value++;            // Feed 也刷新一次：那张推送卡还在名单里
+          // 用本页 context 上的 Navigator（= RootApp 的 MaterialApp 那一个，
+          // 它就是靠 `_navigatorKey` 暴露给账号切换的同一个 Navigator）。
+          Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => TradingPage(api: _api, focusSymbol: focusSym),
+          ));
+          return;
+        }
+        // 其他类型（收盘小结 / 计划提醒 / 学习复习…）保持原行为：点通知 → 回 Feed 世界 + 定位那条
         setState(() => _showWorldB = false);
         // REVIEW P2-APNs1：有深链就顺便定位到那一条（MainPage 命中后高亮 2.5 秒）
         if (deepLink != null && deepLink.isNotEmpty) {

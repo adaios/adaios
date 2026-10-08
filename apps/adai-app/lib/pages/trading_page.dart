@@ -27,11 +27,16 @@ import '../widgets/review_dialog.dart';
 class TradingPage extends StatefulWidget {
   final ApiService api;
 
+  /// 2026-10-09（批 5 · `R-07`/`R-11` 提醒落点）：从**推送点进来**时带的那只票
+  /// （壳层用 `parseTradingDeepLink` 解析 `trading:600206` 得到）——进页后**就地展开**它。
+  /// 为 null = 普通进入（页面行为与以前完全一致）。
+  final String? focusSymbol;
+
   /// 测试钩子：注入选图结果（等价 input_bar 的 debugInjectImages 模式，widget 测试不真调相册）。
   @visibleForTesting
   final Future<List<PickedImage>> Function()? debugPickImages;
 
-  const TradingPage({super.key, required this.api, this.debugPickImages});
+  const TradingPage({super.key, required this.api, this.debugPickImages, this.focusSymbol});
 
   @override
   State<TradingPage> createState() => _TradingPageState();
@@ -42,6 +47,10 @@ class _TradingPageState extends State<TradingPage> {
   /// 交易首页「一行 + 就地展开」的展开态（design-app §三 I-2）——按 symbol 记；
   /// 刷新不清空（用户展开的那只票不该因为一次自动刷新就收回去）。
   final Set<String> _expandedPositions = {};
+  /// 提醒落点只需生效一次（进页那次）——之后用户自己点开/收起不受影响。
+  bool _focusedOnce = false;
+  /// 每只票一行的 key（提醒落点要把它滚进视口）。
+  final Map<String, GlobalKey> _positionRowKeys = {};
   /// 自选（只读一段；管理归 web）——接口失败静默保持空，不编空壳（design-app §三 I-3）。
   List<WatchlistItemDto> _watchlist = const [];
   // ── 次日操作计划（RFC 20261003-trading-plan-and-review-loop §二~四，2026-10-03）──
@@ -220,6 +229,24 @@ class _TradingPageState extends State<TradingPage> {
     await _loadData();
   }
 
+  /// 2026-10-09（批 5 · 提醒落点）：点推送进来时，**直接落到那只票并就地展开**——
+  /// 而不是停在列表顶部让用户自己找（design-app §三 I-7）。
+  /// 不在持仓里（已清仓/只自选）时**如实不动**：不编一行、也不跳别处。
+  void _applyFocusSymbol() {
+    final sym = widget.focusSymbol;
+    if (sym == null || sym.isEmpty || _focusedOnce) return;
+    _focusedOnce = true;
+    if (!_positions.any((p) => p.symbol == sym)) return; // 不在这几只里 → 保持原样
+    setState(() => _expandedPositions.add(sym));
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final ctx = _positionRowKeys[sym]?.currentContext;
+      if (ctx != null) {
+        await Scrollable.ensureVisible(ctx,
+            duration: const Duration(milliseconds: 350), alignment: 0.15);
+      }
+    });
+  }
+
   Future<void> _loadData() async {
     try {
       final positionsResp = await _fetchPositions();
@@ -231,6 +258,7 @@ class _TradingPageState extends State<TradingPage> {
         _loading = false;
       });
       _checkActivity(); // 复盘横幅检测（静默，失败不影响页面）
+      _applyFocusSymbol(); // 批 5：推送点进来 → 就地展开那只票
       _loadAux();       // 账户快照（异步，不阻塞主数据）
       _loadDaily();     // RFC 20260822：当日交易复盘（异步，失败静默）
       _loadLots();      // RFC 20260825：逐笔批次简版（异步，失败静默）
@@ -3318,6 +3346,8 @@ class _TradingPageState extends State<TradingPage> {
     final dayStr = dayChg == null ? '—' : '${dayChg >= 0 ? '+' : ''}${dayChg.toStringAsFixed(1)}%';
     final line = readHoldLine(currentPrice: p.currentPrice, stopLossPrice: p.stopLossPrice);
     return InkWell(
+      // 批 5：提醒落点要滚到这一行，所以每只票挂一个 key
+      key: _positionRowKeys.putIfAbsent(p.symbol, () => GlobalKey()),
       onTap: () => setState(() {
         if (expanded) {
           _expandedPositions.remove(p.symbol);

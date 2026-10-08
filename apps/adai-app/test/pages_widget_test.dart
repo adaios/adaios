@@ -851,6 +851,56 @@ void main() {
 
     // ── 2026-10-09（批 4 · IA-8）：把两个「入口隐蔽 / 零入口」的屏补上 ──
 
+    // ── 2026-10-09（批 5 · R-07/R-11 提醒落点）：点推送 → 落到那只票并就地展开 ──
+
+    testWidgets('提醒落点：带 focusSymbol 进页 → 那只票就地展开（其余保持收起）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/positions'] = (_) async => _json({
+            'positions': [
+              {'symbol': '002428', 'name': '云南锗业', 'quantity': 100,
+                'avgCost': 90.0, 'currentPrice': 85.71,
+                'marketValue': 8571.0, 'pnl': -429.0, 'pnlPercent': -4.8,
+                'stopLossPrice': 88.1},
+              {'symbol': '600206', 'name': '有研新材', 'quantity': 200,
+                'avgCost': 50.0, 'currentPrice': 49.0,
+                'marketValue': 9800.0, 'pnl': -200.0, 'pnlPercent': -2.0,
+                'stopLossPrice': 49.0},
+            ],
+          });
+      await tester.pumpWidget(MaterialApp(
+        home: TradingPage(api: _apiFor(b), focusSymbol: '600206'),
+      ));
+      await tester.pumpAndSettle();
+
+      // 展开态的动作行只出现一次（就是被推送那一只）
+      expect(find.text('这只票阿呆怎么说'), findsOneWidget);
+      expect(find.text('有研新材'), findsOneWidget);
+      expect(find.text('云南锗业'), findsOneWidget);
+      expect(find.text('破了你的 49.00'), findsOneWidget); // 有研新材那一行（破线中）
+    });
+
+    testWidgets('提醒落点：focusSymbol 不在持仓里 → 如实不动（不编一行、不崩）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/positions'] = (_) async => _json({
+            'positions': [
+              {'symbol': '002428', 'name': '云南锗业', 'quantity': 100,
+                'avgCost': 90.0, 'currentPrice': 85.71,
+                'marketValue': 8571.0, 'pnl': -429.0, 'pnlPercent': -4.8,
+                'stopLossPrice': 88.1},
+            ],
+          });
+      await tester.pumpWidget(MaterialApp(
+        home: TradingPage(api: _apiFor(b), focusSymbol: '000001'),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('云南锗业'), findsOneWidget);
+      expect(find.text('这只票阿呆怎么说'), findsNothing, reason: '不在持仓里 → 不展开任何行');
+      expect(find.text('重试'), findsNothing);
+    });
+
     testWidgets('推送设置：从交易页直达 + 12 个开关 + 改一个发 PUT（清单唯一一份）', (tester) async {
       final b = _Backend();
       mockBase(b);
@@ -860,10 +910,8 @@ void main() {
             'loss': true, 'gain': true, 'break-cost': true, 'market': true,
           });
       String? putPath;
-      String? putBody;
       b.handlers['/api/v1/trading/push-settings/plan'] = (req) async {
         putPath = req.url.path;
-        putBody = req.body;
         return _json({'enabled': false});
       };
       await pumpTrading(tester, b);
