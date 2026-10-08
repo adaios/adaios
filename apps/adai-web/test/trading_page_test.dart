@@ -8097,6 +8097,13 @@ void _marketStageGroup() {
         '¥0.00',
         reason: 'mock todayPnl=0 且无 pnl/periods → 不给比例后缀（不编 0%）',
       );
+      // 批 9（独立审核 `review-uiux-visual` P2-3 · 2026-10-08）：**0 值不着色**——
+      // 原先着色条件 `todayPnl >= 0` 让「+0.00%」也走涨色红；现为 涨红 / 跌绿 / 持平中性灰。
+      expect(
+        tester.widget<Text>(find.byKey(const Key('stripToday'))).style?.color,
+        AppColors.darkGrey3,
+        reason: '当日盈亏 = 0 → 中性灰（不伪造涨跌方向）',
+      );
       expect(cell('stripTotalPnl'), '—', reason: 'principal 缺省 = 0 → 不给误导数值');
       expect(
         find.text('还没记过转入/转出'),

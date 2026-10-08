@@ -53,6 +53,15 @@ String _fmtShortDate(String yyyyMmDd) {
 String _fmtDailyMoney(double? v) => v == null ? '—' : v.toStringAsFixed(2);
 String _fmtDailyPct(double? v) => v == null ? '—' : '${v.toStringAsFixed(2)}%';
 
+/// 批 9（独立审核 `review-uiux-ixd` P2-2 · 2026-10-08）：案例行的特征数值统一 **1 位小数**。
+/// 原先直接插值 `features["…"]`，double 会把 15~18 位小数打进 UI
+/// （实拍曾出现「回撤 14.737310774710608% · J -4.319124970794519」）；null 一律「—」不编 0。
+String _fmtFeat(dynamic v, {String suffix = ''}) {
+  if (v == null) return '—';
+  final n = v is num ? v : num.tryParse('$v');
+  return n == null ? '—' : '${n.toStringAsFixed(1)}$suffix';
+}
+
 /// m6（2026-10-07 · 原型 .wd-eye「👁 看金额」）：**金额与数量类默认打码**——
 /// 设计口径：数量与成本打码、现价与止损保留（uiux-discovery §隐私层）；
 /// 页头 👁 本地解开显形（服务「递手机给人看」场景），不持久化。
@@ -2910,7 +2919,11 @@ class _TradingPageState extends State<TradingPage>
           _stripCell(
             '当日',
             todayText,
-            color: todayPnl >= 0 ? AppColors.darkRed : AppColors.darkGreen,
+            // 批 9（独立审核 `review-uiux-visual` P2-3）：**0 值不着色**（原先 `>= 0` 让 +0.00% 也变红）。
+            // 涨红 / 跌绿 / 持平中性灰——与「未知 / 0 值不伪造」同一条口径。
+            color: todayPnl > 0
+                ? AppColors.darkRed
+                : (todayPnl < 0 ? AppColors.darkGreen : AppColors.darkGrey3),
             valueKey: const Key('stripToday'),
             note: hasAccount && todayPnl != 0
                 ? todayPnlSourceNote(a.todayPnlSource, a.snapshotDate)
@@ -5416,6 +5429,15 @@ class _TradingPageState extends State<TradingPage>
         // 标题下方（候选列表之后 ≈1242px 处），首屏看不见 ⇒ 用户视角「已收下多少」无处可查。
         // 位置对齐原型 web-5（四格在页头之下、两个半区之上）。全空时本函数自返回空，不叠空壳。
         ..._buildCaseStatStrip(),
+        // 批 9（独立审核 `review-uiux-ixd` P3-2 · 2026-10-08）：补**术语定义行**——原先 B1/B2 与
+        // 「命中 Rxx」在案例页零解释（自选页有同款口径），而页内两张表（候选小表 / 案例库）都会用到。
+        const Padding(
+          padding: EdgeInsets.only(bottom: 8),
+          child: Text(
+            '类型说明：B1=回调缩量低吸 · B2=放量突破右侧；命中 Rxx = 踩中你规则里的第 xx 条（判定是提示不是指令）',
+            style: TextStyle(fontSize: 11, color: AppColors.darkGrey5),
+          ),
+        ),
         // 批 ③：候选半区（从记录里长出来 + 已经收下的）在案例列表上方——先认新的，再看库
         ..._buildCaseCandidateSection(),
         Row(
@@ -5988,7 +6010,9 @@ class _TradingPageState extends State<TradingPage>
             child: Text(
               desc.isNotEmpty
                   ? desc
-                  : '回撤 ${features["drawdownFromHighPct"] ?? '—'}% · 量比 ${features["volumeShrinkRatio"] ?? '—'} · J ${features["kdjJ"] ?? '—'}',
+                  : '回撤 ${_fmtFeat(features["drawdownFromHighPct"], suffix: '%')} · '
+                      '量比 ${_fmtFeat(features["volumeShrinkRatio"])} · '
+                      'J ${_fmtFeat(features["kdjJ"])}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5),
