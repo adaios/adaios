@@ -5,7 +5,7 @@ version: 2
 created: 2026-10-04
 updated: 2026-10-09
 status: active
-lines: 185
+lines: 193
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index, workspace]
@@ -27,7 +27,7 @@ tags: [meta, index, workspace]
 
 > **规则**：**一个分支 = 一个目录 = 一个任务**（主键唯一 ⇒ **零冲突**）；目录里**需要什么才有什么**（轻活就一个 `LEDGER.md`）。
 
-## 文件清单（146 项）
+## 文件清单（154 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -101,8 +101,13 @@ tags: [meta, index, workspace]
 | `trading-plugin/audit-shots-20261008/v9-d-1-paste.png` | — | active |
 | `trading-plugin/audit-shots-20261008/v9-d-2-instant.png` | — | active |
 | `trading-plugin/audit-shots-20261008/v9-e-import-precheck.png` | — | active |
+| `trading-plugin/audit-shots-20261009/v10-case-kline.png` | — | active |
+| `trading-plugin/audit-shots-20261009/v10-tab-analysis.png` | — | active |
+| `trading-plugin/audit-shots-20261009/v10-tab-cases.png` | — | active |
+| `trading-plugin/audit-shots-20261009/v10-tab-holding.png` | — | active |
 | `trading-plugin/blueprint.md` | 交易插件的概念与流程，按我们逐步讨论的顺序记录——定位 · 规则 · 没有规则怎么办 · 清仓股+历史成交 · … | active |
 | `trading-plugin/decisions.md` | 历轮 adai 拍板：设计 v1 的 6 项未决（U1–U6）+ 审核 v1 战略级 2 条（S1/S2）+ v… | active |
+| `trading-plugin/design-app-20261009.md` | app 端这一轮的**设计规格**——把已圈选的方向（甲·清单优先）与已出可点稿收成可对照的设计稿：首屏四层 I… | active |
 | `trading-plugin/design-final-20261006.md` | 交易线设计 final 稿——以 v2 正文为底合并 v3 增量与两份 v3 审核的整改，收 4 类阻塞项（§9… | draft |
 | `trading-plugin/design-kline-r04-20261007.md` | 把「案例专图」泛化成横切四个地方的通用 K 线——四区（主图+量+MACD+KDJ）、我的买卖点标记、止损线/峰… | active |
 | `trading-plugin/design-uiux-20261007.md` | UI/UX 这一轮的**设计规格**——把散在方向稿/批注/决算/实施清单里的已拍板决定收成一份可对照的设计稿：… | active |
@@ -110,6 +115,7 @@ tags: [meta, index, workspace]
 | `trading-plugin/design-v2-20261006.md` | 交易插件重做 · 设计稿 v2（设计文档编写者）——本轮回应 13 条（S1/S2 · P1×3 · P2×5 … | draft |
 | `trading-plugin/design-v3-20261006.md` | 设计第 3 轮的增量稿——正文仍看 design-v2；本稿只写"本轮改什么"（战略级 3 · P1×8 已改；… | draft |
 | `trading-plugin/diff-decisions-20261007.md` | 对 review-web-uiux-20261007（v2）判定的「实现比设计多出来」的项逐条拉单并给四档处置建… | active |
+| `trading-plugin/explore-app-trading-page-20261009.md` | apps/adai-app/lib/pages/trading_page.dart 结构地图——供「首屏四层」重… | active |
 | `trading-plugin/frontend-gap-20261006.md` | 编码段只交付后端（67/78 文件），设计 §6「三端呈现」的 web/app 范围 0 实现——补做清单 + … | active |
 | `trading-plugin/handoff-20261007.md` | 给下一个 AI 工具的交接：目标 · 已完成（含 commit）· 未完成清单 · 必读约束与坑 · 验证与本地… | active |
 | `trading-plugin/handoff-20261008.md` | 给下一个 AI 工具的交接：现状（体验重构 7 批 + 两轮走查完成）· 未完成（批 8 R-10 · 待派设计… | active |
@@ -157,6 +163,7 @@ tags: [meta, index, workspace]
 | `trading-plugin/mockups/trading-ui-directions.html` | — | active |
 | `trading-plugin/mockups/trading-web-full.html` | — | active |
 | `trading-plugin/overview.md` | trading 插件的「一页总览」——定位与整体现状 · 功能全景 · 全部相关 RFC · 未修与待办 · 未… | active |
+| `trading-plugin/plan-app-20261009.md` | app 端体验重构的一次性执行方案——web 轮已闭环、app 方向已圈选，本件定「交付什么 · 怎么分段 · … | active |
 | `trading-plugin/requirement-review-20261006-r2.md` | 第一轮问题修复后的复审——12 条判据全部通过，结论：收敛（无 P0/P1），可送人签字；仅剩 P3（一笔生命周… | active |
 | `trading-plugin/requirement-review-20261006-r3.md` | A 归位（业务规则并回需求、机制留给设计）之后的复审——12 条判据全过 + 归位核对通过；结论：收敛，可送人签… | active |
 | `trading-plugin/requirement-review-20261006.md` | 用「需求文稿审核官（草案）」的 12 条判据，对本分支需求文稿的第一轮审核——结论：不收敛（P1×2 / P2×… | active |
@@ -173,6 +180,7 @@ tags: [meta, index, workspace]
 | `trading-plugin/review-v4-20261006.md` | 产品面收敛性审核——只判上轮战略 S2 + 产品 P1-1 / P1-2 + 三点复核（新引 2 条）是否真闭环… | draft |
 | `trading-plugin/review-v4-backend-20261006.md` | 后端面收敛性审核——只判上轮 2 条战略（S1 闸门 / S2 §9 基线）+ 6 条 P1 是否真闭环 + 本… | active |
 | `trading-plugin/review-web-uiux-20261007.md` | 以「本地真机渲染 + 原型可点稿逐屏比对」审核 web 端重构——8 屏对照结论、与护栏口径的核对（涨红跌绿/打… | active |
+| `trading-plugin/scope-app-20261009.md` | app 端这一轮的交付完备性表——从 design-app §二/§三 与 design-final §6「三端… | active |
 | `trading-plugin/scope-frontend-20261006.md` | 交付完备性机制首跑——设计 §6「三端呈现」逐条对照：本批= R-12 统一导入 + R-05 web 三粒度分… | active |
 | `trading-plugin/scope-uiux-20261008.md` | 本轮（IA 重构 + 交互/视觉收口 + 7 批实施）的交付完备性表——从设计 §6 逐条抄条目，填计划/状态/… | active |
 | `trading-plugin/thinking-log.md` | 本分支 AI 的思考过程落盘——每轮写「看到什么 → 怎么判断 → 为什么这么选 → 放弃了什么」；与产物（re… | active |

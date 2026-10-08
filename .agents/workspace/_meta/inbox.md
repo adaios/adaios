@@ -3,9 +3,9 @@ title: 派单收件箱（子代理投递兜底通道）
 description: 消息通道丢载荷时的兜底派单通道；任何 AI 开工先看本文件（AGENTS.md 规则 0c）
 version: 1
 created: 2026-10-06
-updated: 2026-10-08
+updated: 2026-10-09
 status: active
-lines: 140
+lines: 170
 depends-on: []
 related:
   - ./process-issues-20261006.md
@@ -18,6 +18,36 @@ tags: [workspace, meta, dispatch]
 > **任何 AI 开工先看本文件**（`AGENTS.md` 规则 0c）。**有分配给你的任务就执行；没有就忽略**。
 
 ## 当前待处理派单
+
+> **本轮（2026-10-09 · app 端体验重构）待办派单 = `D-20261009-01`（结构测绘）· `D-20261009-02`（设计规格独立审核）**；下方 `D-20261008-*` 均已交付（见 `review-uiux-ixd-20261008.md` / `review-uiux-visual-20261008.md`），不要再领。**只领与你角色匹配的那一条**（测绘＝explorer；独立审核＝ux-interaction-reviewer），已交付的那条不要再做。
+
+- **D-20261009-02**（**`design-app` 独立审核 · 交互层** · `ux-interaction-reviewer`）
+  - 【任务】**只判交互层**：`design-app-20261009.md` §二（首屏四层 IA）与 §三（I-1 ~ I-8 八条交互决定）是否**流程完整 · 反馈到位 · 异常有兜底 · 状态不歧义**；并与**已圈选的可点稿**独立对照（`.agents/workspace/trading-plugin/mockups/png/ref-1.png` · `ref-2.png` · `flow-1..4.png`）——**判「规格是否忠实于已拍板的方向」**，不要照抄主链结论。
+    **不判**：代码实现细节（归 `code-frontend-reviewer`，稍后另派）· 视觉观感（归 `ux-visual-reviewer`）· 功能该不该做（已拍板：`plan-app-20261009.md` §四 11 条默认）。
+  - 【角色真相源】`.agents/toolkit/roles/ux-interaction-reviewer.md` + `.agents/toolkit/checklists/ux-interaction-reviewer.md`（**动手前先读**）
+  - 【材料】（不要自己找）
+    - **审核对象**：`.agents/workspace/trading-plugin/design-app-20261009.md`
+    - **方向与原型**：`.agents/workspace/trading-plugin/uiux-discovery-20261007.md` §5.2–§5.5、§十（分层口径）
+    - **形态草案**：`.agents/direction/rfc/20260924-trading-app-form.md` §四/§五
+    - **本轮角色边界**：`.agents/workspace/trading-plugin/plan-app-20261009.md` §三（范围）
+    - **现状事实**：`.agents/workspace/trading-plugin/explore-app-trading-page-20261009.md`（若尚未落盘，可读 `apps/adai-app/lib/pages/trading_page.dart` 的 `build()` 与 `_buildPositionCards`）
+    - **背景一句话**：app 端体验重构刚定规格（web 轮已闭环，那轮 14 条审核建议全部处理）；本轮方向＝「甲·清单优先：密清单 + 结论在最上面一行」。
+  - 【产出】`.agents/workspace/trading-plugin/review-app-design-20261009.md`
+  - 【第一动作】先把 `.agents/workspace/_templates/review-design.md` **复制**成上面的产出文件（先落空文件再填）
+  - 【时间】3 分钟内必须看到文件；看不到主链会重派
+  - 【硬要求】中文；**只报告不改**（B7）；**不要改 `_index.md`**（主链统一登记）；frontmatter 10 字段齐全 + `lines:` 与实际一致；写一节落一节
+
+- **D-20261009-01**（**`apps/adai-app` 交易页结构测绘** · `explorer`）
+  - 【任务】**只做一件事**：把 `apps/adai-app/lib/pages/trading_page.dart`（4215 行）的**结构地图**落成一份文件，供主链做「首屏四层」重构（判断句 / 入账 / 持仓一行+就地展开 / 今天时态区）。要回答六项：
+    ① `build()` 内 `ListView.children` 的**逐项顺序 + 行号**；
+    ② 关键构建器（`_buildPrivacyBar` · `_buildEntrySection` · `_buildUploadPlaceholder` · `_buildCandidatesCard` · `_buildConfirmReceipt` · `_buildDroppedNotice` · `_buildDayStatusRow` · `_buildDailyPositionsHeader` · `_buildPositionCards` · `_buildReviewBanner` · `_buildSnapshotCard` · `_buildCashSection` · `_buildMarketStageCard` · `_buildPlanSection` · `_buildFoldSection`）的**起始行号 + 一句话职责 + 依赖的状态字段**；
+    ③ **打码/隐私**的全部状态与开关（字段名 · 默认值 · 哪些组件读它 · 持久化在哪）；
+    ④ **持仓数据模型**（`PositionItem` 在哪定义 · 字段清单 · 来自哪个 DTO / 端点）；
+    ⑤ **测试触点**：`apps/adai-app/test/` 里哪些文件、哪些锚点（`Key` / 文案 / 语义）会因「首屏重排」而红；
+    ⑥ **入口**：`main_page.dart` / `launcher_page.dart` 怎么进 `TradingPage`（谁调、有没有传参）。
+  - 【产出】`.agents/workspace/trading-plugin/explore-app-trading-page-20261009.md`
+  - 【第一动作】先 `cp .agents/workspace/_templates/design.md` 成上面的产出文件（**先落空文件再填**）——这是唯一的送达证明
+  - 【硬要求】中文；**只报告不改代码/不改任何现有文件**；每条给 `文件:行号`；3 分钟无落盘＝主链重派
 
 - **D-20261008-01**（**`design-uiux` 独立设计审核 · 交互层** · `ux-interaction-reviewer`）
   - 【任务】**只判交互层**：`design-uiux-20261007.md` §三（I-1 ~ I-7）七条交互决定，是否**流程完整 · 反馈到位 · 异常有兜底 · 状态不歧义**；并**独立复核** `review-web-uiux-20261007.md` §七/§八 的实拍结论是否成立（尤其 §8.1 对 `R6` 的更正）。

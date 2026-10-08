@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-05
 updated: 2026-10-09
 status: active
-lines: 102
+lines: 103
 depends-on: []
 related: [../../records/REVIEW.md, ../../rules/guides/git-workflow.md, ../../rules/guides/worktree-workflow.md]
 tags: [workspace, task, trading, ledger]
@@ -80,6 +80,7 @@ tags: [workspace, task, trading, ledger]
 - ✅ **走查 v9**：`P2-3` 四组证据 → **3 组补齐**（打码显形态 · 清仓窄窗 · 导入预检态）· 1 组 3/4（案例 K 线入口）
 - ✅ **`U-5` 空账号态**：真机不可得（建号需 admin 会话 / 另两账号密码非 adai 的）⇒ 改**测试级证据**（新用例 `新用户（无持仓）→ 分析屏人话空态`；web 471 → **472** 全绿）
 - ⏳ **唯一遗留**：`G3` 案例 K 线入口实拍（非缺陷，取证成本问题）
+- ✅ **走查工具化（2026-10-09）**：`.agents/mechanism/scripts/audit-web.py`（一键起环境 + 语义锚点定位）+ 一级 Tab 加 `tab:<id>` 锚点（`_zoneIds`）——把"每次重建环境 + 猜坐标"这两块慢的根因拆掉；`G3` 仍未过（见 handoff §五之二）
 - **交接**：`handoff-20261009.md`（取代 10-08 那份）
 
 > **在制品文档地图（2026-10-08 定格）**：需求 `requirement.md` + 3 轮审核 · 设计 `design-v1~v3` + `design-final` + `design-kline-r04` + **`design-uiux`** · 设计审核 `review-v1~v4`（多官）· 交付 `scope-frontend` + **`scope-uiux`** · 走查 **`review-web-uiux`**（§六/§七 两轮）+ **`review-annotations`**（批注与决策）+ **`diff-decisions`**（差异处置）+ **`impl-plan`** · 素材 `uiux-discovery` / `input` / `blueprint` / `overview` / `frontend-gap` · 交接 `handoff-*` · 账本 `LEDGER` · 思考 `thinking-log`

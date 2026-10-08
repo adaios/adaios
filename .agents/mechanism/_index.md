@@ -3,9 +3,9 @@ title: mechanism/ 目录索引
 description: .agents/mechanism/ 的文件清单与过期判断；目录的职责边界与依赖契约见 ./_directory.md
 version: 1
 created: 2026-10-04
-updated: 2026-10-07
+updated: 2026-10-09
 status: active
-lines: 79
+lines: 80
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index]
@@ -17,7 +17,7 @@ tags: [meta, index]
 
 **职责**：见 [`_directory.md`](./_directory.md)（此处不重复——S5 判据：同一知识只在一处详述）
 
-## 文件清单（44 项）
+## 文件清单（45 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -48,6 +48,7 @@ tags: [meta, index]
 | `scripts/ai-sync-agents.sh` | 把「审查官」真相源生成为各工具的 subagent 定义（换机 / 改动后执行） | active |
 | `scripts/ai-sync-all.sh` | AI 资产多工具出口：**一条命令**全量重建 + 自检 | active |
 | `scripts/ai-worktree-prep.sh` | worktree 外挂补齐（AdaiOS 专属）——新建 worktree 后第一件事 | active |
+| `scripts/audit-web.py` | — | active |
 | `scripts/code-backup-prod.sh` | 生产数据定期备份脚本（服务器迁移/到期用，2026-08-14 创建，2026-08-20 更新， | active |
 | `scripts/code-deploy-gate.sh` | 部署门禁 + 部署后验证（触发侧：部署前强制 review，部署后自动 smoke） | active |
 | `scripts/data-migrate-user-layer.sh` | 数据迁移脚本：data/ → data/{userId}/（多用户架构，2026-08-02） | active |

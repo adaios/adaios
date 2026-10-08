@@ -3441,42 +3441,57 @@ class _TradingPageState extends State<TradingPage>
     );
   }
 
+  /// 一级 8 区的**稳定语义 id**（2026-10-09 加）：给语义树一个**不随文案变**的锚点。
+  ///
+  /// 为什么需要：CanvasKit 渲染下 DOM 里没有元素，UI 走查只能靠"截图目测坐标"，
+  /// 结果反复点偏（案例 K 线入口三次没点中、Tab 因横幅出现下移而我还在用旧 y）。
+  /// 有了 `tab:<id>` 这个 label，脚本可以 `getByLabel` 精确定位，**同时改善读屏体验**。
+  static const List<String> _zoneIds = [
+    'holding', 'watch', 'cleared', 'funds', 'rules', 'analysis', 'cases', 'plan',
+  ];
+
   /// 单个一级 Tab（D2c）：两字区名 +（可选）计数 badge；选中亮字、未选中灰字。
   Tab _zoneTab(int index, String label, int? count, {required bool active}) {
     return Tab(
       key: Key('tabItem$index'),
       height: 38,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-              color: active ? AppColors.darkGrey1 : AppColors.darkGrey5,
-            ),
-          ),
-          if (count != null) ...[
-            const SizedBox(width: 5),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-              decoration: BoxDecoration(
-                color: active
-                    ? AppColors.darkGreen.withValues(alpha: 0.16)
-                    : AppColors.darkSurface2,
-                borderRadius: BorderRadius.circular(7),
+      // 2026-10-09：外层显式语义（label = `tab:<id>`）——走查脚本与读屏共用同一锚点。
+      child: Semantics(
+        label: 'tab:${_zoneIds[index]}',
+        button: true,
+        selected: active,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+                color: active ? AppColors.darkGrey1 : AppColors.darkGrey5,
               ),
-              child: Text(
-                '$count',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: active ? AppColors.darkGreen : AppColors.darkGrey5,
+            ),
+            if (count != null) ...[
+              const SizedBox(width: 5),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: active
+                      ? AppColors.darkGreen.withValues(alpha: 0.16)
+                      : AppColors.darkSurface2,
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: Text(
+                  '$count',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: active ? AppColors.darkGreen : AppColors.darkGrey5,
+                  ),
                 ),
               ),
-            ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
