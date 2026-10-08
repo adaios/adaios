@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-05
 updated: 2026-10-09
 status: active
-lines: 128
+lines: 131
 depends-on: []
 related: [../../records/REVIEW.md, ../../rules/guides/git-workflow.md, ../../rules/guides/worktree-workflow.md]
 tags: [workspace, task, trading, ledger]
@@ -50,14 +50,17 @@ tags: [workspace, task, trading, ledger]
   右滑那套共用一份 `widgets/push_settings.dart`；非 iOS 端按 D2 禁用并如实告知）· **复盘历史页**（日期倒序 → 点开复用
   同一个复盘弹窗，反哺入库一并可用）——后者此前是**零入口**能力（后端端点 + app API 早已齐，没有任何页面调用）。
   真机实拍随批入库（`audit-shots-app-20261009/app-4` · `app-5`）。
-  **未交付（去向）**：① `R-07` / `R-11` **提醒落点**（推送点开 → 就地展开）——**文案库 v1 已出**
-  （`design-push-copy-20261009.md`，含 4 条待拍），拍完即可实现；② **推送真到达 / 外部视角审核**——
-  需生产 APNs 与「给人用」场景；③ `ux-visual` 视觉层审核 + 外部视角三官（陌生人 / 社会性 / 支持台）**未派**；
-  ④ 截图入账**真图 VLM 链路**未在真机跑（需真实成交截图）。
-  **真机走查**：已完成（第 1 轮，五张实拍），取证方式可复跑——见 `review-app-uiux-20261009.md` §1.1。
-  **主仓库收口项**：`change-log.md` 追加本批一行 · `REVIEW.md` 里 `P1-交易101` 按本批范围改写（web 已完成；app 首屏四层 /
-  入账主线 / 批 4 两屏已交付；**仅剩提醒落点**）· `trading-features.md` §五/§六（app 形态已变：首屏四层 + 今天区四入口 +
-  推送设置页 + 复盘历史页，需按新形态重写）。
+  **批 5 已交付（2026-10-09 · `0330da10`）**：**提醒落点**——`trading:<代码>` 深链解析（`utils/trading_deeplink.dart`）
+  → 交易类告警点开直接落到**该票并就地展开**（`_applyFocusSymbol`，不在持仓里则如实不动），其他类型保持回 Feed 定位。
+  `R-07` / `R-11` 在 `scope-app` 转**已交付**；**推送文案库 v1 四条已拍板**（`design-push-copy-20261009.md` §五）。
+  **未交付（去向）**：① **推送文案本体**（后端 `TradingSessionPushService` / `MarketAlertService` 的措辞与「无事不发」判据）
+  —— 属**后端批次**，文案已定、可直接开工；② **推送真到达**——需生产 APNs（本轮「点通知」是通道级模拟，与真实点击同一路由）；
+  ③ `ux-visual` 视觉层审核 + 外部视角三官（陌生人 / 社会性 / 支持台）**未派**；④ 截图入账**真图 VLM 链路**未在真机跑。
+  **真机走查**：已完成（第 1 轮，**六张实拍**：首屏四层 / 持仓展开 / 自选只读 / 推送设置 / 复盘历史 / 提醒落点），
+  取证方式可复跑——见 `review-app-uiux-20261009.md` §1.1。
+  **主仓库收口项**：`change-log.md` 追加本批一行 · `REVIEW.md` 里 `P1-交易101` 按本批范围改写——**web 端与 app 端
+  （首屏四层 / 入账主线 / 批 4 两屏 / 批 5 提醒落点）均已交付，可考虑出表**（残留：推送文案本体属后端批次、真机推送到达未验）·
+  `trading-features.md` §五/§六（app 形态已变：首屏四层 + 今天区四入口 + 推送设置页 + 复盘历史页 + 提醒落点，需按新形态重写）。
 
 - 🟥 **未交付：前端整体（web / app）——编码段只交了后端（2026-10-06 发现）**
   **设计 §6「三端呈现」的 web/app 范围 0 实现**：本批 78 文件里 **67 个是后端**，前端三端 11 个文件**全是**推送卡徽章 / B1 文案那类顺手修复；`R-02`～`R-13` 的界面**一个都没做**（新端点 `advisory` / `rules/*` / `analysis/*` / `trading/import` 在 `apps/adai-web/` **0 引用**）。
