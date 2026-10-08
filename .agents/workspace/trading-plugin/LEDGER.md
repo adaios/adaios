@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-05
 updated: 2026-10-09
 status: active
-lines: 103
+lines: 116
 depends-on: []
 related: [../../records/REVIEW.md, ../../rules/guides/git-workflow.md, ../../rules/guides/worktree-workflow.md]
 tags: [workspace, task, trading, ledger]
@@ -40,6 +40,19 @@ tags: [workspace, task, trading, ledger]
 - **分支上只提交**；收工 / 合并 / 发布在主仓库办理（说一声「合」即由主会话执行）。
 
 ## 待交接给主会话（合并后改外围）
+
+- 🟨 **app 端体验重构（2026-10-09 · `dc2ddece`）——本批已交付 + 未交付如实登记**
+  **已交付**：app 交易页**首屏四层**（判断句先说结论 / 入账 / 持仓**一行+点开就地展开** / 今天时态区）· 自选只读一段 ·
+  **截图入账主线三卡点**（分张提交 + 客户端指纹去重 / 异常优先五条判据 / 回执说「这次改变了什么」+ 落账即对账）·
+  判断句与「与你的线」抽成 `apps/adai-app/lib/utils/trading_verdict.dart`（12 条单测）· 独立设计审核 5 条 P2 已在
+  `design-app-20261009.md` §七之二 统一口径。
+  **未交付（去向）**：① `R-07` / `R-11` **提醒落点**（推送点开 → 就地展开）——随**推送文案库**一起做，需先定文案与「沉默边界」；
+  ② **IA-8 其余四屏收口**（收益日历 / 资金 / 推送设置 / 复盘历史）——app 侧现无「推送设置」「复盘历史」独立页
+  （推送设置＝主页 Feed 卡片右滑），需先定这两屏在 app 是否存在；③ **真机逐屏走查**——受**本机锁屏**阻塞
+  （UI 自动化不可用；Xcode 27 无 `Simulator.app` 可点窗口），解锁后补一轮，方法见 `review-app-uiux-20261009.md` §1；
+  ④ `ux-visual` 视觉层审核 + 外部视角三官（陌生人 / 社会性 / 支持台）**未派**。
+  **主仓库收口项**：`change-log.md` 追加本批一行 · `REVIEW.md` 里 `P1-交易101` 按本批范围改写（web 已完成；app 首屏/入账已交付；
+  提醒落点与四屏未交付）· `trading-features.md` §五/§六（app 形态已变，需按新形态重写）。
 
 - 🟥 **未交付：前端整体（web / app）——编码段只交了后端（2026-10-06 发现）**
   **设计 §6「三端呈现」的 web/app 范围 0 实现**：本批 78 文件里 **67 个是后端**，前端三端 11 个文件**全是**推送卡徽章 / B1 文案那类顺手修复；`R-02`～`R-13` 的界面**一个都没做**（新端点 `advisory` / `rules/*` / `analysis/*` / `trading/import` 在 `apps/adai-web/` **0 引用**）。
