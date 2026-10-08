@@ -24,6 +24,10 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # 2026-10-09（走查取证）：app 端体验重构的真机逐屏走查——在模拟器里跑真实点击（不依赖 macOS
+  # 的 Computer Use 授权），外部用 `xcrun simctl io booted screenshot` 逐屏取证。
+  integration_test:
+    sdk: flutter
   flutter_launcher_icons: ^0.14.3
 
 flutter:
