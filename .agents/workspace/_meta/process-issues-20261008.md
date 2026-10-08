@@ -3,9 +3,9 @@ title: 流程问题记录（2026-10-07 ~ 08 · 体验重构批）
 description: 本轮（UI/UX 体验重构 + 7 批实施 + 两轮走查 + 规格补齐）实测的流程问题——事实 → 问题 → 改进落点 → 状态；档 B 主链记录，待流程官独立复核
 version: 1
 created: 2026-10-08
-updated: 2026-10-08
+updated: 2026-10-09
 status: active
-lines: 29
+lines: 30
 depends-on: []
 related:
   - ../trading-plugin/review-web-uiux-20261007.md
@@ -27,3 +27,4 @@ tags: [meta, process, workspace]
 | P5 | 「UI/UX」这一说法在文档与对话里漂移（含义随场合变） | 术语没有单一来源 → 跨工具/跨人理解成本 | 已补 `.agents/rules/assets/design-lexicon.md` + 两份文档加「本文档所属阶段」 | ✅ 已闭 |
 | P6 | 本轮**未派任何子代理**（审核 / 写手 / 流程官都缺），主链全程自审 | 「作者不审自己 / 收敛只能由审核者宣布」两条铁律在本轮**未生效** | 已如实登记（`design-uiux` 的独立设计审核列为待派）；建议下一轮恢复「至少派 1 名异质审核官」 | ⏳ 待办 |
 | P7 | 走查用**程序化点击**（CDP）而非真人鼠标，hover / 连续缩放 / 手势未覆盖 | 证据强度被高估的风险——"我点过了"≠"鼠标点过了" | `review-driven §10` 已写死「差异须声明」；本轮报告已声明 | ✅ 已闭 |
+| P8 | 并发会话的提交 **`dc2ddece`**（app 端批次）把本会话工作区里**未提交的改动一并带走**（`trading_page.dart` 的案例行锚点 `caseKline:` + `fmt` 修复 · `.agents/mechanism/scripts/audit-web.py` 的 click 改进） | `pitfalls` 里**已记过**同类事故（「同仓库并发会话收尾：git add -A 卷走别人的活」）——本次**复发**。同一个 worktree 里两个会话各自写代码，先提交的一方若未按显式路径收敛，就会把对方的活算进自己的提交 | 事实已核对（改动**确在 HEAD**：`caseKline:` ×2 · `fmt` 注释 ×1 · 测试 472 全绿），功能无碍；处置＝**如实记录归属**，**不改历史**（并发 + 已多提交，重写风险大于收益）。**建议**：并发场景下提交前自检 `git show --name-only -1` 是否只含本批文件；必要时先在 LEDGER 声明本批路径 | ⏳ 已记录 |
