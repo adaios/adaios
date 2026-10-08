@@ -3,9 +3,9 @@ title: feat/trading-plugin · 分支账本
 description: ② 交易线的分支账本——本批目标 + 并行作业纪律 + 待交接；一个分支一个目录（feat/trading-plugin → trading-plugin/）；合并时搬运完即删整目录
 version: 1
 created: 2026-10-05
-updated: 2026-10-08
+updated: 2026-10-09
 status: active
-lines: 93
+lines: 102
 depends-on: []
 related: [../../records/REVIEW.md, ../../rules/guides/git-workflow.md, ../../rules/guides/worktree-workflow.md]
 tags: [workspace, task, trading, ledger]
@@ -64,7 +64,7 @@ tags: [workspace, task, trading, ledger]
 
 ## 本任务遗留记录（随分支归档）
 
-### 本轮进度（UI/UX 体验重构 · 2026-10-07 ~ 08）
+### 本轮进度（UI/UX 体验重构 · 2026-10-07 ~ 09）
 
 - ✅ **差异决算 5 批 + 补批**（`91035896`）——列预算 / 信息带收薄 / 对齐 / P3-6 抽屉 / P3-8 打码
 - ✅ **实施清单 7 批**（`fbfed3bd` … `c9a6f329`）——一级 8 区横 Tab + 去二级 · 宽度断点 1200 · 表格自适应（降列 + 操作列冻结）· K 线统一组件（B/T/S + 图例 + 放宽）· 分析屏（默认带票 + 嵌图）· 活跃市值条移规则区 · 文档同步
@@ -72,6 +72,15 @@ tags: [workspace, task, trading, ledger]
 - ✅ **批 8 已交付（2026-10-08）**：`R-10` 案例 4 格提到首屏（已收下 33 / 成功·失败 33-0 / 本周新增 0 / 等你认 8）+ `R7` 分析标题带名称（`云南锗业 002428 · 做完 0 笔`）；另**更正 v4 的 `R6` 误报**（4 格一直在渲染，只是位置在页面下方）—— 见走查 §八附
 - ⏳ **待派**：`design-uiux-20261007.md` 的**独立设计审核**（`ux-interaction-reviewer` + `ux-visual-reviewer`）—— 规范要求设计稿有独立审核官，本轮尚未派
 - ⏳ **收尾时办**（沿用本文件下方 10-06 那条的同一批动作）：编码段 deep 深审誊写 · 本轮报告的 `docs/records/audits/` 归档 · `REVIEW.md` 编号誊写 · `status.md` 测试数同步
+
+**2026-10-09 收口**：
+
+- ✅ **独立设计审核已派且已完成**（走收件箱通道 D-20261008-01/02）：交互官一次到位、视觉官首轮无响应 → 催 + 重派后落盘 ⇒ 两份报告共 **14 条**（P2×6 + P3×8）
+- ✅ **14 条全部处理**：11 条落地（批 9/10/11 三批修复）· 2 条走文档口径（历史成交导入例外、`P3-6b` 图标 Tooltip 经核不算缺陷）· **1 条误报撤回**（`R9`）
+- ✅ **走查 v9**：`P2-3` 四组证据 → **3 组补齐**（打码显形态 · 清仓窄窗 · 导入预检态）· 1 组 3/4（案例 K 线入口）
+- ✅ **`U-5` 空账号态**：真机不可得（建号需 admin 会话 / 另两账号密码非 adai 的）⇒ 改**测试级证据**（新用例 `新用户（无持仓）→ 分析屏人话空态`；web 471 → **472** 全绿）
+- ⏳ **唯一遗留**：`G3` 案例 K 线入口实拍（非缺陷，取证成本问题）
+- **交接**：`handoff-20261009.md`（取代 10-08 那份）
 
 > **在制品文档地图（2026-10-08 定格）**：需求 `requirement.md` + 3 轮审核 · 设计 `design-v1~v3` + `design-final` + `design-kline-r04` + **`design-uiux`** · 设计审核 `review-v1~v4`（多官）· 交付 `scope-frontend` + **`scope-uiux`** · 走查 **`review-web-uiux`**（§六/§七 两轮）+ **`review-annotations`**（批注与决策）+ **`diff-decisions`**（差异处置）+ **`impl-plan`** · 素材 `uiux-discovery` / `input` / `blueprint` / `overview` / `frontend-gap` · 交接 `handoff-*` · 账本 `LEDGER` · 思考 `thinking-log`
 

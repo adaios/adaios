@@ -3,9 +3,9 @@ title: workspace/ 目录索引
 description: .agents/workspace/ 的清单与过期判断——**按「分支任务」组织**：一个分支一个目录（需求 / 设计 / 审核 / 决策都在它名下，需要才有）；模板在 _templates/、跨任务的在 _meta/
 version: 2
 created: 2026-10-04
-updated: 2026-10-08
+updated: 2026-10-09
 status: active
-lines: 184
+lines: 185
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index, workspace]
@@ -27,7 +27,7 @@ tags: [meta, index, workspace]
 
 > **规则**：**一个分支 = 一个目录 = 一个任务**（主键唯一 ⇒ **零冲突**）；目录里**需要什么才有什么**（轻活就一个 `LEDGER.md`）。
 
-## 文件清单（145 项）
+## 文件清单（146 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -113,6 +113,7 @@ tags: [meta, index, workspace]
 | `trading-plugin/frontend-gap-20261006.md` | 编码段只交付后端（67/78 文件），设计 §6「三端呈现」的 web/app 范围 0 实现——补做清单 + … | active |
 | `trading-plugin/handoff-20261007.md` | 给下一个 AI 工具的交接：目标 · 已完成（含 commit）· 未完成清单 · 必读约束与坑 · 验证与本地… | active |
 | `trading-plugin/handoff-20261008.md` | 给下一个 AI 工具的交接：现状（体验重构 7 批 + 两轮走查完成）· 未完成（批 8 R-10 · 待派设计… | active |
+| `trading-plugin/handoff-20261009.md` | 给下一个 AI 工具的交接：现状（体验重构 11 批 + 走查 5 轮 + 2 份独立审核全处理完毕）· 唯一遗… | active |
 | `trading-plugin/impl-plan-20261007.md` | 把 A1–A5 批注与 D1–D6 决策转成 7 个可执行批次——每批含范围 / 涉及文件 / 验收口径 / 测… | active |
 | `trading-plugin/input.md` | 归位之后剩下的"怎么做"——数据现实与处理 / 去重 / 顺序 / 表头识别 / 送股兜底 / 同日行序陷阱 /… | active |
 | `trading-plugin/mockups/README.md` | 2026-10-07 夜做的一批 UI/UX 原型——6 个自包含 HTML（可在浏览器直接打开、可点、可切方向… | active |
