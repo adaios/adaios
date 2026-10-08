@@ -603,8 +603,13 @@ class _TradingPageState extends State<TradingPage>
 
   Widget _stageButton(String label, String stage, Color color) {
     final selected = _marketStage == stage;
-    return OutlinedButton(
-      onPressed: _marketStageSaving ? null : () => _setMarketStage(stage),
+    // 批 10（独立审核 `review-uiux-interaction` P3-3 · 2026-10-08）：补语义——
+    // 条上「空头区间」是**当前状态**，右侧两个按钮是**可点切换**，两者同形易让人
+    // 以为也是标签；点它会改「一切的前提」（行情判定基准），故给 Tooltip 说明。
+    return Tooltip(
+      message: selected ? '当前：$label（点了不会变）' : '点了就换成「$label」前提——整页的判定基准会跟着变',
+      child: OutlinedButton(
+        onPressed: _marketStageSaving ? null : () => _setMarketStage(stage),
       style: OutlinedButton.styleFrom(
         foregroundColor: selected ? color : AppColors.darkGrey4,
         backgroundColor: selected
@@ -619,6 +624,7 @@ class _TradingPageState extends State<TradingPage>
         textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
       ),
       child: Text(label),
+      ),
     );
   }
 
@@ -4191,9 +4197,12 @@ class _TradingPageState extends State<TradingPage>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.darkOrange.withValues(alpha: 0.10),
+        // 批 10（独立审核 `review-uiux-visual` P2-1 · 2026-10-08）：**弱化**异常横幅——
+        // 原底 0.10 / 边框 0.55 的实底通栏，视觉强度盖过主数据（状态条/表格）。
+        // 收敛到「看得见但不抢主位」；文案与可展开明细**一个不减**（诚实口径不让步）。
+        color: AppColors.darkOrange.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.darkOrange.withValues(alpha: 0.55)),
+        border: Border.all(color: AppColors.darkOrange.withValues(alpha: 0.28)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

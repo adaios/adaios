@@ -226,7 +226,7 @@ class _CaseKlineChartState extends State<CaseKlineChart> {
               const Color(0xFFE8963A)),
         if (widget.peakLine != null)
           _legendItem('- -', '峰值浮盈线 ${widget.peakLine!.toStringAsFixed(2)}（到顶之后才画）',
-              const Color(0xFF5299FF)),
+              AppColors.darkBlue),
         if (buyParts.isNotEmpty)
           Text(buyParts.join(' · '),
               style: const TextStyle(fontSize: 11, color: AppColors.darkRed)),
@@ -557,7 +557,7 @@ class _CaseKlinePainter extends CustomPainter {
       drawLevel(stopLine!, const Color(0xFFE8963A), '你定的止损 ${stopLine!.toStringAsFixed(2)}');
     }
     if (peakLine != null) {
-      drawLevel(peakLine!, const Color(0xFF5299FF), '峰值浮盈线 ${peakLine!.toStringAsFixed(2)}',
+      drawLevel(peakLine!, AppColors.darkBlue, '峰值浮盈线 ${peakLine!.toStringAsFixed(2)}',
           fromRight: true);
     }
 
@@ -832,11 +832,25 @@ class KlinePanel extends StatelessWidget {
     final width = (screenW - 96).clamp(320.0, 1280.0);
     return AlertDialog(
       backgroundColor: AppColors.darkSurface2,
-      title: Text(
-        '$name（$symbol）· $suffix',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1),
+      // 批 10（独立审核 `review-uiux-visual` P3-6 · 2026-10-08）：标题行补**右上角 ✕**——
+      // 原先唯一关闭入口是右下角小字「关掉」，图一长、滚到底再找关闭位就成了负担。
+      title: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '$name（$symbol）· $suffix',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1),
+            ),
+          ),
+          IconButton(
+            onPressed: () => Navigator.pop(context),
+            tooltip: '关掉',
+            icon: const Icon(Icons.close, size: 18, color: AppColors.darkGrey4),
+            visualDensity: VisualDensity.compact,
+          ),
+        ],
       ),
       content: SizedBox(
         width: width,

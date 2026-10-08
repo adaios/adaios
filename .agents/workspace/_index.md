@@ -5,7 +5,7 @@ version: 2
 created: 2026-10-04
 updated: 2026-10-08
 status: active
-lines: 171
+lines: 173
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index, workspace]
@@ -27,7 +27,7 @@ tags: [meta, index, workspace]
 
 > **规则**：**一个分支 = 一个目录 = 一个任务**（主键唯一 ⇒ **零冲突**）；目录里**需要什么才有什么**（轻活就一个 `LEDGER.md`）。
 
-## 文件清单（132 项）
+## 文件清单（134 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -83,6 +83,8 @@ tags: [meta, index, workspace]
 | `trading-plugin/audit-shots-20261008/09-kline.png` | — | active |
 | `trading-plugin/audit-shots-20261008/10-narrow-holding.png` | — | active |
 | `trading-plugin/audit-shots-20261008/12-cases-bottom.png` | — | active |
+| `trading-plugin/audit-shots-20261008/p10-holding.png` | — | active |
+| `trading-plugin/audit-shots-20261008/p10-kline.png` | — | active |
 | `trading-plugin/audit-shots-20261008/p8-analysis.png` | — | active |
 | `trading-plugin/audit-shots-20261008/p8-cases.png` | — | active |
 | `trading-plugin/audit-shots-20261008/p9-cases-bottom.png` | — | active |
