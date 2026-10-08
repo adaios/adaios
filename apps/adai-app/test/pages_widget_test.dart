@@ -839,10 +839,90 @@ void main() {
       mockBase(b);
       await pumpTrading(tester, b);
       // 「今天」在页面里有两处（入账区的「今天没动」行 + 本区标题），故只断存在
+      await scrollTo(tester, find.text('收益日历'));
       expect(find.text('今天'), findsWidgets);
       expect(find.text('收益日历'), findsOneWidget);
       expect(find.text('资金'), findsOneWidget);
+      // 2026-10-09（批 4）：两个「原有能力」补上直达入口
+      expect(find.text('推送设置'), findsOneWidget);
+      expect(find.text('复盘历史'), findsOneWidget);
       expect(find.text('生成复盘'), findsNothing);
+    });
+
+    // ── 2026-10-09（批 4 · IA-8）：把两个「入口隐蔽 / 零入口」的屏补上 ──
+
+    testWidgets('推送设置：从交易页直达 + 12 个开关 + 改一个发 PUT（清单唯一一份）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/push-settings'] = (_) async => _json({
+            'session': true, 'buy-point': false, 'close-summary': true, 'plan': true,
+            'learn-review': true, 'todo-due': true, 'stop-loss': true, 'near-stop-loss': true,
+            'loss': true, 'gain': true, 'break-cost': true, 'market': true,
+          });
+      String? putPath;
+      String? putBody;
+      b.handlers['/api/v1/trading/push-settings/plan'] = (req) async {
+        putPath = req.url.path;
+        putBody = req.body;
+        return _json({'enabled': false});
+      };
+      await pumpTrading(tester, b);
+      await scrollTo(tester, find.text('推送设置'));
+      await tester.tap(find.text('推送设置'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('时段节奏（早盘/午间/尾盘/收盘确认）'), findsOneWidget);
+      expect(find.text('大盘行情条'), findsOneWidget);
+      expect(find.byType(SwitchListTile), findsNWidgets(12));
+      // ⚠️ 测试跑在 VM 里：**非 iOS 端没有任何推送渠道**（PushService.supported=false）——
+      // 按 D2 口径这里是**禁用开关 + 如实告知**，不是假装能收（也不会发 PUT）。
+      expect(find.textContaining('这台收不到通知'), findsOneWidget);
+      expect(tester.widget<SwitchListTile>(find.byType(SwitchListTile).first).onChanged, isNull);
+      await tester.tap(find.text('次日计划提醒（20:30 提醒写下个交易日的计划）'));
+      await tester.pumpAndSettle();
+      expect(putPath, isNull, reason: '收不到推送的端不该写这份设置（写了也是假的）');
+    });
+
+    testWidgets('复盘历史：日期倒序 + 点开看当天（reviews → review?date=）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/reviews'] = (_) async => _json(['2026-10-01', '2026-10-08', '2026-10-03']);
+      String? askedDate;
+      b.handlers['/api/v1/trading/review'] = (req) async {
+        askedDate = req.url.queryParameters['date'];
+        return _json({'date': askedDate, 'content': '## 那天\n执行了纪律'});
+      };
+      await pumpTrading(tester, b);
+      await scrollTo(tester, find.text('复盘历史'));
+      await tester.tap(find.text('复盘历史'));
+      await tester.pumpAndSettle();
+
+      final tiles = tester
+          .widgetList<Text>(find.textContaining('2026-10-'))
+          .map((t) => t.data)
+          .toList();
+      expect(tiles.first, '2026-10-08', reason: '最近的排最上面');
+      expect(tiles.last, '2026-10-01');
+
+      await tester.tap(find.text('2026-10-03'));
+      await tester.pumpAndSettle();
+      expect(askedDate, '2026-10-03');
+      expect(find.text('2026-10-03 复盘'), findsOneWidget);
+      expect(find.textContaining('执行了纪律'), findsOneWidget);
+    });
+
+    testWidgets('复盘历史：端点失败 → 如实说取不到 + 重试（不摆「暂无复盘」空壳）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/reviews'] = (_) async => _json({'error': 'boom'}, status: 500);
+      await pumpTrading(tester, b);
+      await scrollTo(tester, find.text('复盘历史'));
+      await tester.tap(find.text('复盘历史'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('复盘没取到，稍后再试'), findsOneWidget);
+      expect(find.text('重试'), findsOneWidget);
+      expect(find.textContaining('还没有复盘'), findsNothing);
     });
 
     testWidgets('账户卡渲染：券商口径总盈亏 = 资产 - 本金（2026-08-22：自选/清仓区块已移除）', (tester) async {

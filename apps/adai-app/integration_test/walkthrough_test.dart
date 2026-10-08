@@ -147,8 +147,13 @@ void main() {
     // ── ② 切到 World B（Launcher）→ 进「交易」──
     // 双 World 靠纵向快速拖拽切换（main.dart 的 onVerticalDragEnd，速度阈值 400）。
     var launcherShown = find.text('交易').evaluate().isNotEmpty;
-    for (var i = 0; i < 3 && !launcherShown; i++) {
-      await tester.fling(find.byType(IndexedStack).first, const Offset(0, -600), 1500);
+    for (var i = 0; i < 4 && !launcherShown; i++) {
+      // 两条路都试：① 壳层全局拖拽（阈值 400）② Feed **顶栏**自带的上滑（阈值 200，见 main_page.dart:1667）
+      if (i.isEven) {
+        await tester.fling(find.byType(IndexedStack).first, const Offset(0, -600), 1500);
+      } else {
+        await tester.flingFrom(const Offset(200, 120), const Offset(0, -220), 800);
+      }
       await tester.pumpAndSettle(const Duration(seconds: 2));
       launcherShown = find.text('交易').evaluate().isNotEmpty;
     }
@@ -184,5 +189,36 @@ void main() {
       await tester.pumpAndSettle(const Duration(seconds: 2));
     }
     await hold(tester, 10); // 屏 6：下滚（自选 / 今天 / 折叠区）
+
+    // ── ⑥ 批 4：今天区两个直达入口（推送设置 / 复盘历史）──
+    // 「今天」区在页面偏下，先滚到入口行。
+    Future<void> openToday(String label) async {
+      // 手写「滚到可见」循环：`scrollUntilVisible` 在真机上偶发 `Bad state: No element`
+      // （它内部对 scrollable 做 `.single`，重建瞬间会取空）——这里每次循环重新取、且先判存在。
+      for (var i = 0; i < 40; i++) {
+        final f = find.text(label);
+        if (f.evaluate().isNotEmpty) {
+          await tester.tap(f.first);
+          await tester.pumpAndSettle(const Duration(seconds: 2));
+          return;
+        }
+        final sc = find.byType(Scrollable);
+        if (sc.evaluate().isEmpty) {
+          await tester.pumpAndSettle(const Duration(milliseconds: 400));
+          continue;
+        }
+        await tester.drag(sc.first, const Offset(0, -300));
+        await tester.pumpAndSettle(const Duration(milliseconds: 400));
+      }
+      fail('没找到今天区的入口：$label');
+    }
+
+    await openToday('推送设置');
+    await hold(tester, 10); // 屏 7：推送设置页（12 个开关 + 非 iOS 端的如实告知）
+    await tester.pageBack(); // 返回（自动找 AppBar 返回键，兼容 iOS 的箭头样式）
+    await tester.pumpAndSettle(const Duration(seconds: 2));
+
+    await openToday('复盘历史');
+    await hold(tester, 10); // 屏 8：复盘历史（日期倒序）
   });
 }

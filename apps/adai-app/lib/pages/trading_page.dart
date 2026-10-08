@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:image_picker/image_picker.dart';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
@@ -9,6 +8,9 @@ import '../services/push_service.dart';
 import '../widgets/input_bar.dart' show PickedImage;
 import '../utils/trading_verdict.dart';
 import 'profit_calendar_page.dart';
+import 'push_settings_page.dart';
+import 'review_history_page.dart';
+import '../widgets/review_dialog.dart';
 
 /// TradingPage — 交易插件手机端（模块定位：交易记忆，RFC 20260902，取代 RFC 20260815 建议引擎定位）。
 ///
@@ -2070,6 +2072,15 @@ class _TradingPageState extends State<TradingPage> {
         _todayLink('收益日历', _openProfitCalendar),
         const SizedBox(width: 14),
         _todayLink('资金', () => setState(() => _foldOpen['资金与配置'] = true)),
+        const SizedBox(width: 14),
+        // 2026-10-09（批 4）：把两个**原有能力**摆到能直达的地方——
+        // ① 推送设置：原来只能从主页 Feed 对某条推送卡**右滑**打开（路径隐蔽）；
+        // ② 复盘历史：后端列日期/读当天与 app 的 API 都早有，但**零入口**（没人调用过）。
+        _todayLink('推送设置', () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => PushSettingsPage(api: widget.api)))),
+        const SizedBox(width: 14),
+        _todayLink('复盘历史', () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => ReviewHistoryPage(api: widget.api)))),
       ]),
     ]);
   }
@@ -3667,7 +3678,10 @@ class _TradingPageState extends State<TradingPage> {
           onTap: _reviewing
               ? null
               : (generated
-                  ? () => showDialog(context: context, builder: (_) => _buildReviewDialog(_lastReview!))
+                  ? () => showDialog(
+                      context: context,
+                      builder: (_) => ReviewDialog(
+                          review: _lastReview!, onPromote: () => _promote(_lastReview!.date)))
                   : _showReview),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -3807,7 +3821,9 @@ class _TradingPageState extends State<TradingPage> {
       });
       if (review != null) {
         final ready = review; // 闭包捕获用非空 final（防提升失效）
-        showDialog(context: context, builder: (_) => _buildReviewDialog(ready));
+        showDialog(
+            context: context,
+            builder: (_) => ReviewDialog(review: ready, onPromote: () => _promote(ready.date)));
       } else {
         _showSnack('复盘生成超时（超过 4 分钟），请稍后到 web「复盘历史」查看或重试', AppColors.darkOrange);
       }
@@ -3831,65 +3847,6 @@ class _TradingPageState extends State<TradingPage> {
       await Future.delayed(const Duration(seconds: 3));
     }
     return null;
-  }
-
-  Widget _buildReviewDialog(ReviewResponse review) {
-    return Dialog(
-      backgroundColor: AppColors.darkSurface,
-      insetPadding: const EdgeInsets.all(24),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Icon(Icons.article_outlined, size: 18, color: AppColors.darkGreen),
-            const SizedBox(width: 8),
-            Text('${review.date} 复盘', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
-            const Spacer(),
-            GestureDetector(
-              onTap: () => Navigator.pop(context),
-              child: const Icon(Icons.close, size: 18, color: AppColors.darkGrey5),
-            ),
-          ]),
-          const SizedBox(height: 12),
-          Flexible(
-            child: SingleChildScrollView(
-              child: MarkdownBody(
-                data: review.content.isEmpty ? '今天暂无复盘内容' : review.content,
-                selectable: true,
-                styleSheet: MarkdownStyleSheet.fromTheme(ThemeData(
-                  textTheme: const TextTheme(bodyMedium: TextStyle(fontSize: 14, height: 1.6, color: AppColors.darkGrey1)),
-                )).copyWith(
-                  strong: const TextStyle(fontSize: 14, height: 1.6, color: AppColors.darkGrey1, fontWeight: FontWeight.w700),
-                  p: const TextStyle(fontSize: 14, height: 1.6, color: AppColors.darkGrey1),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
-          // #129：知识反哺闭环前端入口——复盘内容提升为入库候选（写 os/trading-os/99-inbox/）
-          Align(
-            alignment: Alignment.centerRight,
-            child: GestureDetector(
-              onTap: () => _promote(review.date),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-                decoration: BoxDecoration(
-                  color: AppColors.darkGreen.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppColors.darkGreen.withValues(alpha: 0.4)),
-                ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.inbox_outlined, size: 14, color: AppColors.darkGreen),
-                  const SizedBox(width: 6),
-                  Text('反哺入库', style: const TextStyle(fontSize: 13, color: AppColors.darkGreen)),
-                ]),
-              ),
-            ),
-          ),
-        ]),
-      ),
-    );
   }
 
   /// #129：反哺入库——复盘内容提升为候选，展示 #178 融合提示。
