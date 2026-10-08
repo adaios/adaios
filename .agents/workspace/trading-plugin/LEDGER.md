@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-05
 updated: 2026-10-09
 status: active
-lines: 116
+lines: 122
 depends-on: []
 related: [../../records/REVIEW.md, ../../rules/guides/git-workflow.md, ../../rules/guides/worktree-workflow.md]
 tags: [workspace, task, trading, ledger]
@@ -92,8 +92,14 @@ tags: [workspace, task, trading, ledger]
 - ✅ **14 条全部处理**：11 条落地（批 9/10/11 三批修复）· 2 条走文档口径（历史成交导入例外、`P3-6b` 图标 Tooltip 经核不算缺陷）· **1 条误报撤回**（`R9`）
 - ✅ **走查 v9**：`P2-3` 四组证据 → **3 组补齐**（打码显形态 · 清仓窄窗 · 导入预检态）· 1 组 3/4（案例 K 线入口）
 - ✅ **`U-5` 空账号态**：真机不可得（建号需 admin 会话 / 另两账号密码非 adai 的）⇒ 改**测试级证据**（新用例 `新用户（无持仓）→ 分析屏人话空态`；web 471 → **472** 全绿）
-- ⏳ **唯一遗留**：`G3` 案例 K 线入口实拍（非缺陷，取证成本问题）
-- ✅ **走查工具化（2026-10-09）**：`.agents/mechanism/scripts/audit-web.py`（一键起环境 + 语义锚点定位）+ 一级 Tab 加 `tab:<id>` 锚点（`_zoneIds`）——把"每次重建环境 + 猜坐标"这两块慢的根因拆掉；`G3` 仍未过（见 handoff §五之二）
+- ✅ **`G3` 已取得（2026-10-09）**：根因＝案例库整块在语义树里被合并成一个巨型节点（33 行共用），脚本匹配到它、点它等于点行体 ⇒ 给行内入口加锚点 `caseKline:<symbol>|<date>` 后一次点中（`v11-g3-case-kline.png`）
+- ✅ **`R10` 已修（2026-10-09）**：案例详情弹窗的特征 chips 仍插原始 double（`回撤 10.892041356095207%`）——`fmt()` 改「整数原样 / 小数 1 位」，与批 9 的列表行口径统一
+- ✅ **走查工具化（2026-10-09）**：`.agents/mechanism/scripts/audit-web.py`（一键起环境 + 语义锚点定位）+ 一级 Tab 加 `tab:<id>` 锚点（`_zoneIds`）——把"每次重建环境 + 猜坐标"这两块慢的根因拆掉
+
+**🟥 项处置（2026-10-09）**：
+
+- 🟥「**前端整体（web / app）**」→ **web 已交付**（体验重构 11 批 + 走查 5 轮 + 独立审核 14 条收口，测试 472 全绿）；**app 端另有会话在并行推进**（工作区见 `design-app/plan-app/scope-app/explore-app-20261009.md`）——本条对 web 侧可结，app 侧归那条线。
+- 🟥「**活跃市值改为 admin 导入**」→ **本批不做，排独立批次**。理由：需**后端新增 admin 导入端点** + **admin 前端界面**（跨端、非本 worktree 的 web 交易页范围），且当前"用户手判"可用；**去向**：批 12 候选 / 建议开 RFC 或在 roadmap 排期。
 - **交接**：`handoff-20261009.md`（取代 10-08 那份）
 
 > **在制品文档地图（2026-10-08 定格）**：需求 `requirement.md` + 3 轮审核 · 设计 `design-v1~v3` + `design-final` + `design-kline-r04` + **`design-uiux`** · 设计审核 `review-v1~v4`（多官）· 交付 `scope-frontend` + **`scope-uiux`** · 走查 **`review-web-uiux`**（§六/§七 两轮）+ **`review-annotations`**（批注与决策）+ **`diff-decisions`**（差异处置）+ **`impl-plan`** · 素材 `uiux-discovery` / `input` / `blueprint` / `overview` / `frontend-gap` · 交接 `handoff-*` · 账本 `LEDGER` · 思考 `thinking-log`
