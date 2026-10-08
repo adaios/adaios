@@ -253,19 +253,24 @@ def cmd_tab(args):
 
 def cmd_click(args):
     t = _tab()
-    # 找不到就**自动向下滚**再找（最多 12 次 × 300px）——这正是"滚动到恰好位置"那类坑的解药：
-    # 案例库表行末的「查看详情」入口曾让手工脚本连试三次都没点中。
     if args.top:
         t.to_top()
-    hits = [h for h in t.nodes(args.label) if 60 < h['y'] < 1150]
-    for _ in range(12 if not hits else 0):
-        t.wheel(800, 800, 300, times=1, pause=0.5)
-        hits = [h for h in t.nodes(args.label) if 60 < h['y'] < 1150]
-        if hits:
+    # 「滚到可见」循环（最多 16 步）：先找节点；找不到就向下滚，找到了但不在安全视口内
+    # （<150 会被顶栏压住 / >900 会被底栏压住）就朝它的方向滚 —— 这正是"滚动到恰好位置"
+    # 那类坑的解药（案例库表行末的入口曾让手工脚本连试三次都没点中）。
+    hit = None
+    for _ in range(16):
+        hits = t.nodes(args.label)
+        if not hits:
+            t.wheel(800, 700, 300, 1, 0.5)
+            continue
+        cand = hits[0]
+        if 150 <= cand['y'] <= 900:
+            hit = cand
             break
-    if not hits:
-        raise SystemExit(f'❌ 没找到「{args.label}」（已自动下滚 12 次；确认它在当前区、或先 `tab <id>` 切区）')
-    hit = hits[0]
+        t.wheel(800, 700, 300 if cand['y'] > 900 else -300, 1, 0.5)
+    if hit is None:
+        raise SystemExit(f'❌ 「{args.label}」没滚到可点位置（确认它在当前区、或先 `tab <id>` 切区）')
     t.click(hit['x'] + hit['w'] / 2, hit['y'] + hit['h'] / 2)
     time.sleep(args.wait)
     if args.shot:

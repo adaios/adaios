@@ -6042,14 +6042,21 @@ class _TradingPageState extends State<TradingPage>
               style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5),
             ),
           ),
-          IconButton(
-            tooltip: '查看详情（K 线还原 + 特征）',
-            icon: const Icon(
-              Icons.insert_chart_outlined,
-              size: 16,
-              color: AppColors.darkGrey2,
+          // 2026-10-09（走查 G3 根因）：本行所在区域在语义树里被**合并成一个巨型节点**
+          // （33 行共用一个 1159×672 的块，「查看详情」匹配到的就是它、点它等于点行体）
+          // ⇒ 行内入口加**独立锚点**：走查脚本可 `caseKline:<symbol>` 精确定位，读屏同样受益。
+          Semantics(
+            label: 'caseKline:${c['symbol'] ?? ''}|${c['buyDate'] ?? ''}',
+            button: true,
+            child: IconButton(
+              tooltip: '查看详情（K 线还原 + 特征）',
+              icon: const Icon(
+                Icons.insert_chart_outlined,
+                size: 16,
+                color: AppColors.darkGrey2,
+              ),
+              onPressed: () => _openCaseDetailDialog(c),
             ),
-            onPressed: () => _openCaseDetailDialog(c),
           ),
           IconButton(
             tooltip: '删除案例',
@@ -8784,7 +8791,17 @@ class _CaseDetailDialogState extends State<_CaseDetailDialog> {
     }
   }
 
-  String fmt(dynamic v, {String suffix = ''}) => v == null ? '—' : '$v$suffix';
+  /// 特征 / 后验数值的人话格式（2026-10-09 · 走查 `R10`）：**整数原样、小数保留 1 位**。
+  /// 原实现是 `'$v'`，会把 double 打成 15~18 位（实拍见案例详情的
+  /// 「回撤 10.892041356095207%」「KDJ.J 12.66847983559822」）——批 9 只修了**列表行**的备注列，
+  /// 详情弹窗这处是同一问题的**第二处**，一并收口。null 仍「—」（不编 0）。
+  String fmt(dynamic v, {String suffix = ''}) {
+    if (v == null) return '—';
+    final n = v is num ? v : num.tryParse('$v');
+    if (n == null) return '$v$suffix';
+    final s = n == n.roundToDouble() ? n.toInt().toString() : n.toStringAsFixed(1);
+    return '$s$suffix';
+  }
 
   Widget _chip(String text, {bool highlight = false}) {
     return Container(
