@@ -5,7 +5,7 @@ version: 2
 created: 2026-10-04
 updated: 2026-10-08
 status: active
-lines: 175
+lines: 183
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index, workspace]
@@ -27,7 +27,7 @@ tags: [meta, index, workspace]
 
 > **规则**：**一个分支 = 一个目录 = 一个任务**（主键唯一 ⇒ **零冲突**）；目录里**需要什么才有什么**（轻活就一个 `LEDGER.md`）。
 
-## 文件清单（136 项）
+## 文件清单（144 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -92,6 +92,14 @@ tags: [meta, index, workspace]
 | `trading-plugin/audit-shots-20261008/p9-cases-bottom.png` | — | active |
 | `trading-plugin/audit-shots-20261008/p9-cases.png` | — | active |
 | `trading-plugin/audit-shots-20261008/p9-holding.png` | — | active |
+| `trading-plugin/audit-shots-20261008/v9-a-masked.png` | — | active |
+| `trading-plugin/audit-shots-20261008/v9-a-revealed.png` | — | active |
+| `trading-plugin/audit-shots-20261008/v9-b-narrow-cleared.png` | — | active |
+| `trading-plugin/audit-shots-20261008/v9-c-kline-cleared.png` | — | active |
+| `trading-plugin/audit-shots-20261008/v9-c-kline-holding.png` | — | active |
+| `trading-plugin/audit-shots-20261008/v9-c-kline-watch.png` | — | active |
+| `trading-plugin/audit-shots-20261008/v9-d-1-paste.png` | — | active |
+| `trading-plugin/audit-shots-20261008/v9-d-2-instant.png` | — | active |
 | `trading-plugin/blueprint.md` | 交易插件的概念与流程，按我们逐步讨论的顺序记录——定位 · 规则 · 没有规则怎么办 · 清仓股+历史成交 · … | active |
 | `trading-plugin/decisions.md` | 历轮 adai 拍板：设计 v1 的 6 项未决（U1–U6）+ 审核 v1 战略级 2 条（S1/S2）+ v… | active |
 | `trading-plugin/design-final-20261006.md` | 交易线设计 final 稿——以 v2 正文为底合并 v3 增量与两份 v3 审核的整改，收 4 类阻塞项（§9… | draft |
