@@ -5,7 +5,7 @@ version: 2
 created: 2026-10-04
 updated: 2026-10-09
 status: active
-lines: 199
+lines: 200
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index, workspace]
@@ -27,7 +27,7 @@ tags: [meta, index, workspace]
 
 > **规则**：**一个分支 = 一个目录 = 一个任务**（主键唯一 ⇒ **零冲突**）；目录里**需要什么才有什么**（轻活就一个 `LEDGER.md`）。
 
-## 文件清单（160 项）
+## 文件清单（161 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -108,6 +108,7 @@ tags: [meta, index, workspace]
 | `trading-plugin/blueprint.md` | 交易插件的概念与流程，按我们逐步讨论的顺序记录——定位 · 规则 · 没有规则怎么办 · 清仓股+历史成交 · … | active |
 | `trading-plugin/decisions.md` | 历轮 adai 拍板：设计 v1 的 6 项未决（U1–U6）+ 审核 v1 战略级 2 条（S1/S2）+ v… | active |
 | `trading-plugin/design-app-20261009.md` | app 端这一轮的**设计规格**——把已圈选的方向（甲·清单优先）与已出可点稿收成可对照的设计稿：首屏四层 I… | active |
+| `trading-plugin/design-push-copy-20261009.md` | **推送文案库 v1**（draft）——6 类节奏推送 + 5 类行情告警的标题/正文/落点，含沉默边界（≤8/日 · 同类同票一次 · 22:00–08:00 静默）与待拍 4 条；供 R-07/R-11 提醒落点批次直接用 | draft |
 | `trading-plugin/design-final-20261006.md` | 交易线设计 final 稿——以 v2 正文为底合并 v3 增量与两份 v3 审核的整改，收 4 类阻塞项（§9… | draft |
 | `trading-plugin/design-kline-r04-20261007.md` | 把「案例专图」泛化成横切四个地方的通用 K 线——四区（主图+量+MACD+KDJ）、我的买卖点标记、止损线/峰… | active |
 | `trading-plugin/design-uiux-20261007.md` | UI/UX 这一轮的**设计规格**——把散在方向稿/批注/决算/实施清单里的已拍板决定收成一份可对照的设计稿：… | active |
