@@ -3,9 +3,9 @@ title: 派单收件箱（子代理投递兜底通道）
 description: 消息通道丢载荷时的兜底派单通道；任何 AI 开工先看本文件（AGENTS.md 规则 0c）
 version: 1
 created: 2026-10-06
-updated: 2026-10-06
+updated: 2026-10-08
 status: active
-lines: 108
+lines: 140
 depends-on: []
 related:
   - ./process-issues-20261006.md
@@ -18,6 +18,38 @@ tags: [workspace, meta, dispatch]
 > **任何 AI 开工先看本文件**（`AGENTS.md` 规则 0c）。**有分配给你的任务就执行；没有就忽略**。
 
 ## 当前待处理派单
+
+- **D-20261008-01**（**`design-uiux` 独立设计审核 · 交互层** · `ux-interaction-reviewer`）
+  - 【任务】**只判交互层**：`design-uiux-20261007.md` §三（I-1 ~ I-7）七条交互决定，是否**流程完整 · 反馈到位 · 异常有兜底 · 状态不歧义**；并**独立复核** `review-web-uiux-20261007.md` §七/§八 的实拍结论是否成立（尤其 §8.1 对 `R6` 的更正）。
+    **不判**：代码实现细节（归 `code-frontend-reviewer`）· 功能该不该做（已拍板）· 视觉观感（归 `ux-visual-reviewer`，由 D-02 并行处理）· 已在走查报告记录在案的条目（可确认，不必逐条重报）。
+  - 【角色真相源】`.agents/toolkit/roles/ux-interaction-reviewer.md` + `.agents/toolkit/checklists/ux-interaction-reviewer.md`
+  - 【材料】（主链前置，不要自己找）
+    - **审核对象**：`.agents/workspace/trading-plugin/design-uiux-20261007.md`（§二 IA 作背景、**§三 交互** 为主判对象）
+    - **实拍结论**：`.agents/workspace/trading-plugin/review-web-uiux-20261007.md`（§七 = 7 批验收 · §八 = 批 8 验收 + `R6` 更正）
+    - **交付状态**：`.agents/workspace/trading-plugin/scope-uiux-20261008.md`（条目表 + 验收走查节）
+    - **证据图**：`.agents/workspace/trading-plugin/audit-shots-20261008/`（11 张：`01-holding` … `p8-analysis`）
+    - **原型对照**：`.agents/workspace/trading-plugin/mockups/png/web-1..8.png`
+    - **背景一句话**：web 端交易插件刚做完体验重构（一级 8 区横 Tab + 去二级 + 表格自适应 + K 线统一组件 + 打码两层），实施 8 批 + 走查 5 轮；本轮请**独立**判交互层，别读我的结论照抄。
+  - 【产出】`.agents/workspace/trading-plugin/review-uiux-ixd-20261008.md`
+  - 【第一动作】先把 `.agents/workspace/_templates/review-design.md` **复制**成上面的产出文件（**先落空文件再填**——主链唯一能看到你还活着的方式）
+  - 【时间】3 分钟内必须看到文件；看不到主链会**打断重派**
+  - 【先行回执】收到先回一句「已收到，开始交互层审核」
+  - 【硬要求】中文；**只报告不改**（B7）；**不要改 `_index.md`**（主链统一登记）；frontmatter 10 字段齐全 + `lines:` 与实际一致；写一节落一节
+
+- **D-20261008-02**（**`design-uiux` 独立设计审核 · 视觉层** · `ux-visual-reviewer`）
+  - 【任务】**只判视觉层**：`design-uiux-20261007.md` §二（IA 呈现：8 区横 Tab、badge、状态条、表格列密度）与 §四（视觉口径：涨红跌绿 · 密清单 · 状态条 + 副注 · 诚实提示）在**实拍**里是否立得住——布局层级 / 触达面积 / 可读性（字号对比度）/ 深色模式 / 空态与加载态 / 三端一致（本轮只 web）。
+    **不判**：交互流程与反馈（归 `ux-interaction-reviewer`，由 D-01 并行处理）· 代码实现细节 · 功能该不该做。
+  - 【角色真相源】`.agents/toolkit/roles/ux-visual-reviewer.md` + `.agents/toolkit/checklists/ux-visual-reviewer.md`
+  - 【材料】（主链前置）
+    - **审核对象**：`.agents/workspace/trading-plugin/design-uiux-20261007.md`（§二 IA 呈现 + §四 视觉）
+    - **实拍**：`.agents/workspace/trading-plugin/audit-shots-20261008/`（11 张）+ `audit-shots-20261007-v3/`（11 张，含打码/窄窗/自选换列）
+    - **原型对照**：`.agents/workspace/trading-plugin/mockups/png/web-1..8.png`（尤其 `web-1` 持仓主屏、`web-4` 清仓）
+    - **背景一句话**：刚做完体验重构（8 区横 Tab · 表格自适应 · K 线统一组件），证据图是 1600×1000 与 1280×900 两档的真实渲染（金额已打码）。
+  - 【产出】`.agents/workspace/trading-plugin/review-uiux-visual-20261008.md`
+  - 【第一动作】先把 `.agents/workspace/_templates/review-design.md` **复制**成上面的产出文件
+  - 【时间】3 分钟内必须看到文件；看不到主链会**打断重派**
+  - 【先行回执】收到先回一句「已收到，开始视觉层审核」
+  - 【硬要求】中文；**只报告不改**（B7）；**不要改 `_index.md`**；frontmatter 10 字段 + `lines:` 一致；写一节落一节
 
 - **D-20261006-10**（**AI 上下文体系体检 · r4 · 封箱判定轮** · `ai-context-health-reviewer`）
   - **背景**：r3 报「2 未清 + 6 新」，已全部修（`cb89e6e5`，27 文件，已 push）。**本轮是止损线判定轮**：

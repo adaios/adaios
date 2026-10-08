@@ -5,7 +5,7 @@ version: 2
 created: 2026-10-04
 updated: 2026-10-08
 status: active
-lines: 166
+lines: 168
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index, workspace]
@@ -27,7 +27,7 @@ tags: [meta, index, workspace]
 
 > **规则**：**一个分支 = 一个目录 = 一个任务**（主键唯一 ⇒ **零冲突**）；目录里**需要什么才有什么**（轻活就一个 `LEDGER.md`）。
 
-## 文件清单（127 项）
+## 文件清单（129 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -146,6 +146,8 @@ tags: [meta, index, workspace]
 | `trading-plugin/requirement.md` | 交易插件重做的需求（要什么 · 现状无关）——问题动机 · 谁在什么时刻要什么 · 目标与不目标 · 用户要付出… | active |
 | `trading-plugin/review-annotations-20261007.md` | adai 在本地实跑页面（localhost:8082）上的逐条圈选批注与归属判定——编号 / 批注原文 / 命… | active |
 | `trading-plugin/review-r2-backend-20261006.md` | 只核 r1 → r2 三条改动是否真到位 + 有无连带新引 P0/P1，逐条给 文件:行 证据；判定：三条全部真… | draft |
+| `trading-plugin/review-uiux-ixd-20261008.md` | 独立（非主链）交互层审核——只判 design-uiux §三 I-1~I-7 的交互决定（流程完整 · 反馈到… | active |
+| `trading-plugin/review-uiux-visual-20261008.md` | 对 design-uiux-20261007.md §二（IA 呈现）与 §四（视觉口径）的**独立视觉层**审… | active |
 | `trading-plugin/review-v1-20261006.md` | 对设计稿 v1 的产品架构审查——无 P0；战略级 2 条（L6 反哺闭环被砍无 RFC · 定位扩容未进蓝图）… | active |
 | `trading-plugin/review-v2-20261006.md` | 对设计稿 v2 的产品架构审查——无 P0；战略级 1 条（S2 的 RFC/roadmap 仍在分支外）· P… | active |
 | `trading-plugin/review-v2-backend-20261006.md` | 对设计稿 v2 的后端视角审查（设计 × 现状代码对拍）——无 P0；战略级 2（关插件闸门清单漏 kernel… | active |
