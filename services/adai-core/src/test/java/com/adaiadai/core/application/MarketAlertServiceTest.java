@@ -74,6 +74,9 @@ class MarketAlertServiceTest {
     }
 
     /** 构造依赖：snapshot 带「内存快照」语义（save 后下一次 alerted 可见）；push 由调用方 mock 传入。 */
+    /** 2026-10-09：尾盘确认窗口的桩（默认在窗口内；验门控的用例临时置 false）。 */
+    private static boolean tailWindowStub = true;
+
     private MarketAlertService build(MarketDataSource market, PositionRepository positions,
                                      boolean breakCostEnabled, PushChannel push) {
         AccountRepository accounts = mock(AccountRepository.class);
@@ -90,10 +93,44 @@ class MarketAlertServiceTest {
 
         PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
         when(pushSettings.findByUser(anyString())).thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
+        // 2026-10-09：止损类提醒改「尾盘确认窗口」门控（用户口径：日线级别、尾盘确认）——
+        // 本用例类固定「在窗口内」，让既有的破线/临近/破成本断言与时间无关（同 isTradingDayToday 的桩法）。
         return new MarketAlertService(market, positions, accounts, snapshot, java.util.List.of(push),
                 mock(PluginService.class), new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(defaultRuleRepo()),
                 pushSettings, mock(TradingLotService.class), governor(),
-                3.0, 5.0, breakCostEnabled, 2.0);
+                3.0, 5.0, breakCostEnabled, 2.0) {
+            @Override
+            boolean inTailConfirmWindow() {
+                return tailWindowStub; // 用例默认「在窗口内」；验门控的用例临时置 false
+            }
+        };
+    }
+
+    /**
+     * 2026-10-09（用户口径「不用那么严格…按日线级别、尾盘确认」）：
+     * **盘中**（不在尾盘窗口）不发止损类（破线/临近/破成本），但**异动类**（单日大跌）照发。
+     */
+    @Test
+    void stopLossTypes_areGatedToTailConfirmWindow() {
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of("000725", quoteAt("000725", "4.80", "-5.00")));
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll(anyString())).thenReturn(List.of(posWithStopLoss("000725", "京东方A", "5.20", "4.90")));
+        PushChannel push = mock(PushChannel.class);
+        when(push.enabled()).thenReturn(true);
+
+        tailWindowStub = false; // 盘中
+        try {
+            build(market, positions, false, push).poll("default");
+        } finally {
+            tailWindowStub = true;
+        }
+
+        ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
+        verify(push, atLeastOnce()).push(eq("default"), captor.capture());
+        List<String> types = captor.getAllValues().stream().map(PushChannel.PushMessage::type).toList();
+        assertFalse(types.contains("stop-loss"), "盘中不该发破线（尾盘确认）: " + types);
+        assertTrue(types.contains("loss"), "异动类是「今天跌多少」，仍按盘中发: " + types);
     }
 
     /** RFC 20260825 批次级止损测试：注入可桩 derive 的批次服务。 */
@@ -113,10 +150,17 @@ class MarketAlertServiceTest {
 
         PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
         when(pushSettings.findByUser(anyString())).thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
+        // 2026-10-09：止损类提醒改「尾盘确认窗口」门控（用户口径：日线级别、尾盘确认）——
+        // 本用例类固定「在窗口内」，让既有的破线/临近/破成本断言与时间无关（同 isTradingDayToday 的桩法）。
         return new MarketAlertService(market, positions, accounts, snapshot, java.util.List.of(push),
                 mock(PluginService.class), new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(defaultRuleRepo()),
                 pushSettings, lotService, governor(),
-                3.0, 5.0, breakCostEnabled, 2.0);
+                3.0, 5.0, breakCostEnabled, 2.0) {
+            @Override
+            boolean inTailConfirmWindow() {
+                return tailWindowStub; // 用例默认「在窗口内」；验门控的用例临时置 false
+            }
+        };
     }
 
     /** 带止损位/买点的持仓（真止损预警测试用，RFC 20260816 用户提供数据）。 */

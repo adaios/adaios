@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-05
 updated: 2026-10-09
 status: active
-lines: 155
+lines: 156
 depends-on: []
 related: [../../records/REVIEW.md, ../../rules/guides/git-workflow.md, ../../rules/guides/worktree-workflow.md]
 tags: [workspace, task, trading, ledger]
@@ -50,7 +50,8 @@ tags: [workspace, task, trading, ledger]
     另：**P2-2 已修**（自选段默认收起）；**P3-1 已修**（陈旧注释）。**P2-1 已按用户口径统一（2026-10-09）**：
     用户原话「**系统计算是默认，人手动输入是覆盖；按理说只有一个止损价位**」⇒ `effectiveStopLoss` 从 `max(人工, 计算)`
     改为**人工覆盖、系统兜底**，app 判断句/行内一律用生效线并标注来源（你写的 / 默认）——三端与推送从此只看**一条线**。
-    残留：等值边界（app `<=` vs 后端 `<`）**未统一**，登记待办。**P2-3**（落点滚动在
+    残留：**判定基准已按用户口径改为「日线级别、尾盘确认」**（止损类只在尾盘窗口 ≥14:50 确认一次；异动类仍按盘中判）——
+    即「不用那么严格」这条已落地，等值边界不再抠触线即算；app 侧 `readHoldLine` 的 `≤` 与其统一**登记待办**。**P2-3**（落点滚动在
     目标行未构建时静默失效）潜伏、生产 2 只持仓不会踩到，**登记待修**。
   - **`review-adversarial-app-20261009.md`（对抗官）**：**P1×2 与前端官同源（已修）**；**P2-1 已修**——首页打码态下
     确认回执明文印现金变动（隐私漏）→ 改为「现金变了（点 👁 看数）」；**P2-2 与前端官 P2-1 同源（升人）**；

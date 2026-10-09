@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-09
 updated: 2026-10-09
 status: active
-lines: 128
+lines: 142
 depends-on:
   - ./design-app-20261009.md
 related:
@@ -124,5 +124,19 @@ tags: [workspace, trading, push, copy]
 | 后端 | `Position.effectiveStopLoss()` 改覆盖语义（javadoc 写明口径来源与两条病因）；`PositionSerializationTest` 从「取更严格」改为**「人工覆盖」**并钉住「计算更严时不再压过人工」这条关键回归 |
 | 推送文案 | 破线句按**来源**措辞：手填 → 「在你写的止损 X 下方」；系统默认 → 「在**默认风控线** X 下方」（`MarketAlertService#lineLabel`）；临近/大跌两句保留「你的」这个泛称 |
 | app | `PositionItem` 新增 `effectiveStopLoss` + `lineStopLoss`/`lineIsManual`；判断句与行内「与你的线」**一律用生效线**；展开态标注来源（「止损 9.00（你写的）」/「（默认）」）；新增用例钉住「没手填时用生效线判破线」 |
+
+### 八、判定基准：日线级别、尾盘确认（2026-10-09 · 用户拍板）
+
+> 用户原话：「**不用那么严格，你也拿不到实时交易信息；还是按照日线级别，尾盘确认**」。
+
+| 项 | 口径（生效） |
+|:--|:--|
+| **止损类**（破线 `stop-loss` / 临近 `near-stop-loss` / 破成本 `break-cost`） | **只在尾盘窗口（≥14:50）确认一次**（`MarketAlertService#inTailConfirmWindow`，包私有可覆写）；盘中不再每 30 分钟逐拍判——拿到的本就是滞后报价，逐拍判没有信息增益、只会吵 |
+| **异动类**（单日 ±3% / ±5%） | 仍是「今天涨跌多少」，**按盘中判**不变 |
+| **等值边界** | 不再抠「触线即算」——按日线口径，**收盘/尾盘价低于你的线才算破**（严格 `<`）；app 侧 `readHoldLine` 的 `≤` 待与其统一（登记） |
+| 推送节奏 | 破线类与既有 14:50 尾盘 / 15:15 收盘确认同窗口出现（受全局 ≤8/日 与同类同票去重约束） |
+
+**落地**：`MarketAlertService#poll(userId)` 取一次 `tailConfirm` 门控三类止损提醒；`MarketAlertServiceTest` 新增
+`stopLossTypes_areGatedToTailConfirmWindow`（盘中：不发破线、但异动照发）。
 
 **验证**：`./gradlew test` 后端全量 **BUILD SUCCESSFUL**（文案相关断言同步更新：`MarketAlertServiceTest` 5 处 + 保留 R66 断言）。

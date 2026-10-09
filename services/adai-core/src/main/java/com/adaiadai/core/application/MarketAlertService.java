@@ -136,6 +136,20 @@ public class MarketAlertService {
      * 门控对称——无插件用户磁盘不累积看不见的 push 残留、不做无谓行情轮询）。
      * 交易时段 cron 可通过 {@code adai.market.alert.poll-cron} 配置。
      */
+    /**
+     * 止损类提醒（破线 / 临近 / 破成本）的**尾盘确认窗口**起点（2026-10-09 · 用户口径）。
+     *
+     * <p>用户原话：「**不用那么严格，你也拿不到实时交易信息；还是按照日线级别，尾盘确认**」——
+     * 于是这三类不再按盘中每 30 分钟逐拍判（拿到的也是滞后报价），改为**只在尾盘窗口（≥14:50）确认一次**，
+     * 与「日线级别」一致；**异动类**（单日 ±3%/±5%）本就是「今天涨跌多少」，仍按盘中判。
+     * 包私有 + 可覆写：测试可固定「在窗口内 / 不在窗口内」两种桩（同 isTradingDayToday 的做法）。
+     */
+    static final LocalTime TAIL_CONFIRM_FROM = LocalTime.of(14, 50);
+
+    boolean inTailConfirmWindow() {
+        return !LocalTime.now().isBefore(TAIL_CONFIRM_FROM);
+    }
+
     @Scheduled(cron = "${adai.market.alert.poll-cron:" + CRON_POLL + "}")
     public void poll() {
         // 2026-08-30（用户反馈批）：法定节假日休市日不轮询——B5-1（2026-08-23）只补了
@@ -178,6 +192,7 @@ public class MarketAlertService {
         Map<String, MarketData> quotes = marketDataSource.quote(positions.stream().map(Position::symbol).toList());
         if (quotes.isEmpty()) return; // 网络/接口失败：保留快照，不误推
 
+        final boolean tailConfirm = inTailConfirmWindow(); // 2026-10-09：止损类只在尾盘窗口确认
         for (Position p : positions) {
             MarketData md = quotes.get(p.symbol());
             // B5-2（2026-08-23）：行情缺失整只跳过；changePercent 缺失只跳过涨跌类判定——
@@ -189,13 +204,13 @@ public class MarketAlertService {
             // 真止损预警（2026-08-16）：现价跌破用户预设止损位 → R66 硬判定（引擎口径，与建议引擎一致）
             // 止损位未设置（旧数据）不判——R68 入场即设止损，买入时已强制填写
             // 第三阶段：按 userId 读用户规则配置（R66 判定本身无阈值参数，口径不变）
-            if (p.effectiveStopLoss() != null
+            if (tailConfirm && p.effectiveStopLoss() != null
                     && ruleEngine.evaluateStopLoss(userId, md.price(), p.effectiveStopLoss()).verdict()
                     == StopLossVerdict.BREACHED) {
                 addIfNew(userId, p, md, change, "stop-loss", existing, newSignatures, alerts);
             }
             // C3 接近止损预警（2026-08-16）：未跌破但距止损 ≤ nearStopLossPct（默认 2%，可配）
-            if (p.effectiveStopLoss() != null && md.price().compareTo(p.effectiveStopLoss()) > 0) {
+            if (tailConfirm && p.effectiveStopLoss() != null && md.price().compareTo(p.effectiveStopLoss()) > 0) {
                 BigDecimal gapPct = md.price().subtract(p.effectiveStopLoss())
                         .multiply(BigDecimal.valueOf(100)).divide(md.price(), 2, RoundingMode.HALF_UP);
                 if (gapPct.compareTo(nearStopLossPct) <= 0) {
@@ -211,7 +226,7 @@ public class MarketAlertService {
                 addIfNew(userId, p, md, change, "gain", existing, newSignatures, alerts);
             }
             // 跌破成本线风控提醒（只依赖 price）
-            if (breakCostEnabled && p.avgCost() != null
+            if (tailConfirm && breakCostEnabled && p.avgCost() != null
                     && md.price().compareTo(p.avgCost()) < 0) {
                 addIfNew(userId, p, md, change, "break-cost", existing, newSignatures, alerts);
             }
