@@ -2290,7 +2290,11 @@ class PositionItem {
   /// 浮动盈亏%：**负/零成本时为 null**（后端 Position.pnlPercent 语义，2026-09-13 负成本批）
   /// ——前端必须渲染成「—」而不是 0%。
   final double? pnlPercent;
-  final double? stopLossPrice; // 2026-08-17 对齐 web：止损位（持仓卡显示）
+  final double? stopLossPrice; // 人工填的止损位（= null 表示没填，用的是系统默认）
+  /// 2026-10-09（口径统一 · 前端官 P2-1）：**生效止损位**——后端 `Position.effectiveStopLoss()`
+  /// ＝「人工覆盖、系统兜底」的**那一条线**（用户拍板：「系统计算是默认，人手动输入是覆盖」）。
+  /// 判定/展示一律用它；`stopLossPrice` 只用来区分措辞（「你写的」还是「默认」）。
+  final double? effectiveStopLoss;
 
   PositionItem({
     required this.symbol,
@@ -2302,7 +2306,14 @@ class PositionItem {
     required this.pnl,
     this.pnlPercent,
     this.stopLossPrice,
+    this.effectiveStopLoss,
   });
+
+  /// 生效止损位（判据与展示的唯一入口）：后端给了用后端的；旧后端没给 → 退回人工位。
+  double? get lineStopLoss => effectiveStopLoss ?? stopLossPrice;
+
+  /// 这条线是**他手填的**（否则是系统默认）。
+  bool get lineIsManual => stopLossPrice != null;
 
   factory PositionItem.fromJson(Map<String, dynamic> json) => PositionItem(
     symbol: json['symbol'] as String? ?? '',
@@ -2314,6 +2325,7 @@ class PositionItem {
     pnl: (json['pnl'] as num?)?.toDouble() ?? 0,
     pnlPercent: (json['pnlPercent'] as num?)?.toDouble(),
     stopLossPrice: (json['stopLossPrice'] as num?)?.toDouble(),
+    effectiveStopLoss: (json['effectiveStopLoss'] as num?)?.toDouble(),
   );
 }
 

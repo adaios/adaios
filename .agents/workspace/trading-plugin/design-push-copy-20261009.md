@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-09
 updated: 2026-10-09
 status: active
-lines: 116
+lines: 128
 depends-on:
   - ./design-app-20261009.md
 related:
@@ -112,5 +112,17 @@ tags: [workspace, trading, push, copy]
 | **无事不发** | 核对结论：午间（无到线不发）与尾盘（无触发不发）**早已实现**——本批未新增门控，只把这条口径写实（v1 决策 1 的实质是「保持既有克制」） |
 | **标题（结论句前置）** | **本批不动**：标题是 App 徽章归一的键（`feed_card.dart` 按后缀 token 精确匹配；P1-交易92 曾因标题前缀全落 default 灰）→ 要改必须与 App 徽章映射**同批改**，另立小批 |
 | **B3 放飞线** | 未做（缺目标价字段）——按 §五 决议排下批 |
+
+### 七、口径统一（2026-10-09 · 用户拍板「**系统计算是默认，人手动输入是覆盖；按理说只有一个止损价位**」）
+
+`Position.effectiveStopLoss()` 从 `max(人工, 计算)`（取更严格）**改为「人工覆盖、系统兜底」**——
+原来那套会出现「我把线主动往下挪了、系统仍按更高的那条判我破了」，而且 app 用人工位 / 推送与 R66 用生效位，
+同一只票会给出**相反结论**（前端官 P2-1）。
+
+| 端 | 本批动作 |
+|:--|:--|
+| 后端 | `Position.effectiveStopLoss()` 改覆盖语义（javadoc 写明口径来源与两条病因）；`PositionSerializationTest` 从「取更严格」改为**「人工覆盖」**并钉住「计算更严时不再压过人工」这条关键回归 |
+| 推送文案 | 破线句按**来源**措辞：手填 → 「在你写的止损 X 下方」；系统默认 → 「在**默认风控线** X 下方」（`MarketAlertService#lineLabel`）；临近/大跌两句保留「你的」这个泛称 |
+| app | `PositionItem` 新增 `effectiveStopLoss` + `lineStopLoss`/`lineIsManual`；判断句与行内「与你的线」**一律用生效线**；展开态标注来源（「止损 9.00（你写的）」/「（默认）」）；新增用例钉住「没手填时用生效线判破线」 |
 
 **验证**：`./gradlew test` 后端全量 **BUILD SUCCESSFUL**（文案相关断言同步更新：`MarketAlertServiceTest` 5 处 + 保留 R66 断言）。

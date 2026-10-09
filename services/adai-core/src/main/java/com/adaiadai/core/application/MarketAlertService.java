@@ -373,7 +373,7 @@ public class MarketAlertService {
             // **只陈述事实 + 用他自己的线说话**——不带规则编号（依据在 web 看）、不带指令词。
             // B1 破线：把话递给他、停在问句上（用户 2026-10-09 拍板）。
             case "stop-loss" -> p.name() + " 现价 " + fmt(md.price())
-                    + " 在你写的止损 " + fmt(p.effectiveStopLoss())
+                    + " 在" + lineLabel(p) + " " + fmt(p.effectiveStopLoss())
                     + " 下方（R66）。要不要按你昨晚定的处理？";
             // B2 临近：给「离你自己的线还有多远」，比给阈值更有用。
             case "near-stop-loss" -> p.name() + " 现价 " + fmt(md.price())
@@ -386,7 +386,7 @@ public class MarketAlertService {
                         // 后端官 P2-1（2026-10-09）：破线 + 大跌会**合并**成一条，此时价格已在止损下方，
                         // 原来的「离你的 X 还有 −2%」读起来是负距离——按事实分开说。
                         ? (md.price().compareTo(p.effectiveStopLoss()) < 0
-                            ? "，已经在你写的止损 " + fmt(p.effectiveStopLoss()) + " 下方了（R66）。"
+                            ? "，已经在" + lineLabel(p) + " " + fmt(p.effectiveStopLoss()) + " 下方了（R66）。"
                             : "，离你的 " + fmt(p.effectiveStopLoss()) + " 还有 "
                                 + distancePctText(md.price(), p.effectiveStopLoss(), null) + "（R66）。")
                         : "——你还没设止损位。");
@@ -401,6 +401,11 @@ public class MarketAlertService {
      * 现价离止损位的百分比距离（正数＝还在上方），文案用。
      * 分母取**他自己写的止损位**（与他的线同基准）；任一项缺 → 退回调用方给的兜底（带 `%` 的阈值文案）。
      */
+    /** 这条线是他手填的还是系统默认的——2026-10-09 口径统一后，别把默认线说成「你写的」。 */
+    private String lineLabel(Position p) {
+        return p.stopLossPrice() != null ? "你写的止损" : "默认风控线";
+    }
+
     private String distancePctText(BigDecimal price, BigDecimal stop, String fallback) {
         if (price == null || stop == null || stop.signum() == 0) {
             return fallback != null ? fallback + "%" : "说不准";

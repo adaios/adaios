@@ -50,20 +50,21 @@ class PositionSerializationTest {
 
         assertTrue(json.contains("\"stopLossPrice\":23.0"), "人工止损应序列化: " + json);
         assertTrue(json.contains("\"computedStopLossPrice\":24.0"), "计算止损应序列化: " + json);
-        assertTrue(json.contains("\"effectiveStopLoss\":24.0"), "生效止损=max(人工,计算) 应序列化: " + json);
+        // 2026-10-09 口径变更（用户拍板）：生效止损 = **人工覆盖、系统兜底**——本例人工 23.0 覆盖计算 24.0
+        assertTrue(json.contains("\"effectiveStopLoss\":23.0"), "生效止损=人工覆盖 应序列化: " + json);
     }
 
     @Test
-    void effectiveStopLoss_takesStricterOfManualAndComputed() {
+    void effectiveStopLoss_manualOverridesComputed() {
         LocalDateTime now = LocalDateTime.now();
-        // 人工更严（更高价）→ 生效 = 人工
+        // 人工在（无论比计算高还是低）→ 生效 = 人工（覆盖）
         Position manualStricter = new Position("a", "A", 100, new BigDecimal("10"), new BigDecimal("10"), now,
                 null, new BigDecimal("9.50"), null, null, new BigDecimal("9.00"));
         assertEquals(0, manualStricter.effectiveStopLoss().compareTo(new BigDecimal("9.50")));
-        // 计算更严 → 生效 = 计算
+        // ⚠️ 关键回归（P2-1 的原场景）：计算更严（更高）时**不再压过人工**——我把线往下挪，就按我挪的判
         Position computedStricter = new Position("b", "B", 100, new BigDecimal("10"), new BigDecimal("10"), now,
                 null, new BigDecimal("8.50"), null, null, new BigDecimal("9.00"));
-        assertEquals(0, computedStricter.effectiveStopLoss().compareTo(new BigDecimal("9.00")));
+        assertEquals(0, computedStricter.effectiveStopLoss().compareTo(new BigDecimal("8.50")));
         // 只有人工 → 生效 = 人工
         Position manualOnly = new Position("c", "C", 100, new BigDecimal("10"), new BigDecimal("10"), now,
                 null, new BigDecimal("9.50"), null, null, null);

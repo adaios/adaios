@@ -891,6 +891,27 @@ void main() {
 
     // ── 2026-10-09（批 5 · R-07/R-11 提醒落点）：点推送 → 落到那只票并就地展开 ──
 
+    testWidgets('口径统一（P2-1）：没手填止损时用**后端的生效线**判破线（不再是「没设线」）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/positions'] = (_) async => _json({
+            'positions': [
+              // 系统算的默认线（人工位为 null）——2026-10-09 口径：生效线＝人工覆盖、系统兜底
+              {'symbol': '600206', 'name': '有研新材', 'quantity': 200,
+                'avgCost': 50.0, 'currentPrice': 8.60,
+                'marketValue': 1720.0, 'pnl': -100.0, 'pnlPercent': -2.0,
+                'stopLossPrice': null, 'effectiveStopLoss': 9.00},
+            ],
+          });
+      await pumpTrading(tester, b);
+
+      expect(find.text('持仓 1 只 · 1 只破了你的线'), findsOneWidget);
+      expect(find.text('破了你的 9.00'), findsOneWidget);
+      // 展开态说明来源：这是系统默认线，不是他手填的
+      await expandPosition(tester, '有研新材');
+      expect(find.textContaining('止损 9.00（默认）'), findsOneWidget);
+    });
+
     testWidgets('提醒落点：带 focusSymbol 进页 → 那只票就地展开（其余保持收起）', (tester) async {
       final b = _Backend();
       mockBase(b);

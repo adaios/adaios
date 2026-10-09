@@ -2042,7 +2042,8 @@ class _TradingPageState extends State<TradingPage> {
   Widget _buildVerdictHeader() {
     final broke = <PositionItem>[
       for (final p in _positions)
-        if (readHoldLine(currentPrice: p.currentPrice, stopLossPrice: p.stopLossPrice).state ==
+        // 2026-10-09（口径统一）：用**生效线**（后端 max→人工覆盖），与推送/R66/web 同一条
+        if (readHoldLine(currentPrice: p.currentPrice, stopLossPrice: p.lineStopLoss).state ==
             HoldLineState.brokeStop)
           p,
     ];
@@ -3378,7 +3379,7 @@ class _TradingPageState extends State<TradingPage> {
         : '${p.pnlPercent! >= 0 ? '+' : ''}${p.pnlPercent!.toStringAsFixed(1)}%';
     final dayChg = _positionsDaily?.forSymbol(p.symbol)?.dayChangePct;
     final dayStr = dayChg == null ? '—' : '${dayChg >= 0 ? '+' : ''}${dayChg.toStringAsFixed(1)}%';
-    final line = readHoldLine(currentPrice: p.currentPrice, stopLossPrice: p.stopLossPrice);
+    final line = readHoldLine(currentPrice: p.currentPrice, stopLossPrice: p.lineStopLoss);
     return InkWell(
       // 批 5：提醒落点要滚到这一行，所以每只票挂一个 key
       key: _positionRowKeys.putIfAbsent(p.symbol, () => GlobalKey()),
@@ -3442,7 +3443,11 @@ class _TradingPageState extends State<TradingPage> {
       '${_amountsRevealed ? '${p.quantity}股' : '••••股'}',
       '成本 ${_amountsRevealed ? _fmtPrice(p.avgCost) : '••••'}',
       '现价 ${_fmtPrice(p.currentPrice)}',
-      if (p.stopLossPrice != null) '止损 ${_fmtPrice(p.stopLossPrice!)}' else '未设止损',
+      // 措辞按来源：他手填的叫「你写的」，系统算的叫「默认」
+      if (p.lineStopLoss != null)
+        '止损 ${_fmtPrice(p.lineStopLoss!)}${p.lineIsManual ? '（你写的）' : '（默认）'}'
+      else
+        '未设止损',
     ];
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(

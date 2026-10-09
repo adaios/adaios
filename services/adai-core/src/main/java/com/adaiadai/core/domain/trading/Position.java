@@ -62,15 +62,18 @@ public record Position(
     }
 
     /**
-     * 生效止损位 = max(人工止损, 系统计算止损)——取更严格（更高价、更早触发）者。
-     * R66 判定/接近止损预警/建议引擎统一用本值；两者皆空 → null（未设，判定跳过）。
-     * 依据：docs/reference/trading-risk-plan.md「最终止损 = 取更严格」。
+     * 生效止损位（**一条线**）＝**人工覆盖，系统兜底**：
+     * 用户手填了就用手填的（覆盖），没填才回落到系统计算值；两者皆空 → null（未设，判定跳过）。
+     * R66 判定 / 接近止损预警 / 建议引擎 / 复盘 / 推送统一用本值——三端只看这一条，不再各算各的。
+     *
+     * <p>⚠️ 口径变更（2026-10-09 · 用户拍板原话）：「**系统计算是默认，人手动输入是覆盖；
+     * 这概念，按理说只有一个止损价位**」。原实现是 `max(人工, 计算)`（取更严格），会出现两件怪事：
+     * ① 我把线主动往下挪了，系统仍按更高的那条判我「破了你的线」；
+     * ② app 首屏按人工位、推送/R66 按生效位 → 同一只票给出**相反结论**（前端官 P2-1）。
      */
     @JsonGetter
     public BigDecimal effectiveStopLoss() {
-        if (stopLossPrice == null) return computedStopLossPrice;
-        if (computedStopLossPrice == null) return stopLossPrice;
-        return stopLossPrice.compareTo(computedStopLossPrice) >= 0 ? stopLossPrice : computedStopLossPrice;
+        return stopLossPrice != null ? stopLossPrice : computedStopLossPrice;
     }
 
     /**
