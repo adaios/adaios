@@ -921,9 +921,10 @@ void main() {
                 'avgCost': 90.0, 'currentPrice': 85.71,
                 'marketValue': 8571.0, 'pnl': -429.0, 'pnlPercent': -4.8,
                 'stopLossPrice': 88.1},
+              // 现价严格低于他的线（日线口径：等于不算破）
               {'symbol': '600206', 'name': '有研新材', 'quantity': 200,
-                'avgCost': 50.0, 'currentPrice': 49.0,
-                'marketValue': 9800.0, 'pnl': -200.0, 'pnlPercent': -2.0,
+                'avgCost': 50.0, 'currentPrice': 48.5,
+                'marketValue': 9700.0, 'pnl': -300.0, 'pnlPercent': -3.0,
                 'stopLossPrice': 49.0},
             ],
           });

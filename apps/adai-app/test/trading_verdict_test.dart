@@ -112,9 +112,10 @@ void main() {
       expect(r.text, '破了你的 16.80');
     });
 
-    test('刚好等于止损也算破线（触线即提醒，不留缝）', () {
-      expect(readHoldLine(currentPrice: 16.8, stopLossPrice: 16.8).state,
-          HoldLineState.brokeStop);
+    test('正好等于你的线 → **不算破**（2026-10-09 口径：日线级别、低于才算破）', () {
+      final r = readHoldLine(currentPrice: 16.8, stopLossPrice: 16.8);
+      expect(r.state, HoldLineState.aboveStop);
+      expect(r.text, '离你的 16.80 还有 0.0%');
     });
 
     test('在线上：给「离你的 X 还有 Y%」', () {

@@ -130,7 +130,9 @@ HoldLineReading readHoldLine({double? currentPrice, double? stopLossPrice}) {
   final s = stopLossPrice;
   if (s == null || s <= 0) return const HoldLineReading(HoldLineState.noLine, '没设线');
   if (c == null || c <= 0) return const HoldLineReading(HoldLineState.unknown, '没取到现价');
-  if (c <= s) return HoldLineReading(HoldLineState.brokeStop, '破了你的 ${_price(s)}');
+  // 2026-10-09（用户口径：日线级别、尾盘确认）：**低于**才算破——正好等于你的线不算破
+  // （与后端 R66 的严格 `<` 一致；也符合「不用那么严格」）
+  if (c < s) return HoldLineReading(HoldLineState.brokeStop, '破了你的 ${_price(s)}');
   final pct = (c - s) / s * 100;
   return HoldLineReading(
     HoldLineState.aboveStop,
