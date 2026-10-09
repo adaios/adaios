@@ -166,7 +166,8 @@ class MarketAlertServiceTest {
         PushChannel.PushMessage e = captor.getValue();
         assertEquals("loss", e.type());
         assertEquals("600519", e.symbol());
-        assertTrue(e.content().contains("单日大跌"));
+        // 2026-10-09（推送文案库 v1）：正文改成「今天跌 X%，现价 Y（离你的止损 …）」——不带「单日大跌」这类形容词
+        assertTrue(e.content().contains("今天跌"));
         assertTrue(e.content().contains("还没设止损位"));
     }
 
@@ -204,7 +205,8 @@ class MarketAlertServiceTest {
 
         ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
         verify(push, times(1)).push(eq("default"), captor.capture());
-        assertTrue(captor.getValue().content().contains("止损位 7.44"), "已设止损 → 应提止损位");
+        // 2026-10-09（v1 B 组）：改成「离你的 7.44 还有 X%」——数字仍是**他自己写的止损位**
+        assertTrue(captor.getValue().content().contains("7.44"), "已设止损 → 应提他自己的止损位");
         assertFalse(captor.getValue().content().contains("还没设止损位"), "已设止损 → 不应再说没设");
     }
 
@@ -252,8 +254,8 @@ class MarketAlertServiceTest {
         // 类型保留最严重（loss > break-cost）
         assertEquals("loss", m.type());
         // 内容拼接了两种提醒（大跌 + 跌破成本）
-        assertTrue(m.content().contains("单日大跌"), "合并内容应含单日大跌提醒");
-        assertTrue(m.content().contains("跌破成本"), "合并内容应含跌破成本提醒");
+        assertTrue(m.content().contains("今天跌"), "合并内容应含大跌那条");
+        assertTrue(m.content().contains("跌过你的成本"), "合并内容应含跌破成本那条");
 
         // ── P0-1（2026-09-14 增量深审）：行情推送也要锁屏脱敏，且**合并不得把脱敏丢掉** ──
         // 完整版（站内 Feed）：标题点名 + 正文带现价——这是它该有的样子
@@ -265,8 +267,8 @@ class MarketAlertServiceTest {
         assertFalse(lock.contains("贵州茅台"), "锁屏不得出现股票名，实际: " + lock);
         assertFalse(lock.contains("600519"), "锁屏不得出现代码，实际: " + lock);
         assertFalse(lock.contains("9.5"), "锁屏不得出现现价，实际: " + lock);
-        assertTrue(lock.contains("单日大跌"), "合并后应保留各类型的锁屏提示，实际: " + lock);
-        assertTrue(lock.contains("跌破成本线"), "合并后应保留各类型的锁屏提示，实际: " + lock);
+        assertTrue(lock.contains("跌得不少"), "合并后应保留各类型的锁屏提示，实际: " + lock);
+        assertTrue(lock.contains("跌过你的成本"), "合并后应保留各类型的锁屏提示，实际: " + lock);
     }
 
     @Test
@@ -426,7 +428,8 @@ class MarketAlertServiceTest {
         PushChannel.PushMessage e = captor.getValue();
         assertEquals("stop-loss", e.type());
         assertEquals("000725", e.symbol());
-        assertTrue(e.content().contains("跌破你的止损位 4.9"), "文案应含止损位，实际: " + e.content());
+        // 2026-10-09（v1 B1）：破线文案＝「在你写的止损 4.9 下方。要不要按你昨晚定的处理？」
+        assertTrue(e.content().contains("在你写的止损 4.9 下方"), "文案应含止损位，实际: " + e.content());
         assertTrue(e.content().contains("R66"), "文案应引用纪律规则 R66");
     }
 
@@ -535,7 +538,8 @@ class MarketAlertServiceTest {
         ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
         verify(push, times(1)).push(eq("default"), captor.capture());
         assertEquals("near-stop-loss", captor.getValue().type());
-        assertTrue(captor.getValue().content().contains("距你的止损位"));
+        // 2026-10-09（v1 B2）：改成「离你的止损 <价格> 还有 <实际距离>%」——给距离而不是给阈值
+        assertTrue(captor.getValue().content().contains("离你的止损"));
     }
 
     @org.junit.jupiter.api.Test
@@ -742,4 +746,3 @@ class MarketAlertServiceTest {
         assertTrue(MarketAlertService.CRON_POLL.endsWith("* * MON-FRI"), "周末仍由 cron 排除");
     }
 }
-

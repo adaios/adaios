@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-05
 updated: 2026-10-09
 status: active
-lines: 131
+lines: 136
 depends-on: []
 related: [../../records/REVIEW.md, ../../rules/guides/git-workflow.md, ../../rules/guides/worktree-workflow.md]
 tags: [workspace, task, trading, ledger]
@@ -53,9 +53,14 @@ tags: [workspace, task, trading, ledger]
   **批 5 已交付（2026-10-09 · `0330da10`）**：**提醒落点**——`trading:<代码>` 深链解析（`utils/trading_deeplink.dart`）
   → 交易类告警点开直接落到**该票并就地展开**（`_applyFocusSymbol`，不在持仓里则如实不动），其他类型保持回 Feed 定位。
   `R-07` / `R-11` 在 `scope-app` 转**已交付**；**推送文案库 v1 四条已拍板**（`design-push-copy-20261009.md` §五）。
-  **未交付（去向）**：① **推送文案本体**（后端 `TradingSessionPushService` / `MarketAlertService` 的措辞与「无事不发」判据）
-  —— 属**后端批次**，文案已定、可直接开工；② **推送真到达**——需生产 APNs（本轮「点通知」是通道级模拟，与真实点击同一路由）；
-  ③ `ux-visual` 视觉层审核 + 外部视角三官（陌生人 / 社会性 / 支持台）**未派**；④ 截图入账**真图 VLM 链路**未在真机跑。
+  **推送文案本体已交付（2026-10-09 · 后端批次）**：B 组四类措辞按 v1 重写（B1 保留 R66 并停在问句上 /
+  B2 给「离你的线还有多远」的实际距离 / **B4 正文不再出现成本数字** / B5 去形容词）+ B 组锁屏对齐 + 尾盘收尾一句；
+  A1/A2/A5 **核对后确认现状即符合**（早盘不唠叨 · 午间无到线不发 · 加小结有账才发），`无事不发` 早已实现；
+  **标题（结论句前置）本批不动**——标题是 App 徽章归一的键，须与 `feed_card.dart` 的映射**同批改**，另立小批。
+  验证：`./gradlew test` 后端全量 BUILD SUCCESSFUL。落地明细见 `design-push-copy-20261009.md` §六。
+  **未交付（去向）**：① **标题结论句前置**（需与 App 徽章映射同批改）；② **放飞线**（缺目标价字段，排下批）；
+  ③ **推送真到达**——需生产 APNs（本轮「点通知」是通道级模拟，与真实点击同一路由）；
+  ④ `ux-visual` 视觉层审核 + 外部视角三官（陌生人 / 社会性 / 支持台）**未派**；⑤ 截图入账**真图 VLM 链路**未在真机跑。
   **真机走查**：已完成（第 1 轮，**六张实拍**：首屏四层 / 持仓展开 / 自选只读 / 推送设置 / 复盘历史 / 提醒落点），
   取证方式可复跑——见 `review-app-uiux-20261009.md` §1.1。
   **主仓库收口项**：`change-log.md` 追加本批一行 · `REVIEW.md` 里 `P1-交易101` 按本批范围改写——**web 端与 app 端

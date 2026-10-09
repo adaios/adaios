@@ -326,11 +326,12 @@ public class MarketAlertService {
      *  详情留给打开 App 的人——锁屏是「放在桌上旁人能看见」的场合。 */
     private String lockScreenMessage(String type) {
         return switch (type) {
-            case "stop-loss" -> "有持仓跌破止损位了。打开阿呆看看。";
-            case "near-stop-loss" -> "有持仓快到止损位了。打开阿呆看看。";
-            case "loss" -> "有持仓单日大跌。打开阿呆看看。";
+            // 2026-10-09（推送文案库 v1）：措辞对齐「你的线」口径；隐私口径不变（不点标的、不带价）。
+            case "stop-loss" -> "有持仓破了你的线。打开阿呆看看。";
+            case "near-stop-loss" -> "有持仓快到你的线了。打开阿呆看看。";
+            case "loss" -> "有持仓今天跌得不少。打开阿呆看看。";
             case "gain" -> "有持仓今天涨得不错。打开阿呆看看。";
-            default -> "有持仓跌破成本线了。打开阿呆看看。";
+            default -> "有持仓跌过你的成本了。打开阿呆看看。";
         };
     }
 
@@ -369,22 +370,42 @@ public class MarketAlertService {
         return switch (type) {
             // design-final §11.6 B1：六类文案统一「只陈述事实」——
             // 跌破止损位只说「已跌破你的止损位 X（R66）」（止损/清仓分开说，不清仓不越俎代庖）
-            case "stop-loss" -> "📉 " + p.name() + "(" + p.symbol() + ") 现价 " + fmt(md.price())
-                    + " 已跌破你的止损位 " + fmt(p.effectiveStopLoss()) + "（R66）。";
-            case "near-stop-loss" -> "⚠️ " + p.name() + "(" + p.symbol() + ") 现价 " + fmt(md.price())
-                    + " 距你的止损位 " + fmt(p.effectiveStopLoss()) + " 不到 "
-                    + nearStopLossPct.stripTrailingZeros().toPlainString()
-                    + "%（R66）。";
-            case "loss" -> "📉 " + p.name() + "(" + p.symbol() + ") 今日跌 " + fmt(change) + "%，现价 "
-                    + fmt(md.price())
+            // 2026-10-09（推送文案库 v1 · `design-push-copy-20261009.md` §三 B 组）：统一
+            // **只陈述事实 + 用他自己的线说话**——不带规则编号（依据在 web 看）、不带指令词。
+            // B1 破线：把话递给他、停在问句上（用户 2026-10-09 拍板）。
+            case "stop-loss" -> p.name() + " 现价 " + fmt(md.price())
+                    + " 在你写的止损 " + fmt(p.effectiveStopLoss())
+                    + " 下方（R66）。要不要按你昨晚定的处理？";
+            // B2 临近：给「离你自己的线还有多远」，比给阈值更有用。
+            case "near-stop-loss" -> p.name() + " 现价 " + fmt(md.price())
+                    + "，离你的止损 " + fmt(p.effectiveStopLoss()) + " 还有 "
+                    + distancePctText(md.price(), p.effectiveStopLoss(),
+                            nearStopLossPct.stripTrailingZeros().toPlainString())
+                    + "（R66）。";
+            case "loss" -> p.name() + " 今天跌 " + fmt(change) + "%，现价 " + fmt(md.price())
                     + (p.effectiveStopLoss() != null
-                        ? "——单日大跌，你的止损位 " + fmt(p.effectiveStopLoss()) + "（R66）"
-                        : "——单日大跌（你还没设止损位）");
-            case "gain" -> "📈 " + p.name() + "(" + p.symbol() + ") 今日涨 " + fmt(change) + "%，现价 "
-                    + fmt(md.price()) + "——单日大涨";
-            default -> "⚠️ " + p.name() + "(" + p.symbol() + ") 现价 " + fmt(md.price())
-                    + " 已跌破成本线 " + fmt(p.avgCost()) + "。";
+                        ? "，离你的 " + fmt(p.effectiveStopLoss()) + " 还有 "
+                            + distancePctText(md.price(), p.effectiveStopLoss(), null) + "（R66）。"
+                        : "——你还没设止损位。");
+            case "gain" -> p.name() + " 今天涨 " + fmt(change) + "%，现价 " + fmt(md.price()) + "。";
+            // B4 破成本：**正文不再出现成本数字**（v1 §一 原则 4：隐私层不出边界）——
+            // 要看数就打开 App（首页那里还有 👁 打码口径兜着）。
+            default -> p.name() + " 现价 " + fmt(md.price()) + " 跌过你的成本了。成本数字不在推送里，打开阿呆看。";
         };
+    }
+
+    /**
+     * 现价离止损位的百分比距离（正数＝还在上方），文案用。
+     * 分母取**他自己写的止损位**（与他的线同基准）；任一项缺 → 退回调用方给的兜底（带 `%` 的阈值文案）。
+     */
+    private String distancePctText(BigDecimal price, BigDecimal stop, String fallback) {
+        if (price == null || stop == null || stop.signum() == 0) {
+            return fallback != null ? fallback + "%" : "说不准";
+        }
+        BigDecimal pct = price.subtract(stop)
+                .multiply(BigDecimal.valueOf(100))
+                .divide(stop, 2, RoundingMode.HALF_UP);
+        return pct.stripTrailingZeros().toPlainString() + "%";
     }
 
     private String fmt(BigDecimal v) {

@@ -707,6 +707,9 @@ public class TradingSessionPushService {
         if (held > blocks.size()) {
             sb.append("另外 ").append(held - blocks.size()).append(" 只没有触发你的卖出条件，按计划拿着。");
         }
+        // 2026-10-09（推送文案库 v1 §三 A3）：尾盘收一句「按你昨晚写的办」——
+        // 把决定权明确交回他自己定的计划（本插件的用处就是「用我的规则盯我的持仓」）。
+        sb.append("\n最后 10 分钟，按你昨晚写的办。");
         // RFC 20261003-trading-plan-and-review-loop §三（2026-10-03）：**先念你今天的计划进度**，
         // 再是系统按规则算出来的尾盘卖点（前者是你自己定的，后者是规则的提示）。
         String body = sb.toString().strip();
