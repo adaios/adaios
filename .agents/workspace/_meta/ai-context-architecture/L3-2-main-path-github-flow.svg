@@ -3,12 +3,14 @@
   <text x="40" y="52" font-size="27" font-weight="700" fill="#0f172a">Layer 3 · GitHub Flow：主线 + 五道关卡</text>
   <text x="40" y="86" font-size="15" fill="#64748b">唯一的合流点就是 main —— 关卡最少、人的接入点也最少，代价全压在「分支要短」这一条纪律上</text>
 
-  <rect x="1440" y="20" width="720" height="76" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
-  <line x1="1462" y1="48" x2="1518" y2="48" stroke="#0f172a" stroke-width="6" stroke-linecap="round"/>
-  <text x="1532" y="53" font-size="12.5" fill="#334155">粗线 ＝ 一个改动的旅程（AI 全程执行）</text>
-  <circle cx="1470" cy="76" r="9" fill="#b91c1c"/>
-  <text x="1483" y="80" font-size="9.5" font-weight="700" fill="#ffffff">人</text>
-  <text x="1500" y="80" font-size="12.5" fill="#334155">＝ 决策接口（3 个点：取舍 / 点头部署 / 验收）</text>
+  <rect x="1440" y="16" width="720" height="96" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <line x1="1462" y1="44" x2="1518" y2="44" stroke="#0f172a" stroke-width="6" stroke-linecap="round"/>
+  <text x="1532" y="49" font-size="12.5" fill="#334155">粗线 ＝ 一个改动的旅程（AI 全程执行）</text>
+  <circle cx="1470" cy="72" r="9" fill="#b91c1c"/>
+  <text x="1470" y="76" font-size="9.5" font-weight="700" fill="#ffffff" text-anchor="middle">人</text>
+  <text x="1490" y="76" font-size="12.5" fill="#334155">＝ 人的决策点（3 个：取舍 / 点头部署 / 验收）</text>
+  <circle cx="1470" cy="102" r="7" fill="#94a3b8"/>
+  <text x="1490" y="106" font-size="12" fill="#334155">＝ 关卡落点（走到这里 ＝ 过了一道关卡）</text>
 
   <rect x="160" y="120" width="360" height="160" rx="10" fill="#f0fdf4" stroke="#86efac"/>
   <text x="180" y="150" font-size="13.5" font-weight="700" fill="#0f172a">D1 · 进入分支（开工）</text>
@@ -55,16 +57,16 @@
   <path d="M768,392 L788,400 L768,408 z" fill="#0f172a"/>
   <path d="M1408,552 L1428,560 L1408,568 z" fill="#0f172a"/>
   <circle cx="340" cy="400" r="9" fill="#0f172a"/>
-  <circle cx="760" cy="400" r="7" fill="#dc2626"/>
-  <circle cx="1180" cy="400" r="7" fill="#dc2626"/><circle cx="1180" cy="560" r="7" fill="#dc2626"/>
-  <circle cx="1560" cy="560" r="7" fill="#dc2626"/><circle cx="1980" cy="560" r="7" fill="#dc2626"/>
-  <text x="300" y="376" font-size="11.5" fill="#334155">改动从这里开始</text>
+  <circle cx="760" cy="400" r="7" fill="#94a3b8"/>
+  <circle cx="1180" cy="400" r="7" fill="#94a3b8"/><circle cx="1180" cy="560" r="7" fill="#94a3b8"/>
+  <circle cx="1560" cy="560" r="7" fill="#94a3b8"/><circle cx="1980" cy="560" r="7" fill="#94a3b8"/>
+  <text x="326" y="376" font-size="11.5" fill="#334155" text-anchor="end">改动从这里开始</text>
   <rect x="1536" y="520" width="20" height="20" transform="rotate(45 1546 530)" fill="#16a34a"/>
   <text x="1512" y="516" font-size="11.5" font-weight="600" fill="#15803d">tag v1.2</text>
 
   <circle cx="560" cy="400" r="12" fill="#b91c1c"/>
   <text x="560" y="405" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">人</text>
-  <text x="560" y="378" font-size="11" fill="#b91c1c" text-anchor="middle">取舍 / 验收</text>
+  <text x="560" y="378" font-size="11" fill="#b91c1c" text-anchor="middle">取舍</text>
   <circle cx="1470" cy="560" r="12" fill="#b91c1c"/>
   <text x="1470" y="565" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">人</text>
   <text x="1450" y="538" font-size="11" fill="#b91c1c" text-anchor="middle">点头部署</text>
@@ -72,7 +74,7 @@
   <text x="1930" y="565" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">人</text>
   <text x="1912" y="538" font-size="11" fill="#b91c1c" text-anchor="middle">验收</text>
 
-  <text x="1160" y="422" font-size="11.5" fill="#7c3aed">① 做功能（分支短命）</text>
+  <text x="1164" y="422" font-size="11.5" fill="#7c3aed" text-anchor="end">① 做功能（分支短命）</text>
   <text x="1420" y="582" font-size="11.5" fill="#1d4ed8">② 合并即部署</text>
 
   <text x="740" y="676" font-size="12.5" font-weight="700" fill="#15803d" text-anchor="middle">开发期 · 分支内可自由改</text>

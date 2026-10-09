@@ -11,7 +11,8 @@
 
   <text x="48" y="237" font-size="18" font-weight="700" fill="#1d4ed8">main</text>
   <text x="48" y="257" font-size="12" fill="#94a3b8">唯一长期分支 · 永远可部署</text>
-  <line x1="200" y1="230" x2="1062" y2="230" stroke="#cbd5e1" stroke-width="3"/>
+  <line x1="200" y1="230" x2="1068" y2="230" stroke="#cbd5e1" stroke-width="3"/>
+  <path d="M1068,224 L1080,230 L1068,236 z" fill="#2563eb"/>
   <circle cx="300" cy="230" r="8" fill="#2563eb"/>
   <circle cx="1040" cy="230" r="9" fill="#2563eb" stroke="#ffffff" stroke-width="2"/>
   <text x="300" y="206" font-size="12" fill="#64748b">从 main 切出</text>

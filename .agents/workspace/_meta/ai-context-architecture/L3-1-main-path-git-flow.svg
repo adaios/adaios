@@ -3,12 +3,14 @@
   <text x="40" y="52" font-size="27" font-weight="700" fill="#0f172a">Layer 3 · 一个改动的旅程：主线 + 六道关卡</text>
   <text x="40" y="86" font-size="15" fill="#64748b">AI 上下文工程是中枢 —— 人（决策接口）与 AI（执行接口）都挂在它上面；粗线是一个改动走过的路</text>
 
-  <rect x="1440" y="20" width="720" height="76" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
-  <line x1="1462" y1="48" x2="1518" y2="48" stroke="#0f172a" stroke-width="6" stroke-linecap="round"/>
-  <text x="1532" y="53" font-size="12.5" fill="#334155">粗线 ＝ 一个改动的旅程（AI 全程执行）</text>
-  <circle cx="1470" cy="76" r="9" fill="#b91c1c"/>
-  <text x="1483" y="80" font-size="9.5" font-weight="700" fill="#ffffff">人</text>
-  <text x="1500" y="80" font-size="12.5" fill="#334155">＝ 决策接口（4 个点：取舍 / 冻结 / 发布 / 验收）</text>
+  <rect x="1440" y="16" width="720" height="96" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <line x1="1462" y1="44" x2="1518" y2="44" stroke="#0f172a" stroke-width="6" stroke-linecap="round"/>
+  <text x="1532" y="49" font-size="12.5" fill="#334155">粗线 ＝ 一个改动的旅程（AI 全程执行）</text>
+  <circle cx="1470" cy="72" r="9" fill="#b91c1c"/>
+  <text x="1470" y="76" font-size="9.5" font-weight="700" fill="#ffffff" text-anchor="middle">人</text>
+  <text x="1490" y="76" font-size="12.5" fill="#334155">＝ 人的决策点（4 个：取舍 / 冻结 / 发布 / 验收）</text>
+  <circle cx="1470" cy="102" r="7" fill="#94a3b8"/>
+  <text x="1490" y="106" font-size="12" fill="#334155">＝ 关卡落点（走到这里 ＝ 过了一道关卡）</text>
 
   <rect x="160" y="130" width="360" height="160" rx="10" fill="#f0fdf4" stroke="#86efac"/>
   <text x="180" y="160" font-size="13.5" font-weight="700" fill="#0f172a">D1 · 进入分支（开工）</text>
@@ -60,11 +62,11 @@
   <line x1="1320" y1="570" x2="1710" y2="570" stroke="#86efac" stroke-width="2.5"/>
   <line x1="1780" y1="750" x2="2010" y2="750" stroke="#fca5a5" stroke-width="2.5"/>
   <line x1="1780" y1="660" x2="1780" y2="750" stroke="#fca5a5" stroke-width="1.5" stroke-dasharray="5 5"/>
-  <circle cx="1780" cy="750" r="7" fill="#dc2626"/>
-  <circle cx="1850" cy="750" r="7" fill="#dc2626"/>
+  <circle cx="1780" cy="750" r="7" fill="#94a3b8"/>
+  <circle cx="1850" cy="750" r="7" fill="#94a3b8"/>
   <path d="M1850,742 L1850,672" stroke="#dc2626" stroke-width="2" fill="none"/>
   <path d="M1960,742 L1960,492" stroke="#dc2626" stroke-width="1.6" stroke-dasharray="5 5" fill="none"/>
-  <text x="1800" y="778" font-size="11" fill="#b91c1c">救火支线（hotfix：合 main + 合回 develop）</text>
+  <text x="1966" y="778" font-size="11" fill="#b91c1c" text-anchor="end">救火支线（hotfix：合 main + 合回 develop）</text>
 
   <text x="40" y="396" font-size="16" font-weight="700" fill="#7c3aed">feature/*</text>
   <text x="40" y="486" font-size="16" font-weight="700" fill="#0f766e">develop</text>
@@ -89,30 +91,30 @@
   <path d="M1838,652 L1858,660 L1838,668 z" fill="#0f172a"/>
 
   <circle cx="340" cy="390" r="9" fill="#0f172a"/>
-  <text x="300" y="366" font-size="11.5" fill="#334155">改动从这里开始</text>
-  <circle cx="640" cy="390" r="7" fill="#dc2626"/>
-  <circle cx="940" cy="390" r="7" fill="#dc2626"/>
-  <circle cx="940" cy="480" r="7" fill="#dc2626"/>
-  <circle cx="1320" cy="480" r="7" fill="#dc2626"/>
-  <circle cx="1320" cy="570" r="7" fill="#dc2626"/>
-  <circle cx="1700" cy="570" r="7" fill="#dc2626"/>
-  <circle cx="1700" cy="660" r="7" fill="#dc2626"/>
-  <circle cx="1980" cy="660" r="7" fill="#dc2626"/>
+  <text x="326" y="366" font-size="11.5" fill="#334155" text-anchor="end">改动从这里开始</text>
+  <circle cx="640" cy="390" r="7" fill="#94a3b8"/>
+  <circle cx="940" cy="390" r="7" fill="#94a3b8"/>
+  <circle cx="940" cy="480" r="7" fill="#94a3b8"/>
+  <circle cx="1320" cy="480" r="7" fill="#94a3b8"/>
+  <circle cx="1320" cy="570" r="7" fill="#94a3b8"/>
+  <circle cx="1700" cy="570" r="7" fill="#94a3b8"/>
+  <circle cx="1700" cy="660" r="7" fill="#94a3b8"/>
+  <circle cx="1980" cy="660" r="7" fill="#94a3b8"/>
 
   <circle cx="560" cy="390" r="12" fill="#b91c1c"/>
   <text x="560" y="395" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">人</text>
-  <text x="560" y="368" font-size="11" fill="#b91c1c" text-anchor="middle">取舍 / 验收</text>
+  <text x="560" y="368" font-size="11" fill="#b91c1c" text-anchor="middle">取舍</text>
   <circle cx="1264" cy="480" r="12" fill="#b91c1c"/>
   <text x="1264" y="485" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">人</text>
-  <text x="1246" y="462" font-size="11" fill="#b91c1c" text-anchor="middle">决定「可以发了」</text>
+  <text x="1246" y="462" font-size="11" fill="#b91c1c" text-anchor="middle">冻结 · 可以发了</text>
   <circle cx="1644" cy="570" r="12" fill="#b91c1c"/>
   <text x="1644" y="575" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">人</text>
-  <text x="1620" y="552" font-size="11" fill="#b91c1c" text-anchor="middle">点头发布</text>
+  <text x="1620" y="552" font-size="11" fill="#b91c1c" text-anchor="middle">发布 · 点头</text>
   <circle cx="1930" cy="660" r="12" fill="#b91c1c"/>
   <text x="1930" y="665" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">人</text>
   <text x="1912" y="642" font-size="11" fill="#b91c1c" text-anchor="middle">验收</text>
 
-  <text x="906" y="412" font-size="11.5" fill="#7c3aed">① 做功能</text>
+  <text x="924" y="412" font-size="11.5" fill="#7c3aed" text-anchor="end">① 做功能</text>
   <text x="1150" y="502" font-size="11.5" fill="#0f766e">② 集成到 develop</text>
   <text x="1470" y="592" font-size="11.5" fill="#16a34a">③ 冻结后走发布</text>
   <text x="1716" y="638" font-size="11.5" fill="#1d4ed8">④ 上线 → 归档</text>

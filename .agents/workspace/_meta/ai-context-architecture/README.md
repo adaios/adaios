@@ -1,11 +1,11 @@
 ---
 title: AI 上下文工程体系架构图（分层推进）
-description: 给「AI 上下文工程体系建设」画分层架构图的推进记录与已定稿图层——当前 Layer 1（Git 分支策略的三种经典模式 + 三张图）；按层推进、一层一落定，层序由人定
+description: 给「AI 上下文工程体系建设」画分层架构图的推进记录与已定稿图层——当前已完成 L1 到 L3（经典分支模式 · 闸门与并行 · 主线与关卡，共 9 张图，正文嵌 PNG）；按层推进、一层一落定，层序由人定
 version: 1
 created: 2026-10-07
 updated: 2026-10-07
 status: draft
-lines: 263
+lines: 250
 depends-on: []
 related:
   - ../../../rules/guides/git-workflow.md
@@ -18,7 +18,7 @@ tags: [idea, ai-context, git, diagram]
 
 > **推进方式**：不做一次性全景图，**按层推进**——每层先「表达」（讲清是什么，不动笔），落定后再「出图」（只画这一层）。**层序由人定。**
 > **口径纪律**：讲经典模式时**只讲经典口径 + 出处**，不掺本项目落地实现；落地实现留给后面的层。
-> **当前进度**：**Layer 1 已完成**（Git 分支策略 · 三张图）。
+> **当前进度**：**L1 / L2 / L3 已完成**（分支策略 · 闸门与并行 · 主线与关卡，共 9 张图）。**L4 待指令。**
 
 ---
 
@@ -48,7 +48,7 @@ tags: [idea, ai-context, git, diagram]
 
 ### 2.1 GitHub Flow（个人仓库 · GitHub）
 
-![GitHub Flow](L1-github-flow.svg)
+![GitHub Flow](png/L1-github-flow.png)
 
 - **只有 main 是长期分支**；功能分支短命，合并后立即删除
 - **main 任何时刻都可部署** —— 部署从 main 出发，不从分支出发
@@ -59,7 +59,7 @@ tags: [idea, ai-context, git, diagram]
 
 ### 2.2 GitLab Flow（公司仓库 · GitLab）
 
-![GitLab Flow](L1-gitlab-flow.svg)
+![GitLab Flow](png/L1-gitlab-flow.png)
 
 它是**在 GitHub Flow 之上补「发布」这一段**；主干与功能分支那部分相同，只是 PR 换成 MR。多出来的是**下游接法**，官方两条形态：
 
@@ -72,7 +72,7 @@ tags: [idea, ai-context, git, diagram]
 
 ### 2.3 Git Flow（经典重模型）
 
-![Git Flow](L1-git-flow.svg)
+![Git Flow](png/L1-git-flow.png)
 
 **两条长期分支 + 三类辅助分支**：
 
@@ -102,69 +102,59 @@ tags: [idea, ai-context, git, diagram]
 
 ---
 
-## 4. Layer 2 · 流（每种策略一张，长在 L1 的线条上）
+## 4. Layer 2 · 闸门与并行（每种策略一张，长在 L1 的线条上）
 
 **层定义**：L1 是静态拓扑（分支长什么样），**L2 是把 L1 的线条跑起来**——一次改动沿着这些线走到哪、主干什么时候前进、每一步由什么兜底。**三张图各自沿用自己那张 L1 的分支线条，不混排。**
 
-**每张图的读法**：上半部是分支线条（＝L1），下半部是这条线上每一步「由什么兜底」（硬 / 半硬 / 软）。
+**每张图的读法**：上半部是分支线条（＝L1）＋ 闸门位置，下半部是每道闸门「拦什么、放什么」，再下面是**并行窗口**——被闸门切出来的几段里，哪几段能同时开线。
 
-### 4.1 GitHub Flow 的流
+> **闸门就是「每一步由什么兜底」的落点**。没闸门的那几步不是不重要，是它们只靠纪律（图上的软色块）——所以「流」和「闸门」本来就是同一张图的两面，本层只出一张。
 
-![GitHub Flow 的流](L2-1-github-flow.svg)
+### 4.1 GitHub Flow：闸门与并行窗口
 
-- **主干从不等**：A 还没合进 main，B 已经开工 —— 这就是「流」，改动一茬接一茬
-- 合流点只有一个（main）；GitHub Flow 的重头戏是**主干永远可部署**
-- 兜底构成：审阅 / 合流 / 部署是硬约束（平台与门禁），提交是半硬（本地 hook），命名与删分支靠纪律
+![GitHub Flow 闸门与并行](png/L2-gate-1-github-flow.png)
 
-### 4.2 GitLab Flow 的流
+- **主干从不等**：A 还没合进 main，B 已经开工 —— 合流点只有一个（main），重头戏是**主干永远可部署**
+- **单闸门形态**：三道闸门（提交前 / 合流前 / 部署前）全压在「从分支进主干」这一个动作的前后
+- 因此**并行几乎不受限**：开发期想开几条线开几条线；代价转移到时间上 —— 核心纪律不是「怎么合」，而是**分支要短**
+- 闸门用料：审阅 / 合流 / 部署是硬的（平台与门禁），提交是半硬（本地 hook，`--no-verify` 能绕）
 
-![GitLab Flow 的流](L2-2-gitlab-flow.svg)
+### 4.2 GitLab Flow：闸门与并行窗口
+
+![GitLab Flow 闸门与并行](png/L2-gate-2-gitlab-flow.png)
 
 - **合流进主干 ≠ 上线**：还要穿过 staging → production 这两段
-- **环境是串行闸门**：只有一条 production，A 推进时 B 只能排队 —— 并行在这里被环境天然锁住
-- 兜底几乎全在服务端：开 MR（pipeline 必须绿）→ 审批 + 合流（必须 N 人批准 + 分支保护）→ 部署 staging（自动）→ 推进 production（protected environment + 审批）
+- **双闸门形态**：合流点一道、环境再一道 —— 两道闸门把线切成三段：**开发可并行 / 合流串行 / 发布也串行**
+- **环境是串行闸门**：只有一条 production，A 推进时 B 只能排队
+- 闸门几乎全在服务端：开 MR（pipeline 必须绿）→ 审批 + 合流（N 人批准 + 分支保护）→ 进 staging（自动）→ 进 production（protected environment + 审批）
 
-### 4.3 Git Flow 的流
+### 4.3 Git Flow：闸门与并行窗口
 
-![Git Flow 的流](L2-3-git-flow.svg)
+![Git Flow 闸门与并行](png/L2-gate-3-git-flow.png)
 
 - 一次发布至少**两次合流**：feature → develop，release → main（打 tag）+ 合回 develop
-- **三类辅助分支可以同时存在**（做功能 / 冻结发布 / 线上救火），但都汇到 develop —— 并行度靠「分支多」换来，合并面最大
-- 兜底几乎全是**软纪律**：CI 出现之前，靠评审习惯 + release manager 的人工协调，机器几乎不拦
+- **三类辅助分支可以同时存在**（做功能 / 冻结发布 / 线上救火），都汇到 develop —— 并行度靠「分支多」换来，合并面最大
+- **近乎无机器闸门**：五处关卡里四处是软的；CI 出现之前，靠评审习惯 + release manager 的人工协调
+- **全程可并行** —— 连发布都能并行（release 冻结的同时别的功能继续往 develop 走，hotfix 也能同时从 main 切）
 - 最容易漏的一步：**合回 develop** —— 漏了就等于把修复丢掉
 
-### 4.4 GitHub Flow：闸门与并行窗口
+### 4.4 横向看：强制力从哪来、并行的代价在哪
 
-![GitHub Flow 闸门与并行](L2-gate-1-github-flow.svg)
+**判断一句话：这条规则能不能被一次 `--no-verify` 或一次网页点击绕过？** 三种模型对这个问题的假设完全不同：
 
-- **单闸门形态**：三道闸门（提交前 / 合流前 / 部署前）全压在「从分支进主干」这一个动作的前后
-- 因此**并行几乎不受限**：开发期想开几条线开几条线
-- 代价转移到时间上 —— 核心纪律不是「怎么合」，而是**分支要短**
+| 策略 | 强制力主要来自 | 机器拦得住吗 |
+|:--|:--|:--|
+| **GitHub Flow** | 平台服务端（分支保护 + 必须审批 + 检查必须绿） | 拦得住 —— 所以敢只留一条主干 |
+| **GitLab Flow** | 平台 + 环境自身（protected environment） | 拦得住，且环境上再拦一道 |
+| **Git Flow** | 纪律 + release manager 人工协调 | 几乎全靠「人记得」——它诞生在 CI 之前 |
 
-### 4.5 GitLab Flow：闸门与并行窗口
+**并行真正的代价在共享面**：每条线各占一份工作区（隔离），但远端仓库 / CI / 发布出口 / 账本类文件是共享的，**离共享面越近越要串行**。
 
-![GitLab Flow 闸门与并行](L2-gate-2-gitlab-flow.svg)
-
-- **双闸门形态**：合流点一道，环境再一道 —— 代码能进主干，不等于能进生产
-- 两道闸门把线切成三段：**开发可并行 / 合流串行 / 发布也串行**
-- 与 GitHub Flow 的关键差别就是多出来的那一段红色：发布期不再并行，改动写完也得排队等环境
-
-### 4.6 Git Flow：闸门与并行窗口
-
-![Git Flow 闸门与并行](L2-gate-3-git-flow.svg)
-
-- **近乎无机器闸门**：五处关卡里四处是软的，唯一能自动拦的只有本地 hook
-- **全程可并行** —— 连发布都能并行（release 冻结的同时别的功能继续往 develop 走，hotfix 也能同时从 main 切）
-- 代价：并行越多、合并面越大，而兜底机制只剩「人记得」→ 这正是它被持续交付淘汰的原因
-
-### 4.7 备用素材（横向维度图）
-
-| 文件 | 是什么 |
-|:--|:--|
-| `L2-b-enforcement.svg` | 阶段 × 强制层的完整矩阵（本地 hook / 平台服务端 / 部署门禁 / 纪律） |
-| `L2-c-parallel.svg` | 隔离面 / 共享面 / 三条污染路径 |
-
-> 这两张是**横向维度图**（不绑定某一种策略），内容已被上面三张「闸门与并行」覆盖，保留作素材。
+| 污染路径 | 症状 | 对策 |
+|:--|:--|:--|
+| 本地构建污染 | 本地全过，CI 挂了 | 把 CI 的干净检出当作唯一可信验证 |
+| 共享文件撞车 | 每次合都在同一处打架 | 同一时间只让一条线写「账本类」文件 |
+| 晚合并放大冲突 | 分支放久了，冲突成倍长 | 分支寿命压短；定期把主干合回分支 |
 
 ---
 
@@ -176,9 +166,11 @@ tags: [idea, ai-context, git, diagram]
 
 **画法**：一条加粗的主路径（一个改动的旅程）从 feature 出发、沿线跳到主干/下游，**关卡压在这条粗线上**，标牌上下交错。底色是权限带，越往右越紧。
 
+**图例**：大圆点（红、内书「人」）＝ **人的决策点**；小圆点（灰）＝ **关卡落点**（改动走到这里 ＝ 过了一道关卡）。两者不要混数——图上小圆点数量远多于决策点。
+
 ### 5.1 Git Flow（实验版 · 最复杂）
 
-![Git Flow：主线与六道关卡](L3-1-main-path-git-flow.svg)
+![Git Flow：主线与六道关卡](png/L3-1-main-path-git-flow.png)
 
 主路径：feature → develop → release → main，**六道关卡全压在两次合流上**。
 
@@ -199,7 +191,7 @@ tags: [idea, ai-context, git, diagram]
 
 ### 5.2 GitHub Flow（最轻）
 
-![GitHub Flow：主线与五道关卡](L3-2-main-path-github-flow.svg)
+![GitHub Flow：主线与五道关卡](png/L3-2-main-path-github-flow.png)
 
 主路径：feature → main，**只有一个合流点，所以只有五道关卡**。因为没有 release 冻结段，D4 从「冻结」换成「部署前」——**权限收紧的时间点就是合并进 main 的那一刻**。
 
@@ -207,7 +199,7 @@ tags: [idea, ai-context, git, diagram]
 
 ### 5.3 GitLab Flow（多一条下游链）
 
-![GitLab Flow：主线与六道关卡](L3-3-main-path-gitlab-flow.svg)
+![GitLab Flow：主线与六道关卡](png/L3-3-main-path-gitlab-flow.png)
 
 主路径：feature → main → staging → production，**六道关卡里有两道在环境上**（D4 进 staging 自动、D5 进 production 受保护）。
 
@@ -229,10 +221,9 @@ tags: [idea, ai-context, git, diagram]
 
 | 层 | 主题 | 状态 |
 |:--:|:--|:--|
-| **L1** | Git 分支策略 · 三种经典模式 | ✅ 已出图 |
-| **L2** | 流 · 每种策略一张（长在 L1 的线条上） | ✅ 已出图（三张） |
-| **L2+** | 闸门与并行窗口 · 每种策略一张 | ✅ 已出图（三张） |
-| **L3** | 主线 + 关卡（上下文工程允许什么 / 禁止什么）· 每种策略一张 | ✅ 已出图（三张） |
+| **L1** | Git 分支策略 · 三种经典模式 | ✅ 已出图（3 张） |
+| **L2** | 闸门与并行（含「流」）· 每种策略一张（长在 L1 的线条上） | ✅ 已出图（3 张） |
+| **L3** | 主线 + 关卡（上下文工程允许什么 / 禁止什么）· 每种策略一张 | ✅ 已出图（3 张） |
 | **L4** | 待定 | ⏳ 等指令 |
 
 **L4 候选方向**（等人拍板，不在本层展开）：
@@ -250,14 +241,10 @@ tags: [idea, ai-context, git, diagram]
 | `L1-github-flow.svg` | GitHub Flow 经典模式（矢量原件） |
 | `L1-gitlab-flow.svg` | GitLab Flow 经典模式（含两种形态 + upstream first） |
 | `L1-git-flow.svg` | Git Flow 经典模式（两条长期 + 三类辅助） |
-| `L2-1-github-flow.svg` | GitHub Flow 的流（主干从不等 + 六步兜底） |
-| `L2-2-gitlab-flow.svg` | GitLab Flow 的流（穿过环境的串行闸门 + 六步兜底） |
-| `L2-3-git-flow.svg` | Git Flow 的流（两次合流 + 八步兜底） |
 | `L2-gate-1-github-flow.svg` | GitHub Flow：闸门位置 + 并行窗口（单闸门形态） |
 | `L2-gate-2-gitlab-flow.svg` | GitLab Flow：闸门位置 + 并行窗口（双闸门形态） |
 | `L2-gate-3-git-flow.svg` | Git Flow：闸门位置 + 并行窗口（近乎无机器闸门） |
 | `L3-1-main-path-git-flow.svg` | 主线 + 六道关卡 —— 一个改动的旅程，以及上下文工程在每道关卡上允许 / 禁止什么 |
 | `L3-2-main-path-github-flow.svg` | GitHub Flow：主线 + 五道关卡（唯一合流点；D4 是部署前而非冻结） |
 | `L3-3-main-path-gitlab-flow.svg` | GitLab Flow：主线 + 六道关卡（多两条下游环境线，两道关卡在服务端） |
-| `L2-b-enforcement.svg` · `L2-c-parallel.svg` | 两张维度图（强制力矩阵 / 并行与隔离），备用素材 |
-| `png/*.png` | 上述各图的位图版本（预览 / 分享用，SVG 才是原件） |
+| `png/*.png` | 上述各图的位图版（**正文嵌入的就是它**；SVG 是矢量原件，改图改 SVG 再重渲染） |

@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-07
 updated: 2026-10-07
 status: draft
-lines: 61
+lines: 67
 depends-on: []
 related:
   - ./process-issues-20261006.md
@@ -23,6 +23,7 @@ tags: [workspace, meta, ai-context, issue]
 - **证据**：`workspace/<分支>/` 按分支组织；`_meta/` 语义为「流程问题 / 规范草案」；`rules/assets/_directory.md` 明写「一次性讨论 → `docs/ideas/`」
 - **影响**：体系在给自己画图纸，但图纸不在体系里 —— 下次开工的 AI 读不到
 - **建议落点**：要么把 `docs/ideas/` 明确定为图纸区，要么在 `.agents/` 下新开一类「体系图纸」（需先改目录契约）
+- **状态更新（2026-10-07 当日）**：本次会话内产物已改落在 `.agents/workspace/_meta/ai-context-architecture/`，14 张 SVG + 14 张 PNG 逐个登记进 `workspace/_index.md`，`docs/ideas/` 无残留副本。但**「家」只算缓了一步**——`workspace/` 的语义是「分支在制品、合并后搬走」，而这块图纸是长期资产，正式落点仍需拍板。
 
 ## I2 · 引用守卫是单向的
 
@@ -37,6 +38,7 @@ tags: [workspace, meta, ai-context, issue]
 - **证据**：`ai-guard-meta` 的孤儿判据只覆盖 md 文件
 - **影响**：图片可以被无声添加，也可以被无声删除
 - **建议**：图片资产最小契约（命名 + 所在目录 README 登记 + 与正文引用一一对应）
+- **状态更新（2026-10-07 当日）**：本目录 14 张 PNG 已人工逐个登记进 `workspace/_index.md`；守卫本身仍未覆盖图片，建议的契约没变。
 
 ## I4 · 无人参与的关卡，静默失效无人察觉
 
@@ -56,6 +58,10 @@ tags: [workspace, meta, ai-context, issue]
 | 项 | 内容 |
 |:--|:--|
 | L1 × 3 | 三种经典分支模式（GitHub Flow / GitLab Flow / Git Flow） |
-| L2 × 3（+ 备用 2） | 流 · 每种策略一张；闸门与并行 |
-| L3 × 1 | 主线 + 六道关卡（Git Flow 实验） |
+| L2 × 3 | 闸门与并行 · 每种策略一张（原「流」三张与两张备用素材已精简） |
+| L3 × 3 | 主线 + 关卡（GitHub Flow / GitLab Flow / Git Flow 各一张） |
 | README | 分层推进记录（口径、进度、文件清单） |
+
+> **同日回修**：4 张图（L1-github-flow + L3 × 3）按本批审查意见回修 —— 决策点与关卡落点分色（红大点 = 人，灰小点 = 关卡落点）、决策点标签与图例词表对齐、被关卡虚线压住的标签改右对齐、L1 的「deploy from main」框接上主线。
+>
+> **同日精简**：图集 14 张 → 9 张。「流」三张（L2-1/2/3）与「闸门与并行」三张（L2-gate-1/2/3）是**同一根线条的两次画法**，保留后者（信息更全：闸门卡片 + 并行窗口）；两张横向素材图（L2-b 强制力矩阵 / L2-c 并行与隔离）删除，其核心（三种模型的强制力来源假设、三条污染路径）改以表格并入 README §4.4。正文嵌入同时从 SVG 改为 PNG（避免阅读器不渲染本地 SVG）。删掉的 10 个文件都在 git 里，可 `git checkout` 恢复。

@@ -5,7 +5,7 @@ version: 2
 created: 2026-10-04
 updated: 2026-10-09
 status: active
-lines: 236
+lines: 226
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index, workspace]
@@ -27,7 +27,7 @@ tags: [meta, index, workspace]
 
 > **规则**：**一个分支 = 一个目录 = 一个任务**（主键唯一 ⇒ **零冲突**）；目录里**需要什么才有什么**（轻活就一个 `LEDGER.md`）。
 
-## 文件清单（200 项）
+## 文件清单（190 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -49,26 +49,16 @@ tags: [meta, index, workspace]
 | `_meta/ai-context-architecture/L1-git-flow.svg` | — | active |
 | `_meta/ai-context-architecture/L1-github-flow.svg` | — | active |
 | `_meta/ai-context-architecture/L1-gitlab-flow.svg` | — | active |
-| `_meta/ai-context-architecture/L2-1-github-flow.svg` | — | active |
-| `_meta/ai-context-architecture/L2-2-gitlab-flow.svg` | — | active |
-| `_meta/ai-context-architecture/L2-3-git-flow.svg` | — | active |
-| `_meta/ai-context-architecture/L2-b-enforcement.svg` | — | active |
-| `_meta/ai-context-architecture/L2-c-parallel.svg` | — | active |
 | `_meta/ai-context-architecture/L2-gate-1-github-flow.svg` | — | active |
 | `_meta/ai-context-architecture/L2-gate-2-gitlab-flow.svg` | — | active |
 | `_meta/ai-context-architecture/L2-gate-3-git-flow.svg` | — | active |
 | `_meta/ai-context-architecture/L3-1-main-path-git-flow.svg` | — | active |
 | `_meta/ai-context-architecture/L3-2-main-path-github-flow.svg` | — | active |
 | `_meta/ai-context-architecture/L3-3-main-path-gitlab-flow.svg` | — | active |
-| `_meta/ai-context-architecture/README.md` | **AI 上下文工程体系架构图（分层推进）**——L1 三种经典分支模式 · L2 流 · L2+ 闸门与并行 · L3 主线 + 六道关卡；12 张 SVG 原件 + `png/` 位图版 | draft |
+| `_meta/ai-context-architecture/README.md` | **AI 上下文工程体系架构图（分层推进）**——L1 三种经典分支模式 · L2 闸门与并行 · L3 主线 + 六道关卡；9 张 SVG 原件 + `png/` 位图版（正文嵌入 PNG） | draft |
 | `_meta/ai-context-architecture/png/L1-git-flow.png` | — | active |
 | `_meta/ai-context-architecture/png/L1-github-flow.png` | — | active |
 | `_meta/ai-context-architecture/png/L1-gitlab-flow.png` | — | active |
-| `_meta/ai-context-architecture/png/L2-1-github-flow.png` | — | active |
-| `_meta/ai-context-architecture/png/L2-2-gitlab-flow.png` | — | active |
-| `_meta/ai-context-architecture/png/L2-3-git-flow.png` | — | active |
-| `_meta/ai-context-architecture/png/L2-b-enforcement.png` | — | active |
-| `_meta/ai-context-architecture/png/L2-c-parallel.png` | — | active |
 | `_meta/ai-context-architecture/png/L2-gate-1-github-flow.png` | — | active |
 | `_meta/ai-context-architecture/png/L2-gate-2-gitlab-flow.png` | — | active |
 | `_meta/ai-context-architecture/png/L2-gate-3-git-flow.png` | — | active |
