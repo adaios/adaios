@@ -51,6 +51,11 @@ class _TradingPageState extends State<TradingPage> {
   bool _focusedOnce = false;
   /// 每只票一行的 key（提醒落点要把它滚进视口）。
   final Map<String, GlobalKey> _positionRowKeys = {};
+  /// 2026-10-09（P1-2）：本次上传里「疑似同一笔」的候选**行 id**——只登记为可疑，**不丢弃**。
+  /// 只标**后出现的那一条**（每组的头一条不标），否则会对着三条各说一句「和另一笔一样」。
+  final Set<String> _dupCandidateIds = {};
+  /// 指纹 → 本批里第一次出现的候选 id（用来只标后续重复；后端不返回 id 时退化为按指纹全标）。
+  final Map<String, String> _fingerprintFirstId = {};
   /// 自选（只读一段；管理归 web）——接口失败静默保持空，不编空壳（design-app §三 I-3）。
   List<WatchlistItemDto> _watchlist = const [];
   // ── 次日操作计划（RFC 20261003-trading-plan-and-review-loop §二~四，2026-10-03）──
@@ -1156,11 +1161,13 @@ class _TradingPageState extends State<TradingPage> {
       _candidatesGen++;
       _candidates = [];
       _dropped = [];
+      _dupCandidateIds.clear();  // 新一批 → 重新判「疑似同一笔」
+      _fingerprintFirstId.clear();
     });
     final merged = <TradeLogCandidateDto>[];
-    final seenFingerprints = <String>{};
     final errors = <String>[];
     final dropped = <String>[];
+    var dupTotal = 0; // 本批「疑似同一笔」条数（汇总成一行，不在每张图里各说一遍）
     try {
       for (var i = 0; i < images.length; i++) {
         final img = images[i];
@@ -1172,15 +1179,27 @@ class _TradingPageState extends State<TradingPage> {
         if (!mounted) return;
         var dupInBatch = 0;
         for (final c in result.candidates) {
-          if (seenFingerprints.add(_candidateFingerprint(c))) {
-            merged.add(c);
+          final fp = _candidateFingerprint(c);
+          // 2026-10-09（前端官 P1-2）：**命中指纹不再丢**——只登记为「疑似同一笔」，
+          // 候选照样进列表、由 `_candidateSuspect` 标成可疑，交给你核对。
+          // 理由：宁可多标可疑，不可放过一笔；真正的重复由后端 confirm 的 sameTrade 兜住。
+          final firstId = _fingerprintFirstId[fp];
+          if (firstId == null) {
+            _fingerprintFirstId[fp] = c.id;
           } else {
             dupInBatch++;
+            // 只标后出现的那一条；后端不返回 id（旧版）时按指纹把该组都标上（保守）
+            if (c.id.isEmpty || firstId.isEmpty) {
+              _dupCandidateIds.add(fp);
+            } else {
+              _dupCandidateIds.add(c.id);
+            }
           }
+          merged.add(c);
         }
         errors.addAll(result.errors);
         dropped.addAll(result.dropped);
-        if (dupInBatch > 0) dropped.add('$dupInBatch 笔在两/多张截图里重复出现（同一笔只留一条）');
+        dupTotal += dupInBatch;
         setState(() {
           _shotsDone = i + 1;
           // A1-1（2026-09-18 修回归）：新一批候选一律展开——「收起」的语义是「这一批处理完了」。
@@ -1197,10 +1216,14 @@ class _TradingPageState extends State<TradingPage> {
         }
       }
       if (!mounted) return;
+      if (dupTotal > 0) {
+        dropped.add('$dupTotal 笔看着和前面那张（或同一张里的另一行）是同一笔 —— 已标成「可疑」，你核对下');
+      }
       setState(() {
         _shotsUploading = false;
         _shotsTotal = 0;
         _shotsDone = 0;
+        _dropped = List.of(dropped);
       });
       if (errors.isNotEmpty) {
         _showSnack('${errors.length} 张识别失败：${errors.join('；')}', AppColors.darkOrange);
@@ -1221,14 +1244,21 @@ class _TradingPageState extends State<TradingPage> {
     }
   }
 
-  /// 候选指纹（客户端去重）：方向 + 代码 + 价 + 量 + 成交日。
-  /// 与 2026-09-15「防重复入账」同一口径——**刻意不含成交时刻**：
-  /// 含时刻会把真正的重复（同一笔被两张图各认一次、时刻识别有出入）放过去。
+  /// 候选指纹（客户端判「疑似同一笔」）：方向 + 代码 + 价 + 量 + 成交日 + **成交时刻**。
+  ///
+  /// ⚠️ 2026-10-09（前端官 P1-2）：早前**刻意不含成交时刻**，理由写在注释里——但那会让
+  /// **同价同量的真分单**被误判成重复（`TradeLogCandidateDto.tradeTime` 的全部意义就是区分它们：
+  /// 生产实据 000831 两笔各 200 股 @53.300，10:03:44 与 10:04:09，见 P0-交易59）。
+  /// 现在纳入时刻；且命中指纹**只标注不丢弃**（见 `_candidateSuspect` 第 ⑥ 条）——
+  /// 真正的重复由后端 `/trade-log/confirm` 的 sameTrade 兜住（那条 2026-09-15 早就修过）。
   String _candidateFingerprint(TradeLogCandidateDto c) =>
-      '${c.direction}|${c.symbol}|${c.price ?? ''}|${c.volume ?? ''}|${c.tradeDate ?? ''}';
+      '${c.direction}|${c.symbol}|${c.price ?? ''}|${c.volume ?? ''}|${c.tradeDate ?? ''}'
+      '|${c.tradeTime ?? ''}';
 
   /// **可疑判据**（design-app §三 I-5 卡点②）——用现有字段判，不需要后端加东西：
-  /// ① 缺成交日期 ② 价格 / 数量非法 ③ 方向不明 ④ 卖出超过手上的持仓 ⑤ 这行没认全。
+  /// ① 缺成交日期 ② 价格 / 数量非法 ③ 方向不明 ④ 卖出超过手上的持仓 ⑤ 这行没认全
+  /// ⑥ **这行和本批里另一行指纹相同**（疑似同一笔被两张图各认一次）——2026-10-09 前端官 P1-2 补：
+  /// 早前这种直接丢掉，会与 P0-交易59 的「同价同量真分单」正面冲突；现在**只标不丢**。
   /// 返回 null＝看着没问题（默认信它）。
   ///
   /// 红线：**宁可多标可疑（多问几次），不可放过一笔**——2026-09-13 漏一行＝静默删一只持仓，
@@ -1250,6 +1280,10 @@ class _TradingPageState extends State<TradingPage> {
       if (c.volume! > held) return '卖出 ${c.volume} 股，我这儿只有 $held 股';
     }
     if (!c.complete) return '这行没认全';
+    final fp = _candidateFingerprint(c);
+    if (_dupCandidateIds.contains(fp) || (c.id.isNotEmpty && _dupCandidateIds.contains(c.id))) {
+      return '看着和本批里另一笔是同一笔（同方向/同价/同量/同时刻）';
+    }
     return null;
   }
 
@@ -1346,7 +1380,11 @@ class _TradingPageState extends State<TradingPage> {
           changes.add('现金这次没取到');
         } else if ((afterCash - beforeCash).abs() >= 0.005) {
           final d = afterCash - beforeCash;
-          changes.add('现金 ${d >= 0 ? '+' : '-'}${_fmtMoneyFull(d.abs())}');
+          // 2026-10-09（对抗官 P2-1 · 隐私）：金额默认打码时**回执也不能把数印出来**——
+          // 说「变了」并指路 👁，别让打码在回执这一行漏出去。
+          changes.add(_amountsRevealed
+              ? '现金 ${d >= 0 ? '+' : '-'}${_fmtMoneyFull(d.abs())}'
+              : '现金变了（点 👁 看数）');
         }
         setState(() => _lastConfirmReceipt = [..._lastConfirmReceipt, '这次过后：${changes.join(' · ')}']);
       }
@@ -2040,17 +2078,13 @@ class _TradingPageState extends State<TradingPage> {
   /// 缺数据不编：宁可不显示，也不去别处猜一个数贴上来。
   Widget _buildWatchlistSection() {
     if (_watchlist.isEmpty) return const SizedBox.shrink();
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const SizedBox(height: 18),
-      Row(children: [
-        _sectionTitle('自选'),
-        const SizedBox(width: 6),
-        Text('${_watchlist.length} 只 · 管理在电脑端',
-            style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
-      ]),
-      const SizedBox(height: 2),
-      ..._watchlist.map(_buildWatchlistRow),
-    ]);
+    // 2026-10-09（前端官 P2-2）：**默认收起**——23 行自选会把「今天区 + 四个直达入口」推到很远，
+    // 与 design-app §八 自评风险 4「自选必须只读、可折叠、不参与结论」一致。
+    return _buildFoldSection(
+      title: '自选',
+      summary: '${_watchlist.length} 只 · 管理在电脑端',
+      children: _watchlist.map(_buildWatchlistRow).toList(),
+    );
   }
 
   Widget _buildWatchlistRow(WatchlistItemDto w) {
@@ -2083,9 +2117,9 @@ class _TradingPageState extends State<TradingPage> {
   }
 
   /// ④ 今天（design-app §二 ④）：**有事才出现**（复盘横幅）；深处入口一行常驻。
-  /// 深处入口只放**这一端真有落点**的两项——收益日历（独立页）· 资金（展开「资金与配置」折叠区）。
-  /// 推送设置与复盘历史在 app 端没有独立页（推送设置＝主页 Feed 卡片右滑；复盘＝这里的横幅），
-  /// 故不放进来（如实声明见 `scope-app-20261009.md` §三）。
+  /// 深处入口一行：收益日历（独立页）· 资金（展开「资金与配置」折叠区）·
+  /// **推送设置页** · **复盘历史页**（后两项是 2026-10-09 批 4 补的：原先把「推送设置」埋在主页 Feed
+  /// 的右滑弹窗里、「复盘历史」干脆零入口——后端端点与 API 早就有，只是没有页面调用）。
   Widget _buildTodaySection() {
     final hasReview = _hasActivity && !_bannerDismissed;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

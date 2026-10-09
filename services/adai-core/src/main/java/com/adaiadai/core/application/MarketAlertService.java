@@ -354,11 +354,10 @@ public class MarketAlertService {
         // 也不替用户下「该复盘了 / 该设止损了」的结论（2026-10-06 推送去建议批）
         String msg = lot.stopLossPrice() != null
                 ? "📉 " + lot.name() + "(" + lot.symbol() + ") " + lotLabel + "现价 " + fmt(md.price())
-                        + " 已跌破该批止损 " + fmt(stop) + "（该批成本 " + fmt(lot.costPrice()) + "）"
+                        + " 已跌破该批止损 " + fmt(stop) + "（成本数字不在推送里）"
                         + "——这是这批自己的止损位（R66），底仓不受影响。"
                 : "⚠️ " + lot.name() + "(" + lot.symbol() + ") " + lotLabel + "现价 " + fmt(md.price())
-                        + " 已跌破默认 −7% 风控线 " + fmt(stop) + "（该批成本 " + fmt(lot.costPrice())
-                        + "，你还没设止损位）。";
+                        + " 已跌破默认 −7% 风控线 " + fmt(stop) + "（你还没给这批设止损位）。";
         alerts.add(new PushChannel.PushMessage(
                 lot.name() + " 批次止损预警", msg,
                 "stop-loss", lot.symbol(), lot.name(), LocalTime.now(),
@@ -384,8 +383,12 @@ public class MarketAlertService {
                     + "（R66）。";
             case "loss" -> p.name() + " 今天跌 " + fmt(change) + "%，现价 " + fmt(md.price())
                     + (p.effectiveStopLoss() != null
-                        ? "，离你的 " + fmt(p.effectiveStopLoss()) + " 还有 "
-                            + distancePctText(md.price(), p.effectiveStopLoss(), null) + "（R66）。"
+                        // 后端官 P2-1（2026-10-09）：破线 + 大跌会**合并**成一条，此时价格已在止损下方，
+                        // 原来的「离你的 X 还有 −2%」读起来是负距离——按事实分开说。
+                        ? (md.price().compareTo(p.effectiveStopLoss()) < 0
+                            ? "，已经在你写的止损 " + fmt(p.effectiveStopLoss()) + " 下方了（R66）。"
+                            : "，离你的 " + fmt(p.effectiveStopLoss()) + " 还有 "
+                                + distancePctText(md.price(), p.effectiveStopLoss(), null) + "（R66）。")
                         : "——你还没设止损位。");
             case "gain" -> p.name() + " 今天涨 " + fmt(change) + "%，现价 " + fmt(md.price()) + "。";
             // B4 破成本：**正文不再出现成本数字**（v1 §一 原则 4：隐私层不出边界）——

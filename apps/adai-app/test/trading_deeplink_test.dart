@@ -19,6 +19,19 @@ void main() {
       expect(parseTradingDeepLink('profile'), isNull);
     });
 
+    test('P1-1（前端官 2026-10-09）：后端哨兵 trading:today / review 不是落点', () {
+      // PushChannel.deepLink() 默认分支就是 trading:today（时段推送/计划提醒全走它）。
+      // 早前按「任意非空尾巴」当代码 → 每天最常见的推送被改道成「落某只票」且永远匹配不到。
+      expect(parseTradingDeepLink('trading:today'), isNull);
+      expect(parseTradingDeepLink('trading:review'), isNull);
+    });
+
+    test('非 6 位代码一律不是落点（对深链格式漂移免疫）', () {
+      expect(parseTradingDeepLink('trading:60020'), isNull);
+      expect(parseTradingDeepLink('trading:6002060'), isNull);
+      expect(parseTradingDeepLink('trading:6006AB'), isNull);
+    });
+
     test('空 / null / 畸形一律 null（不猜）', () {
       expect(parseTradingDeepLink(null), isNull);
       expect(parseTradingDeepLink(''), isNull);

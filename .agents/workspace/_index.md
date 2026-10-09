@@ -5,7 +5,7 @@ version: 2
 created: 2026-10-04
 updated: 2026-10-09
 status: active
-lines: 203
+lines: 206
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index, workspace]
@@ -27,7 +27,7 @@ tags: [meta, index, workspace]
 
 > **规则**：**一个分支 = 一个目录 = 一个任务**（主键唯一 ⇒ **零冲突**）；目录里**需要什么才有什么**（轻活就一个 `LEDGER.md`）。
 
-## 文件清单（164 项）
+## 文件清单（167 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -166,6 +166,9 @@ tags: [meta, index, workspace]
 | `trading-plugin/overview.md` | trading 插件的「一页总览」——定位与整体现状 · 功能全景 · 全部相关 RFC · 未修与待办 · 未… | active |
 | `trading-plugin/plan-app-20261009.md` | app 端体验重构的一次性执行方案——web 轮已闭环、app 方向已圈选，本件定「交付什么 · 怎么分段 · … | active |
 | `trading-plugin/review-app-design-20261009.md` | **app 设计规格的独立交互层审核**（独立子代理 · D-20261009-02）——结论 **通过（无 P0/P1）**；P2×5（入账位置 / 持仓行双热区 / 去重反馈 / 分张中途失败 / 判断句句式）+ P3×11；主链已在 design-app §七之二 统一口径 | active |
+| `trading-plugin/review-code-app-20261009.md` | **编码段深审 · 前端官**（D-20261009-03）——无 P0 · **P1×2**（深链哨兵 `trading:today` 被当股票代码 / 客户端指纹去重误并同价同量真分单，与 P0-交易59 冲突）+ P2×3（含 1 条口径**升人**）+ P3×5 | active |
+| `trading-plugin/review-code-backend-push-20261009.md` | **编码段深审 · 后端官**（D-20261009-04）——逐条对拍 design-push-copy §六 与 design-final §11.6：无 P0/P1 · P2×3（破线+大跌合并的负距离 / 批次级隐私漏成本数字 / 新逻辑缺测试）+ P3×4 | active |
+| `trading-plugin/review-adversarial-app-20261009.md` | **编码段深审 · 对抗官**（D-20261009-05）——按「哪里会炸 / 用户哪里会骂 / 边界哪里漏」攻击：P1×2（与前端官同源）· **P2-1 隐私**（打码态下回执明文印现金变动）· P2-3（自选加载无代际令牌）——P1 与 P2-1 已修 | active |
 | `trading-plugin/review-app-uiux-20261009.md` | **app 端体验重构走查报告**（累积单文件 + 轮次节）——§1 判定：**构建级 + 登录屏实拍通过**，交易页逐屏实拍因**本机锁屏**（UI 自动化不可用）阻塞顺延；含测试级证据清单与待补清单 | active |
 | `trading-plugin/audit-shots-20261009/v11-g3-case-kline.png` | web 轮遗留取证 **G3（案例 K 线入口）** 的实拍——闭掉 `handoff-20261009.md` §三.1 那条遗留；同批为行内入口补 `caseKline:<symbol>` 语义锚点（`apps/adai-web/lib/pages/trading_page.dart`） | active |
 | `trading-plugin/audit-shots-app-20261009/app-1-first-screen.png` | app 走查实拍①：交易**首屏四层**（判断句「持仓 2 只 · 1 只破了你的线」在小字点名 · 入账区 · 持仓一行一只 · 自选只读）——金额默认打码态 | active |

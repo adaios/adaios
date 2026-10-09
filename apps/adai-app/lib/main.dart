@@ -398,8 +398,11 @@ class _DualWorldShellState extends State<DualWorldShell> {
         // 2026-10-09（批 5 · design-app §三 I-7「提醒落点」）：**交易类**告警（带 `trading:<symbol>`）
         // 直接落到**那只票并就地展开**——「破了你的线 · 云南锗业」点开就该看见它，
         // 而不是停在列表顶部自己找；依据仍在 web（展开态里有「这只票阿呆怎么说」）。
+        // 双保险：**按 type 判定**（只有行情告警才落点）+ 深链必须是 6 位代码。
+        // 单靠深链会被后端格式漂移带跑（哨兵只是最现成的一例，见 trading_deeplink.dart 注释）。
+        const tradingAlertTypes = {'stop-loss', 'near-stop-loss', 'loss', 'gain', 'break-cost'};
         final focusSym = parseTradingDeepLink(deepLink);
-        if (focusSym != null) {
+        if (tradingAlertTypes.contains(type) && focusSym != null) {
           setState(() => _showWorldB = false); // 先回 Feed 世界，再压交易页（返回时落回 Feed）
           _feedRefreshTick.value++;            // Feed 也刷新一次：那张推送卡还在名单里
           // 用本页 context 上的 Navigator（= RootApp 的 MaterialApp 那一个，

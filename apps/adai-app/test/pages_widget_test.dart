@@ -720,28 +720,31 @@ void main() {
               'signal': 'B1 回调缩量', 'longForm': '', 'midForm': '', 'shortForm': ''},
           ]);
       await pumpTrading(tester, b);
-
+      // 2026-10-09（前端官 P2-2）：自选段默认**收起**（23 行会把今天区推远）——先点开
       expect(find.text('自选'), findsOneWidget);
-      expect(find.text('1 只 · 管理在电脑端'), findsOneWidget);
+      expect(find.text('1 只 · 管理在电脑端'), findsOneWidget); // 收起态的摘要行也给计数
+      await scrollTo(tester, find.text('自选'));
+      await tester.tap(find.text('自选'));
+      await tester.pumpAndSettle();
       expect(find.text('平安银行'), findsOneWidget);
       expect(find.text('银行 · B1 回调缩量'), findsOneWidget);
     });
 
     // ── 2026-10-09（design-app §三 I-5）：截图入账主线三卡点 ──
 
-    testWidgets('卡点① 分张提交：3 张 = 3 次请求（不再打包等 90 秒）+ 同笔跨图去重', (tester) async {
+    testWidgets('卡点① 分张提交：3 张 = 3 次请求（不再打包等 90 秒）+ 疑似同一笔只标注不丢弃', (tester) async {
       final b = _Backend();
       mockBase(b);
       var calls = 0;
       b.handlers['/api/v1/trading/screenshots'] = (_) async {
         calls++;
-        // 同一张成交截图被连传两次的形态：第 1、2 张认到的是同一笔
+        // 同一张成交截图被连传多次的形态：每张都认到同一笔
         return _json({
           'total': 1, 'processed': 1,
           'candidates': [
             {'symbol': '002428', 'name': '云南锗业', 'direction': 'BUY', 'price': '93.48',
-              'volume': 100, 'tradeDate': '2026-10-09', 'source': 'image',
-              'complete': true, 'id': 'c$calls'},
+              'volume': 100, 'tradeTime': '10:03:44', 'tradeDate': '2026-10-09',
+              'source': 'image', 'complete': true, 'id': 'c$calls'},
           ],
           'dropped': <String>[], 'errors': <String>[],
         });
@@ -763,8 +766,43 @@ void main() {
 
       // 3 张 → 3 次单图请求：第一张认完就能出候选（不再等三张全跑完）
       expect(calls, 3, reason: '分张提交：客户端不该再把多张打包成一个请求');
-      // 客户端指纹去重：三张认到的是同一笔 → 候选只留一条（后端跨图去重已因分张失效）
-      expect(find.textContaining('今日截图候选 1 笔'), findsOneWidget);
+      // 2026-10-09（前端官 P1-2 修复后）：**不丢弃**——三张认到同一笔就摆三条、后两条标「可疑」，
+      // 交用户核对（真正的重复由后端 confirm 的 sameTrade 兜住）。宁可多标可疑，不可放过一笔。
+      expect(find.textContaining('今日截图候选 3 笔'), findsOneWidget);
+      expect(find.textContaining('看着和本批里另一笔是同一笔'), findsNWidgets(2));
+      expect(find.textContaining('已标成「可疑」'), findsOneWidget);
+    });
+
+    testWidgets('P1-2（前端官）：同价同量的**真分单**（成交时刻不同）不许被判重', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      // 生产实据：000831 两笔各 200 股 @53.300，10:03:44 与 10:04:09（P0-交易59 就是为它修的）
+      b.handlers['/api/v1/trading/screenshots'] = (_) async => _json({
+            'total': 1, 'processed': 1,
+            'candidates': [
+              {'symbol': '000831', 'name': '中国稀土', 'direction': 'BUY', 'price': '53.30',
+                'volume': 200, 'tradeTime': '10:03:44', 'tradeDate': '2026-10-09',
+                'source': 'image', 'complete': true, 'id': 'a'},
+              {'symbol': '000831', 'name': '中国稀土', 'direction': 'BUY', 'price': '53.30',
+                'volume': 200, 'tradeTime': '10:04:09', 'tradeDate': '2026-10-09',
+                'source': 'image', 'complete': true, 'id': 'b'},
+            ],
+            'dropped': <String>[], 'errors': <String>[],
+          });
+      await tester.pumpWidget(MaterialApp(
+        home: TradingPage(
+          api: _apiFor(b),
+          debugPickImages: () async => [PickedImage(const [1], 'a.jpg', 'jpg')],
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('截图入账'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('今日截图候选 2 笔'), findsOneWidget);
+      expect(find.text('中国稀土 (000831)'), findsNWidgets(2));
+      // 两笔都**不该**被标可疑（成交时刻不同＝真分单）
+      expect(find.textContaining('看着和本批里另一笔是同一笔'), findsNothing);
     });
 
     testWidgets('卡点② 异常优先：卖超持仓单独醒目 + 其余折成一行（默认全信）', (tester) async {

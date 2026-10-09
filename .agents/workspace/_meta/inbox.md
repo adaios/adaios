@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-06
 updated: 2026-10-09
 status: active
-lines: 170
+lines: 199
 depends-on: []
 related:
   - ./process-issues-20261006.md
@@ -19,7 +19,36 @@ tags: [workspace, meta, dispatch]
 
 ## 当前待处理派单
 
-> **本轮（2026-10-09 · app 端体验重构）待办派单 = `D-20261009-01`（结构测绘）· `D-20261009-02`（设计规格独立审核）**；下方 `D-20261008-*` 均已交付（见 `review-uiux-ixd-20261008.md` / `review-uiux-visual-20261008.md`），不要再领。**只领与你角色匹配的那一条**（测绘＝explorer；独立审核＝ux-interaction-reviewer），已交付的那条不要再做。
+> **本轮（2026-10-09 · app 端体验重构 · **编码段增量深审**）待办派单 = `D-20261009-03`（前端官）· `D-20261009-04`（后端官）· `D-20261009-05`（对抗官）**；`D-20261009-01/02` 与 `D-20261008-*` 均**已交付**（见 `explore-app-trading-page-20261009.md` / `review-app-design-20261009.md` / `review-uiux-*-20261008.md`），**不要再领**。**只领与你角色匹配的那一条**。
+
+---
+
+## 本轮派单（2026-10-09 · 编码段深审 · 三条并行）
+
+> **共同背景一句话**：app 端交易插件体验重构刚做完 **批 1–5**（首屏四层 / 截图入账三卡点 / 推送设置页 / 复盘历史页 / 提醒落点），
+> 测试 **474 全绿**、`flutter analyze` 0 issue、四守卫 PASS、真机走查六张实拍已入库；随后**后端推送文案**按 v1 落地。
+> **共同判据**：只判**改动对不对**（正确性 + 边界 + 完备性），不判「该不该做」（已拍板）。**只报告不改**（B7）。
+> **共同材料**（不要自己找）：交付表 `.agents/workspace/trading-plugin/scope-app-20261009.md`（逐条状态/证据）· 设计规格 `design-app-20261009.md`（§三 I-1~I-8 交互决定 + §七之二 主链对审核的收口）· 走查报告 `review-app-uiux-20261009.md`（§1 六张实拍与取证方式）· 推送文案稿 `design-push-copy-20261009.md`（§三 模板 · §五 拍板 · §六 落地记录）。
+> **共同范围**：本批自 `e87f926e` 之后的提交（约 12 个）。
+
+- **D-20261009-03**（**编码段深审 · 前端官** · `code-frontend-reviewer`）
+  - 【任务】只判 **app 端本批改动对不对**：① 形态重构（`trading_page.dart` 首屏四层 / 持仓一行+就地展开 / 自选只读 / 今天区）；② `utils/trading_verdict.dart`（判断句与「与你的线」纯逻辑）；③ `utils/trading_deeplink.dart` + `main.dart` 深链路由 + `trading_page.dart#_applyFocusSymbol`（提醒落点）；④ 两个新屏 `pages/push_settings_page.dart` / `pages/review_history_page.dart` 与两个抽出的共享件 `widgets/push_settings.dart` / `widgets/review_dialog.dart`（含 `main_page.dart` 的连带改动）；⑤ 截图入账三卡点（分张提交/指纹去重/异常优先/回执）。
+    重点看：状态管理与生命周期（`mounted`/代际令牌/`initState`）、DTO 契约与降级（缺字段不编）、跨端一致性（与 web 的口径）、**测试是否真断言**（有无假绿）。
+  - 【产出】`.agents/workspace/trading-plugin/review-code-app-20261009.md`
+
+- **D-20261009-04**（**编码段深审 · 后端官** · `code-backend-reviewer`）
+  - 【任务】只判 **后端推送文案批**：`MarketAlertService`（`message()` 四类重写 · 新增 `distancePctText()` · `lockScreenMessage()`）+ `TradingSessionPushService#buildCloseContent` 收尾一句 + `MarketAlertServiceTest` 的断言改动。
+    重点看：① 数值边界（`distancePctText` 的除零/负值/null 兜底、四舍五入）；② **隐私口径**（正文不再出现成本数字，锁屏仍不点标的/不带价）；③ **合并逻辑**（多条告警合并那条路径是否仍成立、锁屏拼接）；④ 规则引用（R66 保留）与产品约定（design-final §11.6）是否一致；⑤ 测试是否真断言（有没有为了过而改弱的断言）。
+  - 【产出】`.agents/workspace/trading-plugin/review-code-backend-push-20261009.md`
+
+- **D-20261009-05**（**对抗官** · `ai-adversarial-reviewer`）
+  - 【任务】**假设本批一定有坑**，从「哪里会炸 / 用户哪里会骂 / 边界哪里漏」三个方向攻击性找茬（不复述前面两位的清单，专挑他们视角外的）：
+    ① **提醒落点**：深链格式漂移（后端换格式/多段深链/大小写）、`focusSymbol` 不在持仓、连点、`Navigator` 在 `initState` 后立即 push、用户从落点返回后停在 Feed（不是交易页）是否会骂；
+    ② **截图入账分张提交**：第 2 张失败时的部分成功语义、客户端指纹去重会不会**误杀**真分单（同价同量同日两笔 = 指纹相同！生产实据 000831 两笔各 200 股）、丢弃明细的可读性；
+    ③ **判断句**「不编」的漏洞：`_integrity`/`_marketHealth` 取不到时的空洞、破线口径与后端 R66 是否一致；
+    ④ **隐私**：打码态截图 vs 显形态、推送正文、复盘历史页有没有可能露金额；
+    ⑤ **并发**：30 分钟自动刷新与「展开态/落点/新页面」并存时的竞态、代际令牌是否覆盖新写入路径。
+  - 【产出】`.agents/workspace/trading-plugin/review-adversarial-app-20261009.md`
 
 - **D-20261009-02**（**`design-app` 独立审核 · 交互层** · `ux-interaction-reviewer`）
   - 【任务】**只判交互层**：`design-app-20261009.md` §二（首屏四层 IA）与 §三（I-1 ~ I-8 八条交互决定）是否**流程完整 · 反馈到位 · 异常有兜底 · 状态不歧义**；并与**已圈选的可点稿**独立对照（`.agents/workspace/trading-plugin/mockups/png/ref-1.png` · `ref-2.png` · `flow-1..4.png`）——**判「规格是否忠实于已拍板的方向」**，不要照抄主链结论。
