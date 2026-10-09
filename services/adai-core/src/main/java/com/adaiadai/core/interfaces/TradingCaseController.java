@@ -1,6 +1,8 @@
 package com.adaiadai.core.interfaces;
 
+import com.adaiadai.core.application.CaseCandidateService;
 import com.adaiadai.core.application.TradingCaseAppService;
+import com.adaiadai.core.domain.trading.cases.CaseCandidate;
 import com.adaiadai.core.domain.trading.cases.CaseRecord;
 import com.adaiadai.core.kernel.plugin.PluginRegistry;
 import com.adaiadai.core.kernel.plugin.PluginService;
@@ -21,7 +23,9 @@ import java.util.Map;
 /**
  * TradingCaseController — 完美买点案例 REST API（2026-08-30 第四阶段环 1-2）。
  * <p>
- * 端点：POST/GET /trading/cases、GET/DELETE /trading/cases/{caseId}。
+ * 端点：POST/GET /trading/cases、GET/DELETE /trading/cases/{caseId}；
+ * 2026-10-08 案例候选批加：GET /trading/cases/candidates、
+ * POST /trading/cases/candidates/{id}/accept|dismiss（「从你的记录里长出来的，你认了才算」）。
  * 全部需 trading 插件（403）；X-User-Id 隔离（data/{userId}/trading/cases/）。
  * 门控与 TradingController 同口径（requireTradingPlugin 复制）。
  */
@@ -32,10 +36,14 @@ public class TradingCaseController {
     private static final Logger log = LoggerFactory.getLogger(TradingCaseController.class);
 
     private final TradingCaseAppService caseAppService;
+    private final CaseCandidateService caseCandidateService;
     private final PluginService pluginService;
 
-    public TradingCaseController(TradingCaseAppService caseAppService, PluginService pluginService) {
+    public TradingCaseController(TradingCaseAppService caseAppService,
+                                 CaseCandidateService caseCandidateService,
+                                 PluginService pluginService) {
         this.caseAppService = caseAppService;
+        this.caseCandidateService = caseCandidateService;
         this.pluginService = pluginService;
     }
 
@@ -121,6 +129,49 @@ public class TradingCaseController {
                 body.date() == null || body.date().isBlank() ? null : parseDate(body.date())));
     }
 
+    // ── 案例候选（2026-10-08 UI/UX 批 ③：「从你的记录里长出来的——我不替你定，你认了才算」）──
+
+    /** 案例候选全量视图：{pending 等你认, accepted 已收下}（候选每次现算；你的决定从文件读）。 */
+    @GetMapping("/candidates")
+    public ResponseEntity<?> candidates(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(candidatesView(caseCandidateService.list(userId)));
+    }
+
+    /** 收下一条候选（body {title?} = 原型「改一改」：收下时顺手改名；幂等：双击无害）。 */
+    @PostMapping("/candidates/{id}/accept")
+    public ResponseEntity<?> acceptCandidate(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @PathVariable("id") String id,
+            @RequestBody(required = false) Map<String, Object> body) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        String title = body == null ? null : str(body.get("title"));
+        try {
+            return ResponseEntity.ok(Map.of("candidate",
+                    candidate(caseCandidateService.accept(userId, id, title))));
+        } catch (IllegalArgumentException e) {
+            return badRequest(e.getMessage());
+        }
+    }
+
+    /** 不要一条候选（墓碑——下次生成不复活；幂等：已弃再弃 / 候选已随数据消失都照记）。 */
+    @PostMapping("/candidates/{id}/dismiss")
+    public ResponseEntity<?> dismissCandidate(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @PathVariable("id") String id) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        try {
+            caseCandidateService.dismiss(userId, id);
+        } catch (IllegalArgumentException e) {
+            return badRequest(e.getMessage());
+        }
+        return ResponseEntity.ok(Map.of("dismissed", true, "id", id));
+    }
+
     /**
      * 日期宽容解析（2026-08-30 用户反馈 400）：接受 ISO（yyyy-MM-dd）与 BASIC（yyyyMMdd），
      * 都失败 → 业务异常（400 + 人话「日期格式不正确，请用 yyyy-MM-dd」）。
@@ -148,6 +199,45 @@ public class TradingCaseController {
             return ResponseEntity.status(403).body(Map.of("error", "trading 插件未启用，无法使用交易功能"));
         }
         return null;
+    }
+
+    // ── 形状转换（案例候选）──
+
+    /** 案例候选视图 → 对外形状。 */
+    private static Map<String, Object> candidatesView(CaseCandidateService.CandidatesView v) {
+        Map<String, Object> m = new java.util.LinkedHashMap<>();
+        m.put("pending", v.pending().stream().map(TradingCaseController::candidate).toList());
+        m.put("accepted", v.accepted().stream().map(TradingCaseController::candidate).toList());
+        return m;
+    }
+
+    /** 案例候选 → 对外形状（前端一次拿全：标题 / 结果 / 变化 / 对照 / 卡体文案）。 */
+    private static Map<String, Object> candidate(CaseCandidate c) {
+        Map<String, Object> m = new java.util.LinkedHashMap<>();
+        m.put("id", c.id());
+        m.put("state", c.state().name());
+        m.put("kind", c.kind().name());
+        m.put("outcome", c.outcome().name());
+        m.put("symbol", c.symbol());
+        m.put("name", c.name());
+        m.put("date", c.date());
+        m.put("title", c.title());
+        m.put("changePct", c.changePct());
+        m.put("ruleRel", c.ruleRel() == null ? null : c.ruleRel().name());
+        m.put("ruleId", c.ruleId());
+        m.put("ruleText", c.ruleText());
+        m.put("notes", c.notes());
+        m.put("createdAt", c.createdAt());
+        m.put("updatedAt", c.updatedAt());
+        return m;
+    }
+
+    private static ResponseEntity<?> badRequest(String message) {
+        return ResponseEntity.badRequest().body(Map.of("error", message));
+    }
+
+    private static String str(Object v) {
+        return v instanceof String s ? s : null;
     }
 
     /** 标注请求体（buyDate 字符串宽松格式：yyyy-MM-dd 或 yyyyMMdd，Controller 解析）。 */

@@ -38,6 +38,22 @@ if [ -z "$API_BASE_URL" ] && [ "${BUILD_ONLY:-0}" = "1" ]; then
 fi
 
 echo "=== Building Flutter Web (JS + CanvasKit) ==="
+
+# 2026-10-07 补（本地起不来过一次的真实原因）：`web/fonts/` 是**不入库的手工资产**
+# （见 .gitignore `/web/fonts/ # Local fonts (需手动放置，不入库)`）。下面的 index.html 补丁会把
+# 所有 fonts.gstatic.com 请求改写到本地 /fonts/*.woff2（国内访问不了 Google 字体 CDN）——
+# 字体文件不在时，改写后**必然 404**：页面能开，但中文全缺 + 控制台一排 404，
+# 很容易被误判成"代码坏了"。这里显式拦住，并给出从生产补齐的命令。
+FONT_DIR="web/fonts"
+for f in Roboto.woff2 NotoSansSC-Subset.woff2; do
+  if [ ! -f "$FONT_DIR/$f" ]; then
+    echo "❌ 缺本地字体 $FONT_DIR/$f —— 它是手工资产、不入库。" >&2
+    echo "   不补的话：index.html 的字体改写补丁会把 fonts.gstatic.com 指向本地，改完 404（中文全缺）。" >&2
+    echo "   从生产补齐（需 ssh 到 82.156.111.146）：" >&2
+    echo "     mkdir -p $FONT_DIR && ssh ubuntu@82.156.111.146 'sudo tar -C /opt/adaios/web -cf - fonts' | tar -xf - -C web/" >&2
+    exit 1
+  fi
+done
 if [ -n "$API_BASE_URL" ]; then
   flutter build web --no-tree-shake-icons --dart-define=API_BASE_URL=$API_BASE_URL
 else

@@ -1,0 +1,437 @@
+<style>
+  .ph { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .ph-frame {
+    width: 404px; padding: 7px; border-radius: 52px; background: #070706;
+    border: 1px solid rgba(255,255,255,0.10);
+    box-shadow: 0 22px 54px rgba(0,0,0,0.42), 0 2px 0 rgba(255,255,255,0.04) inset;
+  }
+  .ph-screen { width: 390px; border-radius: 46px; overflow: hidden; }
+  .ph-cap { font-size: 12px; color: var(--muted-foreground, #8b8b8b); letter-spacing: 0.3px; }
+
+  /* ---- 产品作用域：AdaiOS 交易插件 · App（真实深色暖灰调色板） ---- */
+  .pa {
+    --pa-bg: #131211;
+    --pa-surface: #1D1B1A;
+    --pa-surface2: #252220;
+    --pa-border: #2D2926;
+    --pa-t1: #F0EDE9;
+    --pa-t2: #D4D0CB;
+    --pa-t3: #B5B0AA;
+    --pa-t4: #908B85;
+    --pa-t5: #66615C;
+    --pa-up: #D95757;
+    --pa-down: #3AB75A;
+    --pa-orange: #E8963A;
+    --pa-blue: #5299FF;
+    font-family: "PingFang SC", "Helvetica Neue", system-ui, -apple-system, sans-serif;
+    background: var(--pa-bg);
+    color: var(--pa-t2);
+    font-size: 13px;
+    line-height: 1.45;
+    min-height: 861px;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 6px;
+  }
+  .pa *, .pa *::before, .pa *::after { box-sizing: border-box; }
+  .pa .num { font-variant-numeric: tabular-nums; }
+  .pa .secret { display: none; }
+  .pa.is-revealed .secret { display: inline; }
+  .pa.is-revealed .masked { display: none; }
+  .pa .mask { color: var(--pa-t4); letter-spacing: 1px; }
+  .pa .sp { flex: 1 1 auto; }
+  .up { color: var(--pa-up); }
+  .down { color: var(--pa-down); }
+  .warn { color: var(--pa-orange); }
+  .ok { color: var(--pa-down); }
+  .quiet { color: var(--pa-t5); }
+  .dim { color: var(--pa-t4); }
+
+  /* 系统栏（纯装饰） */
+  .pa-sys {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 24px 4px; color: var(--pa-t2); font-size: 12px; font-weight: 600;
+  }
+  .pa-sys-r { display: flex; align-items: center; gap: 3px; }
+  .pa-bar { width: 3px; border-radius: 1px; background: var(--pa-t2); display: block; }
+  .pa-bar.a { height: 4px; } .pa-bar.b { height: 6px; } .pa-bar.c { height: 8px; }
+  .pa-batt { width: 20px; height: 10px; border-radius: 3px; border: 1px solid var(--pa-t4); position: relative; display: block; }
+  .pa-batt::after { content: ""; position: absolute; top: 1.5px; left: 1.5px; width: 11px; height: 5px; background: var(--pa-t2); border-radius: 1.5px; }
+
+  /* 顶栏 */
+  .pa-top { display: flex; align-items: center; gap: 8px; padding: 8px 18px 10px; }
+  .pa-back { font-size: 22px; color: var(--pa-t2); line-height: 1; margin-top: -2px; }
+  .pa-title { color: var(--pa-t1); font-size: 17px; font-weight: 600; letter-spacing: -0.2px; }
+  .pa-txtbtn { color: var(--pa-t4); font-size: 13px; }
+
+  /* 隐私条 */
+  .pa-priv { display: flex; align-items: center; padding: 0 18px 12px; color: var(--pa-t5); font-size: 12px; }
+  .pa-eye {
+    background: var(--pa-surface2); border: 1px solid var(--pa-border); color: var(--pa-t3);
+    border-radius: 999px; padding: 4px 11px; font-size: 11px; font-family: inherit; cursor: pointer;
+  }
+  .pa-eye[aria-pressed="true"] { background: rgba(58,183,90,0.14); border-color: rgba(58,183,90,0.45); color: var(--pa-t1); }
+
+  /* 持仓清单 */
+  .pa-list { display: flex; flex-direction: column; }
+  .pa-row { display: flex; align-items: center; gap: 8px; padding: 0 18px; border-top: 1px solid var(--pa-border); }
+  .pa-n { color: var(--pa-t1); }
+  .pa-c { color: var(--pa-t5); font-size: 11px; }
+  .pa-row .pct { margin-left: auto; }
+  .pa-open { padding: 0 18px 12px 18px; border-top: 0; background: rgba(37,34,32,0.55); }
+  .pa-open div { padding: 3px 0; color: var(--pa-t3); font-size: 12px; }
+
+  /* 入账 */
+  .pa-io { display: flex; gap: 10px; padding: 0 18px; }
+  .pa-cta-main {
+    flex: 1 1 auto; background: var(--pa-t1); color: #17150F; border: 0; border-radius: 13px;
+    font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  .pa-cta {
+    background: var(--pa-surface2); border: 1px solid var(--pa-border); color: var(--pa-t2);
+    border-radius: 13px; padding: 0 18px; font-size: 14px; font-family: inherit; cursor: pointer;
+  }
+  .pa-foot { display: flex; gap: 16px; padding: 14px 18px 8px; color: var(--pa-t5); font-size: 12px; }
+  .pa-foot .on { color: var(--pa-t3); }
+
+  /* 结论 */
+  .pa-lede { padding: 2px 18px 16px; }
+  .pa-lede-main { margin: 0; color: var(--pa-t1); font-size: 24px; line-height: 1.42; font-weight: 500; letter-spacing: -0.4px; }
+  .pa-lede-sub { margin: 8px 0 0; color: var(--pa-t4); font-size: 13px; }
+  .pa-hint { padding: 0 18px 12px; color: var(--pa-t5); font-size: 11px; }
+
+  /* 今天 */
+  .pa-today { margin: 4px 18px 0; border: 1px solid var(--pa-border); border-radius: 14px; background: var(--pa-surface); padding: 12px 14px; }
+  .pa-today-h { color: var(--pa-t5); font-size: 11px; letter-spacing: 0.6px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+  .pa-badge { background: rgba(232,150,58,0.18); color: var(--pa-orange); border-radius: 999px; padding: 0 6px; font-size: 10px; }
+  .pa-tl { display: flex; align-items: baseline; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(45,41,38,0.8); }
+  .pa-tl:last-child { border-bottom: 0; }
+  .pa-tt { color: var(--pa-t5); font-size: 11px; width: 34px; flex: 0 0 34px; }
+
+  /* 图形（方向丙） */
+  .pa-chart { position: relative; margin: 0 18px 10px; border: 1px solid var(--pa-border); border-radius: 16px; background: var(--pa-surface); padding: 12px 14px 6px; }
+  .pa-chart .cap { color: var(--pa-t5); font-size: 11px; }
+  .pa-chart .say { position: absolute; left: 14px; top: 30px; color: var(--pa-t1); font-size: 17px; font-weight: 500; letter-spacing: -0.2px; }
+  .pa-chart .say small { display: block; color: var(--pa-orange); font-size: 12px; font-weight: 400; margin-top: 5px; }
+  .pa-stats { display: flex; margin: 0 18px 10px; border: 1px solid var(--pa-border); border-radius: 14px; overflow: hidden; background: var(--pa-surface); }
+  .pa-stats > div { flex: 1 1 0; padding: 8px 12px; border-right: 1px solid var(--pa-border); }
+  .pa-stats > div:last-child { border-right: 0; }
+  .pa-k { color: var(--pa-t5); font-size: 10.5px; margin-bottom: 3px; }
+  .pa-v { color: var(--pa-t1); font-size: 15px; font-weight: 600; white-space: nowrap; }
+  .pa-v .cur { font-size: 10.5px; color: var(--pa-t4); font-weight: 400; margin-right: 2px; }
+  .pa-ring { display: flex; align-items: center; gap: 14px; margin: 0 18px 10px; border: 1px solid var(--pa-border); border-radius: 14px; background: var(--pa-surface); padding: 10px 14px; }
+  .pa-ring .lg { font-size: 11.5px; line-height: 1.85; color: var(--pa-t3); }
+  .pa-heat { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin: 0 18px 10px; }
+  .pa-heat i { display: block; height: 14px; border-radius: 4px; }
+  .pa-fab {
+    position: absolute; right: 18px; bottom: 18px; width: 54px; height: 54px; border-radius: 50%;
+    background: var(--pa-t1); color: #17150F; border: 0; font-size: 20px; cursor: pointer;
+  }
+  .pa-stage { position: relative; flex: 1 1 auto; display: flex; flex-direction: column; }
+
+  /* 空账号 */
+  .pa-when-empty { display: none; }
+  .pa.is-empty .pa-when-full { display: none !important; }
+  .pa.is-empty .pa-when-empty { display: block; }
+  .pa.is-empty .pa-eye { display: none; }
+  .pa-empty { padding: 46px 26px 0; }
+  .pa-empty h3 { margin: 0 0 10px; color: var(--pa-t1); font-size: 20px; font-weight: 500; letter-spacing: -0.3px; }
+  .pa-empty p { margin: 0 0 8px; color: var(--pa-t3); font-size: 13px; }
+  .pa-drop { margin: 18px 0 14px; border: 1px dashed var(--pa-border); border-radius: 14px; padding: 26px 16px; text-align: center; color: var(--pa-t4); background: var(--pa-surface); font-size: 13px; }
+</style>
+
+<div class="viz-carousel viz-dotted-background" id="trading-app-directions" aria-label="交易插件 App 首屏的三个方向" data-previous-label="上一个" data-next-label="下一个">
+
+  <!-- ================================================== 甲 · 清单优先 -->
+  <section data-variant="清单优先" aria-label="方向甲 · 清单优先">
+    <div class="ph">
+      <div class="ph-frame">
+        <div class="ph-screen">
+          <div class="pa" data-app="A">
+            <div class="pa-sys">
+              <span>15:47</span>
+              <span class="pa-sys-r"><i class="pa-bar a"></i><i class="pa-bar b"></i><i class="pa-bar c"></i><b class="pa-batt"></b></span>
+            </div>
+            <div class="pa-top">
+              <span class="pa-back">‹</span>
+              <span class="pa-title">交易</span>
+              <span class="sp"></span>
+              <span class="pa-txtbtn">复盘</span>
+            </div>
+            <div class="pa-priv">
+              <span>10-07 · 今天</span>
+              <span class="sp"></span>
+              <button class="pa-eye" type="button" data-act="reveal" aria-pressed="false" aria-label="看金额">👁 看金额</button>
+            </div>
+
+            <div class="pa-when-full">
+              <div class="pa-hint" style="padding-bottom:10px">持仓 5 只 · <span class="warn">1 只破了止损</span> · 账对上了</div>
+
+              <div class="pa-list">
+                <div class="pa-row" style="height:46px;background:rgba(37,34,32,0.55)">
+                  <span class="pa-n">紫金矿业</span><span class="pa-c">601899</span>
+                  <span class="sp"></span>
+                  <span class="pct down num">−4.45%</span>
+                  <span class="warn" style="font-size:11px">⌃</span>
+                </div>
+                <div class="pa-open">
+                  <div>数量 <span class="mask masked">••••</span><span class="secret num">1,500</span> · 成本 <span class="mask masked">••••</span><span class="secret num">17.32</span> · 仓位 15%</div>
+                  <div>批次 2 · 最近一次 10-06 加 <span class="mask masked">•••</span><span class="secret num">300</span> 股</div>
+                  <div class="quiet">你 8 月写下的：跌破止损先减一半</div>
+                </div>
+                <div class="pa-row" style="height:46px"><span class="pa-n">中际旭创</span><span class="pa-c">300308</span><span class="sp"></span><span class="pct up num">+9.97%</span><span class="quiet num" style="font-size:11px">你的止损 118.00</span></div>
+                <div class="pa-row" style="height:46px"><span class="pa-n">长江电力</span><span class="pa-c">600900</span><span class="sp"></span><span class="pct up num">+4.59%</span><span class="quiet num" style="font-size:11px">你的止损 26.20</span></div>
+                <div class="pa-row" style="height:46px"><span class="pa-n">中国平安</span><span class="pa-c">601318</span><span class="sp"></span><span class="pct up num">+3.44%</span><span class="quiet num" style="font-size:11px">你的止损 49.50</span></div>
+                <div class="pa-row" style="height:46px"><span class="pa-n">三花智控</span><span class="pa-c">002050</span><span class="sp"></span><span class="pct down num">−1.04%</span><span class="quiet num" style="font-size:11px">你的止损 23.00</span></div>
+                <div class="pa-row" style="height:34px;border-top:1px solid var(--pa-border);color:var(--pa-t5);font-size:11px;letter-spacing:0.4px">自选 4 只 · 不占仓位</div>
+                <div class="pa-row" style="height:46px"><span class="pa-n">招商银行</span><span class="pa-c">600036</span><span class="sp"></span><span class="pct down num">−3.27%</span><span class="quiet num" style="font-size:11px">32.88</span></div>
+                <div class="pa-row" style="height:46px"><span class="pa-n">华能水电</span><span class="pa-c">600025</span><span class="sp"></span><span class="pct up num">+5.68%</span><span class="quiet num" style="font-size:11px">10.42</span></div>
+                <div class="pa-row" style="height:46px"><span class="pa-n">宁德时代</span><span class="pa-c">300750</span><span class="sp"></span><span class="pct down num">−3.86%</span><span class="quiet num" style="font-size:11px">179.30</span></div>
+                <div class="pa-row" style="height:46px"><span class="pa-n">格力电器</span><span class="pa-c">000651</span><span class="sp"></span><span class="pct up num">+2.14%</span><span class="quiet num" style="font-size:11px">39.02</span></div>
+              </div>
+
+              <div class="pa-row" style="height:44px;border-top:1px solid var(--pa-border);color:var(--pa-t4);font-size:12px">
+                <span>今天 2 条 · 1 条没看</span><span class="sp"></span><span class="warn">14:50 尾盘提醒</span>
+              </div>
+            </div>
+
+            <div class="pa-stage">
+              <div class="pa-when-full" style="margin-top:auto">
+                <div class="pa-io" style="padding-bottom:10px">
+                  <button class="pa-cta-main" type="button" style="height:46px">📷 截图入账</button>
+                  <button class="pa-cta" type="button" style="height:46px">一句话</button>
+                </div>
+                <div class="pa-foot"><span class="on">持仓</span><span>收益日历</span><span>资金</span><span>推送设置</span></div>
+              </div>
+              <div class="pa-when-empty">
+                <div class="pa-empty">
+                  <h3>我还不知道你的账</h3>
+                  <p>把券商的「资金流水 + 历史成交」交一次就行，不用记顺序、不用分次。</p>
+                  <div class="pa-drop">选文件 / 从相册选截图</div>
+                  <p class="quiet" style="font-size:12px">也可以先随手记一笔 —— 记几天，它从你的数据里长出来。</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="ph-cap">主心骨：我现在持有什么</div>
+    </div>
+  </section>
+
+  <!-- ================================================== 乙 · 结论先行 -->
+  <section data-variant="结论先行" aria-label="方向乙 · 结论先行" hidden>
+    <div class="ph">
+      <div class="ph-frame">
+        <div class="ph-screen">
+          <div class="pa" data-app="B">
+            <div class="pa-sys">
+              <span>15:47</span>
+              <span class="pa-sys-r"><i class="pa-bar a"></i><i class="pa-bar b"></i><i class="pa-bar c"></i><b class="pa-batt"></b></span>
+            </div>
+            <div class="pa-top">
+              <span class="pa-back">‹</span>
+              <span class="pa-title">交易</span>
+              <span class="sp"></span>
+              <span class="pa-txtbtn">复盘</span>
+            </div>
+            <div class="pa-priv">
+              <span>10-07 · 今天</span>
+              <span class="sp"></span>
+              <button class="pa-eye" type="button" data-act="reveal" aria-pressed="false" aria-label="看金额">👁 看金额</button>
+            </div>
+
+            <div class="pa-when-full">
+              <div class="pa-lede">
+                <p class="pa-lede-main">5 只 · 有 1 只破了止损</p>
+                <p class="pa-lede-sub">紫金矿业 601899 · 现价 16.55 · 你定的 16.80</p>
+              </div>
+
+              <div class="pa-io" style="padding-bottom:18px">
+                <button class="pa-cta-main" type="button" style="height:54px;font-size:16px">📷 截图入账</button>
+                <button class="pa-cta" type="button" style="height:54px">一句话</button>
+              </div>
+
+              <div class="pa-list">
+                <div class="pa-row" style="height:56px;background:rgba(37,34,32,0.55)">
+                  <span class="pa-n">紫金矿业</span>
+                  <span class="sp"></span>
+                  <span class="pct down num">−4.45%</span>
+                  <span class="warn" style="font-size:11px">⌃</span>
+                </div>
+                <div class="pa-open">
+                  <div>成本与仓位：<span class="mask masked">••••</span><span class="secret num">17.32</span> · 15%</div>
+                  <div>批次 2 · 最近一次 10-06 加 <span class="mask masked">•••</span><span class="secret num">300</span> 股</div>
+                  <div class="quiet">你 8 月写下的：跌破止损先减一半</div>
+                </div>
+                <div class="pa-row" style="height:56px"><span class="pa-n">中际旭创</span><span class="sp"></span><span class="pct up num">+9.97%</span><span class="quiet" style="font-size:11px">⌄</span></div>
+                <div class="pa-row" style="height:56px"><span class="pa-n">长江电力</span><span class="sp"></span><span class="pct up num">+4.59%</span><span class="quiet" style="font-size:11px">⌄</span></div>
+                <div class="pa-row" style="height:56px"><span class="pa-n">中国平安</span><span class="sp"></span><span class="pct up num">+3.44%</span><span class="quiet" style="font-size:11px">⌄</span></div>
+                <div class="pa-row" style="height:56px"><span class="pa-n">三花智控</span><span class="sp"></span><span class="pct down num">−1.04%</span><span class="quiet" style="font-size:11px">⌄</span></div>
+              </div>
+
+              <div class="pa-today">
+                <div class="pa-today-h">今天 <span class="pa-badge">1 条没看</span></div>
+                <div class="pa-tl"><span class="pa-tt">09:15</span><span>早盘提醒 · 只看 601899 和 300308</span><span class="sp"></span><span class="quiet" style="font-size:11px">已看</span></div>
+                <div class="pa-tl"><span class="pa-tt">14:50</span><span class="warn">尾盘提醒 · 601899 在你定的 16.80 下方</span><span class="sp"></span><span class="pa-badge">新</span></div>
+                <div class="pa-tl"><span class="pa-tt">现在</span><span>今天这两笔还没复盘</span><span class="sp"></span><span class="pa-txtbtn">生成</span></div>
+              </div>
+            </div>
+
+            <div class="pa-stage">
+              <div class="pa-when-full" style="margin-top:auto">
+                <div class="pa-foot"><span>收益日历</span><span>资金</span><span>推送设置</span><span>复盘历史</span></div>
+              </div>
+              <div class="pa-when-empty">
+                <div class="pa-empty">
+                  <h3>我还不知道你的账</h3>
+                  <p>把券商的「资金流水 + 历史成交」交一次就行，不用记顺序、不用分次。</p>
+                  <div class="pa-drop">选文件 / 从相册选截图</div>
+                  <p class="quiet" style="font-size:12px">也可以先随手记一笔 —— 记几天，它从你的数据里长出来。</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="ph-cap">主心骨：阿呆怎么说</div>
+    </div>
+  </section>
+
+  <!-- ================================================== 丙 · 图形优先 -->
+  <section data-variant="图形优先" aria-label="方向丙 · 图形优先" hidden>
+    <div class="ph">
+      <div class="ph-frame">
+        <div class="ph-screen">
+          <div class="pa" data-app="C">
+            <div class="pa-sys">
+              <span>15:47</span>
+              <span class="pa-sys-r"><i class="pa-bar a"></i><i class="pa-bar b"></i><i class="pa-bar c"></i><b class="pa-batt"></b></span>
+            </div>
+            <div class="pa-top">
+              <span class="pa-back">‹</span>
+              <span class="pa-title">交易</span>
+              <span class="sp"></span>
+              <span class="pa-txtbtn">复盘</span>
+            </div>
+            <div class="pa-priv">
+              <span>10-07 · 今天</span>
+              <span class="sp"></span>
+              <button class="pa-eye" type="button" data-act="reveal" aria-pressed="false" aria-label="看金额">👁 看金额</button>
+            </div>
+
+            <div class="pa-when-full" style="display:flex;flex-direction:column">
+              <div class="pa-chart">
+                <div class="cap">近 6 个月 · 我的钱</div>
+                <div class="say">5 只 · 1 只破了止损<small>紫金矿业 16.55 · 你定的 16.80</small></div>
+                <svg viewBox="0 0 340 124" width="100%" style="display:block;height:auto;margin-top:40px" role="img" aria-label="近六个月资金曲线，整体上行，9 月创新高">
+                  <defs>
+                    <linearGradient id="pafill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#D95757" stop-opacity="0.24"/>
+                      <stop offset="100%" stop-color="#D95757" stop-opacity="0"/>
+                    </linearGradient>
+                  </defs>
+                  <line x1="0" y1="28" x2="340" y2="28" stroke="#2D2926" stroke-width="1"/>
+                  <line x1="0" y1="62" x2="340" y2="62" stroke="#2D2926" stroke-width="1"/>
+                  <line x1="0" y1="98" x2="340" y2="98" stroke="#2D2926" stroke-width="1"/>
+                  <path d="M0,98 L31,92 L62,96 L93,81 L124,76 L155,83 L186,65 L217,55 L248,60 L279,40 L310,32 L340,28 L340,124 L0,124 Z" fill="url(#pafill)"/>
+                  <polyline points="0,98 31,92 62,96 93,81 124,76 155,83 186,65 217,55 248,60 279,40 310,32 340,28" fill="none" stroke="#D95757" stroke-width="1.8"/>
+                  <circle cx="310" cy="32" r="3.5" fill="#D95757"/>
+                  <circle cx="186" cy="65" r="3.5" fill="#3AB75A"/>
+                </svg>
+              </div>
+
+              <div class="pa-stats">
+                <div><div class="pa-k">总资产</div><div class="pa-v num"><span class="cur">¥</span><span class="mask masked">••••••</span><span class="secret num">486,320</span></div></div>
+                <div><div class="pa-k">当日</div><div class="pa-v num up">+0.44%</div></div>
+                <div><div class="pa-k">仓位</div><div class="pa-v num">83%</div></div>
+              </div>
+
+              <div class="pa-ring">
+                <svg width="96" height="96" viewBox="0 0 96 96" role="img" aria-label="仓位构成：电力 30%、光模块 25%、有色 20%、保险 15%、家电 10%">
+                  <circle cx="48" cy="48" r="36" fill="none" stroke="#252220" stroke-width="13"/>
+                  <g transform="rotate(-90 48 48)">
+                    <circle cx="48" cy="48" r="36" fill="none" stroke="#5299FF" stroke-width="13" stroke-dasharray="67.86 158.34" stroke-dashoffset="0"/>
+                    <circle cx="48" cy="48" r="36" fill="none" stroke="#D95757" stroke-width="13" stroke-dasharray="56.55 169.65" stroke-dashoffset="-67.86"/>
+                    <circle cx="48" cy="48" r="36" fill="none" stroke="#D4A043" stroke-width="13" stroke-dasharray="45.24 180.96" stroke-dashoffset="-124.41"/>
+                    <circle cx="48" cy="48" r="36" fill="none" stroke="#9B7FD4" stroke-width="13" stroke-dasharray="33.93 192.27" stroke-dashoffset="-169.65"/>
+                    <circle cx="48" cy="48" r="36" fill="none" stroke="#E8963A" stroke-width="13" stroke-dasharray="22.62 203.58" stroke-dashoffset="-203.58"/>
+                  </g>
+                  <text x="48" y="52" text-anchor="middle" fill="#F0EDE9" font-size="15" font-family="inherit">83%</text>
+                </svg>
+                <div class="lg">
+                  <div><b style="color:#5299FF">■</b> 电力 30%</div>
+                  <div><b style="color:#D95757">■</b> 光模块 25%</div>
+                  <div><b style="color:#D4A043">■</b> 有色 20%</div>
+                  <div><b style="color:#9B7FD4">■</b> 保险 15% · <b style="color:#E8963A">■</b> 家电 10%</div>
+                </div>
+              </div>
+
+              <div class="pa-heat" role="img" aria-label="五只持仓离你定的止损还有多远：三只还远，一只靠近，一只已破">
+                <i style="background:rgba(58,183,90,0.72)"></i><i style="background:rgba(58,183,90,0.5)"></i><i style="background:rgba(58,183,90,0.32)"></i><i style="background:rgba(232,150,58,0.62)"></i><i style="background:rgba(217,87,87,0.8)"></i>
+              </div>
+
+              <div class="pa-list">
+                <div class="pa-row" style="height:42px"><span class="pa-n">紫金矿业</span><span class="sp"></span><span class="pct down num">−4.45%</span><span class="warn" style="font-size:11px">⚠</span></div>
+                <div class="pa-row" style="height:42px"><span class="pa-n">中际旭创</span><span class="sp"></span><span class="pct up num">+9.97%</span></div>
+                <div class="pa-row" style="height:42px"><span class="pa-n">长江电力</span><span class="sp"></span><span class="pct up num">+4.59%</span></div>
+                <div class="pa-row" style="height:42px"><span class="pa-n">中国平安</span><span class="sp"></span><span class="pct up num">+3.44%</span></div>
+                <div class="pa-row" style="height:42px"><span class="pa-n">三花智控</span><span class="sp"></span><span class="pct down num">−1.04%</span></div>
+              </div>
+            </div>
+
+            <div class="pa-stage">
+              <div class="pa-when-full">
+                <div class="pa-foot" style="padding-bottom:74px"><span>收益日历</span><span>资金</span><span>推送设置</span></div>
+              </div>
+              <div class="pa-when-empty">
+                <div class="pa-empty">
+                  <h3>还没有曲线可看</h3>
+                  <p>把券商的「资金流水 + 历史成交」交一次就行，不用记顺序、不用分次。</p>
+                  <div class="pa-drop">选文件 / 从相册选截图</div>
+                  <p class="quiet" style="font-size:12px">也可以先随手记一笔 —— 记几天，它从你的数据里长出来。</p>
+                </div>
+              </div>
+              <button class="pa-fab pa-when-full" type="button" aria-label="截图入账">📷</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="ph-cap">主心骨：我的钱现在是什么样</div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  const root = document.getElementById("trading-app-directions");
+  if (!root) return;
+
+  const state = { empty: false, revealed: false };
+  const screens = Array.from(root.querySelectorAll(".pa"));
+  const eyes = Array.from(root.querySelectorAll('[data-act="reveal"]'));
+
+  function render() {
+    screens.forEach(function (s) {
+      s.classList.toggle("is-empty", state.empty);
+      s.classList.toggle("is-revealed", state.revealed);
+    });
+    eyes.forEach(function (e) { e.setAttribute("aria-pressed", String(state.revealed)); });
+  }
+
+  eyes.forEach(function (e) {
+    e.addEventListener("click", function () {
+      state.revealed = !state.revealed;
+      render();
+    });
+  });
+
+  render();
+
+  if (globalThis.Tweak) {
+    const tweak = new Tweak({ container: root, onChange: render });
+    tweak.addToggle(state, "empty", { label: "新用户 · 空账号（零数据零规则）" });
+    tweak.addToggle(state, "revealed", { label: "点 👁 看金额" });
+  }
+})();
+</script>

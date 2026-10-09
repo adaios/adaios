@@ -8,9 +8,9 @@ import 'root_keys.dart';
 import 'theme/app_colors.dart';
 import 'services/api_service.dart';
 import 'services/entry_intent_service.dart';
-import 'services/push_service.dart';
 import 'services/models/learn_models.dart';
 import 'pages/learn_page.dart';
+import 'widgets/push_settings.dart';
 import 'pages/todo_page.dart';
 import 'widgets/feed_card.dart';
 import 'widgets/input_bar.dart';
@@ -1486,7 +1486,7 @@ class _MainPageState extends State<MainPage>
     final messenger = ScaffoldMessenger.of(context);
     final changed = await showDialog<bool>(
       context: context,
-      builder: (_) => _PushSettingsDialog(
+      builder: (_) => PushSettingsDialog(
         settings: settings,
         onToggle: (type, on) async {
           try {
@@ -2363,103 +2363,6 @@ extension FeedEntryResponseX on FeedEntryResponse {
 }
 
 /// RFC 20260817：推送设置对话框——逐类型开关（早盘/午间/尾盘/买点/预警/行情条）。
-class _PushSettingsDialog extends StatefulWidget {
-  final Map<String, bool> settings;
-  /// 切换回调：返回 null=成功；返回字符串=失败原因（B11-2，P2-推送5——失败不再假阳性）。
-  final Future<String?> Function(String type, bool on) onToggle;
-  /// 失败提示（dialog 外的 messenger 弹，避免 dialog 内无页面 context）。
-  final void Function(String message)? onToggleFailed;
-
-  const _PushSettingsDialog({required this.settings, required this.onToggle, this.onToggleFailed});
-
-  @override
-  State<_PushSettingsDialog> createState() => _PushSettingsDialogState();
-}
-
-class _PushSettingsDialogState extends State<_PushSettingsDialog> {
-  late Map<String, bool> _settings = Map.of(widget.settings);
-
-  static const List<(String, String)> _items = [
-    ('session', '时段节奏（早盘/午间/尾盘/收盘确认）'), // B11-3：注明含 15:15 收盘操作确认
-    ('buy-point', '买点提醒'),
-    ('close-summary', '收盘小结（当日成交+破止损+待确认）'), // P2-用户3 2026-08-29
-    ('plan', '次日计划提醒（20:30 提醒写下个交易日的计划）'), // RFC 20261003 §三 2026-10-03
-    ('learn-review', '学习复习提醒（每日复习到期卡片）'), // learn V2 批 4 2026-09-07
-    ('todo-due', '待办到期提醒'), // RFC 20260917：待办到期日当天提醒（默认开、可关）
-    ('stop-loss', '止损预警'),
-    ('near-stop-loss', '接近止损'),
-    ('loss', '单日大跌提醒'),
-    ('gain', '放飞提示'),
-    ('break-cost', '跌破成本线'),
-    ('market', '大盘行情条'),
-  ];
-
-  /// D2（2026-09-13 首轮外部视角审查拍板 A）：本机到底能不能收到推送。
-  /// 安卓与网页**没有任何推送渠道**（APNs 是 iOS 专有，未接 FCM / 厂商通道 / Web Push）。
-  /// 此前这里没有门控：开关全能点、服务端也如实存下，然后一条通知都不来——
-  /// 用户不会认为是「这个产品没做」，只会以为「我是不是设错了」。
-  bool get _canReceivePush => PushService.supported;
-
-  /// 非 iOS 端的说明：不承诺收不到的东西（D2-A 明确告知）。
-  Widget _notSupportedNotice() {
-    return const Padding(
-      padding: EdgeInsets.only(bottom: 10),
-      child: Text(
-        '这台收不到通知——阿呆现在只能推到 iPhone。\n'
-        '这些开关先留着，以后换到 iPhone 就按这个来。',
-        style: TextStyle(fontSize: 12, color: AppColors.darkGrey4, height: 1.4),
-      ),
-    );
-  }
-
-  Future<void> _toggle(String type, bool on) async {
-    // B11-2（P2-推送5）：成功才翻转 + 失败透出原因
-    final err = await widget.onToggle(type, on);
-    if (!mounted) return;
-    if (err == null) {
-      setState(() => _settings[type] = on);
-    } else {
-      widget.onToggleFailed?.call(err);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      // D2（2026-09-13）：加了「这台收不到通知」说明条后内容变高，小屏会溢出 → 可滚动
-      scrollable: true,
-      backgroundColor: AppColors.darkSurface2,
-      title: const Text('推送设置',
-        style: TextStyle(fontSize: 16, color: AppColors.darkGrey1)),
-      content: SizedBox(
-        width: 300,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (!_canReceivePush) _notSupportedNotice(),
-            for (final (type, label) in _items)
-              SwitchListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                title: Text(label,
-                  style: const TextStyle(fontSize: 13, color: AppColors.darkGrey2)),
-                value: _settings[type] ?? true,
-                activeTrackColor: AppColors.darkGreen,
-                onChanged: _canReceivePush ? (on) { _toggle(type, on); } : null,
-              ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('完成', style: TextStyle(color: AppColors.darkGrey3)),
-        ),
-      ],
-    );
-  }
-}
-
 /// 对话流里「整理成学习卡」这张卡的状态（2026-09-12 完整升级批）。
 /// 气泡文案/阶段/报价/结果都在这儿，卡片本体仍留在 _cards（Feed 刷新态不变）。
 class _LearnDigestState {

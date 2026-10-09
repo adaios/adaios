@@ -10,11 +10,19 @@ import '../theme/app_colors.dart';
 ///   （离开恢复默认——买点日/最新日）+ 光标竖线
 /// - 主图 MA2（白黄，黄白线语义）/ MA4（5/10/20/60 标准配色）/ 裸K 可切换
 /// - 显示窗口：买点前 60 ~ 买点后 N 天（默认 3，◀▶ 移动查看后验，防涨幅压缩前期形态）
+/// - **我的买卖点字母标记**（B 建仓 / T 加仓 / S 卖出，白描边）+ 图例行（批 4 · 2026-10-07）
 /// 指标序列前端从 OHLCV 重算（KDJ 9,3,3 / MACD 12,26,9），口径对齐后端
 /// `CaseFeatureExtractor`。A 股配色：涨红跌绿。
 class CaseKlineChart extends StatefulWidget {
   const CaseKlineChart(
-      {super.key, required this.kline, this.buyDate, this.height = 400, this.indicators});
+      {super.key,
+      required this.kline,
+      this.buyDate,
+      this.height = 400,
+      this.indicators,
+      this.marks = const [],
+      this.stopLine,
+      this.peakLine});
 
   /// 窗口日 K：每项 {date, open, high, low, close, volume}（旧→新）。
   final List<Map<String, dynamic>> kline;
@@ -24,6 +32,14 @@ class CaseKlineChart extends StatefulWidget {
   /// 后端指标全序列（2026-08-30 前后端一致：前端不重算，hover 值 = 特征同源）。
   /// 空 → 前端 CaseIndicators.compute 兜底（测试/降级）。
   final Map<String, dynamic>? indicators;
+
+  /// R-04（2026-10-07）：**我的买卖点** —— 每项 `{date, type: "B"|"T"|"S", price, note}`。
+  /// B=建仓（红 ▲）· T=加仓（红 ▲）· S=卖出（绿 ▼）；没给就不画，不硬编。
+  final List<Map<String, dynamic>> marks;
+  /// R-04：**你定的止损线**（水平虚线，橙）。
+  final double? stopLine;
+  /// R-04：**峰值浮盈线**（水平虚线，蓝）—— 见顶之后才存在，没有就不画。
+  final double? peakLine;
 
   @override
   State<CaseKlineChart> createState() => _CaseKlineChartState();
@@ -139,7 +155,8 @@ class _CaseKlineChartState extends State<CaseKlineChart> {
               CustomPaint(
                 size: Size.infinite,
                 painter: _CaseKlinePainter(
-                    widget.kline, widget.buyDate, _main, indicators, start, end, _hoverIdx),
+                    widget.kline, widget.buyDate, _main, indicators, start, end, _hoverIdx,
+                    widget.marks, widget.stopLine, widget.peakLine),
               ),
               // 主图左上角指标数值标签
               Positioned(left: 4, top: 2, child: _labelChip(labels.main)),
@@ -151,6 +168,9 @@ class _CaseKlineChartState extends State<CaseKlineChart> {
           );
         }),
       ),
+      // 批 4（D4）：图例行——「图下那一行」照原型（动态：图上没有的不列）。
+      const SizedBox(height: 6),
+      _legendRow(),
     ]);
   }
 
@@ -185,6 +205,46 @@ class _CaseKlineChartState extends State<CaseKlineChart> {
       macd: 'MACD(12,26,9)  DIF:${_f(ind.macdDif[i])}  DEA:${_f(ind.macdDea[i])}  MACD:${_f(ind.macdHist[i])}',
       kdj: 'KDJ(9,3,3)  K:${_f(ind.kdjK[i])}  D:${_f(ind.kdjD[i])}  J:${_f(ind.kdjJ[i])}',
     );
+  }
+
+  /// 图例行（批 4 · D4）：照原型——主图 / 你定的止损 / 峰值浮盈线 / 买卖点字母 / 副图口径。
+  /// 动态：图上没有的东西不出图例（缺数据不编）；价格明文（打码口径同现价）。
+  Widget _legendRow() {
+    final types = widget.marks.map((m) => '${m['type']}').toSet();
+    final buyParts = <String>[
+      if (types.contains('B')) 'B 买',
+      if (types.contains('T')) 'T 加仓',
+    ];
+    return Wrap(
+      spacing: 14,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        _legendItem('■', '日 K + 均线', AppColors.darkGrey3),
+        if (widget.stopLine != null)
+          _legendItem('- -', '你定的止损 ${widget.stopLine!.toStringAsFixed(2)}',
+              const Color(0xFFE8963A)),
+        if (widget.peakLine != null)
+          _legendItem('- -', '峰值浮盈线 ${widget.peakLine!.toStringAsFixed(2)}（到顶之后才画）',
+              AppColors.darkBlue),
+        if (buyParts.isNotEmpty)
+          Text(buyParts.join(' · '),
+              style: const TextStyle(fontSize: 11, color: AppColors.darkRed)),
+        if (types.contains('S'))
+          const Text('S 卖', style: TextStyle(fontSize: 11, color: AppColors.darkGreen)),
+        const Text('副图：成交量 · MACD(12,26,9) · KDJ(9,3,3)',
+            style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+      ],
+    );
+  }
+
+  Widget _legendItem(String marker, String text, Color markerColor) {
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Text(marker,
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: markerColor)),
+      const SizedBox(width: 4),
+      Text(text, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+    ]);
   }
 
   /// 指标切换下拉。
@@ -351,7 +411,8 @@ class CaseIndicators {
 
 class _CaseKlinePainter extends CustomPainter {
   _CaseKlinePainter(this.kline, this.buyDate, this.mainIndicator, this.indicators,
-      this.windowStart, this.windowEnd, this.hoverIdx);
+      this.windowStart, this.windowEnd, this.hoverIdx,
+      this.marks, this.stopLine, this.peakLine);
 
   final List<Map<String, dynamic>> kline;
   final String? buyDate;
@@ -361,6 +422,10 @@ class _CaseKlinePainter extends CustomPainter {
   final int windowEnd;
   /// 悬停选中的 K 线索引（null = 无悬停）。
   final int? hoverIdx;
+  /// R-04：我的买卖点 / 你定的止损线 / 峰值浮盈线（都可空，空则不画）。
+  final List<Map<String, dynamic>> marks;
+  final double? stopLine;
+  final double? peakLine;
 
   // 四区布局：主图 40% + 量 20% + MACD 20% + KDJ 20%
   static const double _mainRatio = 0.40;
@@ -471,6 +536,69 @@ class _CaseKlinePainter extends CustomPainter {
       text.paint(canvas, Offset(cx - text.width / 2, mainRect.top - 11));
     }
 
+    // ── 主图 R-04（2026-10-07）：你定的止损线 / 峰值浮盈线 ──
+    void drawLevel(double price, Color color, String label, {bool fromRight = false}) {
+      final yp = y(price);
+      if (yp < mainRect.top || yp > mainRect.bottom) return; // 不在窗口价域里就不画，不硬压到边上
+      final dash = Paint()
+        ..color = color
+        ..strokeWidth = 1;
+      for (var x0 = mainRect.left; x0 < mainRect.right; x0 += 9) {
+        canvas.drawLine(Offset(x0, yp), Offset(math.min(x0 + 5, mainRect.right), yp), dash);
+      }
+      final t = TextPainter(
+        text: TextSpan(text: label, style: TextStyle(fontSize: 9, color: color)),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      t.paint(canvas, Offset(fromRight ? math.max(0, mainRect.right - t.width - 2) : 2, yp - 11));
+    }
+
+    if (stopLine != null) {
+      drawLevel(stopLine!, const Color(0xFFE8963A), '你定的止损 ${stopLine!.toStringAsFixed(2)}');
+    }
+    if (peakLine != null) {
+      drawLevel(peakLine!, AppColors.darkBlue, '峰值浮盈线 ${peakLine!.toStringAsFixed(2)}',
+          fromRight: true);
+    }
+
+    // ── 主图 R-04：我的买卖点 —— 字母标记 B 建仓 / T 加仓（红▲）/ S 卖出（绿▼）──
+    // 批 4（D4）：三角加大（10×6 · 原 8×5），字母 11px 白描边（原 8px 汉字看不清）。
+    for (final m in marks) {
+      final ds = '${m['date']}';
+      var idx = -1;
+      for (var i = 0; i < n; i++) {
+        if ('${kline[i]['date']}' == ds) {
+          idx = i;
+          break;
+        }
+      }
+      if (idx < windowStart || idx > windowEnd) continue;
+      final type = '${m['type']}';
+      final isBuy = type != 'S';
+      final color = isBuy ? AppColors.darkRed : AppColors.darkGreen;
+      final cx = x(idx);
+      final cy = isBuy
+          ? y((kline[idx]['low'] as num).toDouble()) + 12
+          : y((kline[idx]['high'] as num).toDouble()) - 12;
+      final tri = Path();
+      if (isBuy) {
+        tri
+          ..moveTo(cx - 5, cy + 6)
+          ..lineTo(cx + 5, cy + 6)
+          ..lineTo(cx, cy)
+          ..close();
+      } else {
+        tri
+          ..moveTo(cx - 5, cy - 6)
+          ..lineTo(cx + 5, cy - 6)
+          ..lineTo(cx, cy)
+          ..close();
+      }
+      canvas.drawPath(tri, Paint()..color = color);
+      final letter = type == 'S' ? 'S' : (type == 'T' ? 'T' : 'B');
+      _paintOutlinedLetter(canvas, Offset(cx + 7, cy - 6), letter, color);
+    }
+
     // ── 副图①：成交量（窗口段）──
     var maxVol = 0.0;
     for (var i = windowStart; i <= windowEnd && i < n; i++) {
@@ -534,6 +662,33 @@ class _CaseKlinePainter extends CustomPainter {
     canvas.drawLine(Offset(0, mainH), Offset(width, mainH), sep);
     canvas.drawLine(Offset(0, mainH + volH), Offset(width, mainH + volH), sep);
     canvas.drawLine(Offset(0, mainH + volH + macdH), Offset(width, mainH + volH + macdH), sep);
+  }
+
+  /// 买卖点字母标记（B/T 红 · S 绿）：先白描边再着色填充——深色底上看得清（批 4 · D4）。
+  void _paintOutlinedLetter(Canvas canvas, Offset at, String letter, Color color) {
+    final stroke = TextPainter(
+      text: TextSpan(
+        text: letter,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          foreground: Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2.4
+            ..color = const Color(0xFFF2EFEA),
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    stroke.paint(canvas, at);
+    final fill = TextPainter(
+      text: TextSpan(
+        text: letter,
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    fill.paint(canvas, at);
   }
 
   void _drawLine(Canvas canvas, List<double> values, double Function(int) x,
@@ -614,5 +769,125 @@ class _CaseKlinePainter extends CustomPainter {
       oldDelegate.mainIndicator != mainIndicator ||
       oldDelegate.windowStart != windowStart ||
       oldDelegate.windowEnd != windowEnd ||
-      oldDelegate.hoverIdx != hoverIdx;
+      oldDelegate.hoverIdx != hoverIdx ||
+      oldDelegate.marks != marks ||
+      oldDelegate.stopLine != stopLine ||
+      oldDelegate.peakLine != peakLine;
+}
+
+/// K 线弹窗统一壳（批 4 · D4+D5「一张图四处共用」）：持仓 / 自选 / 清仓 / 案例
+/// 打开的是同一个壳——标题（名称（代码）· 说明）→ 指标切换 + 图 + 图例（CaseKlineChart）
+/// → 底部块（调用方给：案例=明细/绩效/AI 理解，通用=一句话）。
+///
+/// 宽度统一（原案例 620 / 通用 760 两样）：随视口放宽到最多 1280；图高统一
+/// （原 400/430 四区被压 → 460）。行情取不到 → 只显示 [emptyNote] 人话，不画空图。
+class KlinePanel extends StatelessWidget {
+  const KlinePanel({
+    super.key,
+    required this.name,
+    required this.symbol,
+    this.note,
+    this.kline = const [],
+    this.buyDate,
+    this.indicators,
+    this.marks = const [],
+    this.stopLine,
+    this.peakLine,
+    this.chartHeight = 460,
+    this.emptyNote,
+    this.bottom = const [],
+  });
+
+  /// 标的名称 / 代码——标题统一渲染为「名称（代码）· 说明」。
+  final String name;
+  final String symbol;
+
+  /// 标题后缀：通用不传（默认「K 线」），案例传「B1 · 买点日期」。
+  final String? note;
+
+  /// 窗口日 K（旧→新，空则显示 [emptyNote] 而不画图）。
+  final List<Map<String, dynamic>> kline;
+  final String? buyDate;
+  final Map<String, dynamic>? indicators;
+
+  /// R-04：我的买卖点 / 你定的止损线 / 峰值浮盈线（都可空，空则不画不列图例）。
+  final List<Map<String, dynamic>> marks;
+  final double? stopLine;
+  final double? peakLine;
+
+  /// 图高（四处统一 460）。
+  final double chartHeight;
+
+  /// 行情取不到时的人话（不画假图）。
+  final String? emptyNote;
+
+  /// 图下块（每项前壳统一加 10px 间距；内容与项间距离由调用点自备）。
+  final List<Widget> bottom;
+
+  @override
+  Widget build(BuildContext context) {
+    final suffix = (note ?? '').isEmpty ? 'K 线' : note!;
+    // 弹窗宽度统一（D4「放宽」）：随视口放宽，上限 1280；窄窗自适应不溢出。
+    final screenW = MediaQuery.sizeOf(context).width;
+    final width = (screenW - 96).clamp(320.0, 1280.0);
+    return AlertDialog(
+      backgroundColor: AppColors.darkSurface2,
+      // 批 10（独立审核 `review-uiux-visual` P3-6 · 2026-10-08）：标题行补**右上角 ✕**——
+      // 原先唯一关闭入口是右下角小字「关掉」，图一长、滚到底再找关闭位就成了负担。
+      title: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '$name（$symbol）· $suffix',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1),
+            ),
+          ),
+          IconButton(
+            onPressed: () => Navigator.pop(context),
+            tooltip: '关掉',
+            icon: const Icon(Icons.close, size: 18, color: AppColors.darkGrey4),
+            visualDensity: VisualDensity.compact,
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: width,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (kline.isEmpty)
+                Text(
+                  emptyNote ?? '暂时取不到这只票的行情',
+                  style: const TextStyle(fontSize: 12, color: AppColors.darkGrey4),
+                )
+              else
+                CaseKlineChart(
+                  kline: kline,
+                  buyDate: buyDate,
+                  indicators: indicators,
+                  marks: marks,
+                  stopLine: stopLine,
+                  peakLine: peakLine,
+                  height: chartHeight,
+                ),
+              if (bottom.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                ...bottom,
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('关掉'),
+        ),
+      ],
+    );
+  }
 }

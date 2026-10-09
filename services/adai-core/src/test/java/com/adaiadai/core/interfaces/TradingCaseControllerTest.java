@@ -1,7 +1,9 @@
 package com.adaiadai.core.interfaces;
 
+import com.adaiadai.core.application.CaseCandidateService;
 import com.adaiadai.core.application.TradingCaseAppService;
 import com.adaiadai.core.domain.trading.TradingException;
+import com.adaiadai.core.domain.trading.cases.CaseCandidate;
 import com.adaiadai.core.domain.trading.cases.CaseRecord;
 import com.adaiadai.core.domain.trading.market.Candle;
 import com.adaiadai.core.kernel.plugin.PluginRegistry;
@@ -41,6 +43,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class TradingCaseControllerTest {
 
     private final TradingCaseAppService appService = mock(TradingCaseAppService.class);
+    private final CaseCandidateService caseCandidateService = mock(CaseCandidateService.class);
     private final PluginService pluginService = mock(PluginService.class);
     private final ObjectMapper om = new ObjectMapper()
             .registerModule(new JavaTimeModule())
@@ -51,7 +54,7 @@ class TradingCaseControllerTest {
                 java.util.Arrays.asList(plugins).contains(PluginRegistry.PLUGIN_TRADING));
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
-        return MockMvcBuilders.standaloneSetup(new TradingCaseController(appService, pluginService))
+        return MockMvcBuilders.standaloneSetup(new TradingCaseController(appService, caseCandidateService, pluginService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(validator)
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(om))
@@ -339,5 +342,68 @@ class TradingCaseControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value(
                         org.hamcrest.Matchers.containsString("日期格式不正确")));
+    }
+
+    // ── 2026-10-08：案例候选（从你的记录里长出来，你认了才算）──
+
+    private static CaseCandidate sampleCandidate() {
+        return CaseCandidate.candidate("sell-603993-2026-08-19", CaseCandidate.Kind.SELL,
+                CaseCandidate.Outcome.EARLY, "603993", "洛阳钼业", "2026-08-19",
+                "洛阳钼业 08-19 卖了之后又涨 18.4%", 18.44,
+                CaseCandidate.RuleRel.SUPPORT, "cand-stoploss", "止损：亏到 5% 就走",
+                List.of("支持你写的「止损：亏到 5% 就走」—— 这一笔亏到 3.2% 就平了。",
+                        "卖掉之后到现在 +18.4%。"), "2026-10-08T10:00");
+    }
+
+    @Test
+    void candidates_withoutPlugin_returns403() throws Exception {
+        mvc().perform(get("/api/v1/trading/cases/candidates").header("X-User-Id", "bob"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void candidates_returnsPendingAndAccepted() throws Exception {
+        CaseCandidate accepted = sampleCandidate().accepted(null, "2026-10-08T11:00");
+        when(caseCandidateService.list(anyString())).thenReturn(
+                new CaseCandidateService.CandidatesView(List.of(sampleCandidate()), List.of(accepted)));
+        mvc("trading").perform(get("/api/v1/trading/cases/candidates").header("X-User-Id", "adai"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pending[0].id").value("sell-603993-2026-08-19"))
+                .andExpect(jsonPath("$.pending[0].outcome").value("EARLY"))
+                .andExpect(jsonPath("$.pending[0].ruleRel").value("SUPPORT"))
+                .andExpect(jsonPath("$.pending[0].notes[1]").value("卖掉之后到现在 +18.4%。"))
+                .andExpect(jsonPath("$.accepted[0].state").value("ACCEPTED"));
+    }
+
+    @Test
+    void acceptCandidate_withTitle_returnsCandidate() throws Exception {
+        when(caseCandidateService.accept(anyString(), anyString(), any()))
+                .thenReturn(sampleCandidate().accepted("我的卖飞案例", "2026-10-08T11:00"));
+        mvc("trading").perform(post("/api/v1/trading/cases/candidates/sell-603993-2026-08-19/accept")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"我的卖飞案例\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.candidate.state").value("ACCEPTED"))
+                .andExpect(jsonPath("$.candidate.title").value("我的卖飞案例"));
+    }
+
+    @Test
+    void acceptCandidate_gone_returns400WithHumanMessage() throws Exception {
+        when(caseCandidateService.accept(anyString(), anyString(), any()))
+                .thenThrow(new IllegalArgumentException("这个候选已经不在列表里了（数据变了，刷新看看）"));
+        mvc("trading").perform(post("/api/v1/trading/cases/candidates/sell-603993-2026-08-19/accept")
+                        .header("X-User-Id", "adai"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("不在列表里")));
+    }
+
+    @Test
+    void dismissCandidate_success() throws Exception {
+        mvc("trading").perform(post("/api/v1/trading/cases/candidates/sell-603993-2026-08-19/dismiss")
+                        .header("X-User-Id", "adai"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.dismissed").value(true));
+        verify(caseCandidateService).dismiss(anyString(), anyString());
     }
 }

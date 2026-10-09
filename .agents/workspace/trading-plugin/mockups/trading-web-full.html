@@ -1,0 +1,807 @@
+<style>
+  .wd {
+    --w-bg: #131211; --w-surface: #1D1B1A; --w-surface2: #252220; --w-border: #2D2926;
+    --w-t1: #F0EDE9; --w-t2: #D4D0CB; --w-t3: #B5B0AA; --w-t4: #908B85; --w-t5: #66615C;
+    --w-up: #D95757; --w-down: #3AB75A; --w-orange: #E8963A; --w-blue: #5299FF;
+    font-family: "PingFang SC", "Helvetica Neue", system-ui, -apple-system, sans-serif;
+    background: var(--w-bg); color: var(--w-t2); font-size: 12.5px; line-height: 1.45;
+    min-height: 660px; display: flex; border-radius: 10px; overflow: hidden;
+  }
+  .wd *, .wd *::before, .wd *::after { box-sizing: border-box; }
+  .wd .num { font-variant-numeric: tabular-nums; }
+  .wd .sp { flex: 1 1 auto; }
+  .wd .secret { display: none; }
+  .wd.is-revealed .secret { display: inline; }
+  .wd.is-revealed .masked { display: none; }
+  .wd .mask { color: var(--w-t4); letter-spacing: 0.5px; }
+  .up { color: var(--w-up); } .down { color: var(--w-down); } .warn { color: var(--w-orange); }
+  .ok { color: var(--w-down); } .quiet { color: var(--w-t5); } .dim { color: var(--w-t4); }
+  .wd-nav { width: 132px; flex: 0 0 132px; background: var(--w-surface); border-right: 1px solid var(--w-border); padding: 14px 10px; display: flex; flex-direction: column; gap: 1px; }
+  .wd-brand { color: var(--w-t1); font-size: 14px; font-weight: 600; padding: 0 8px 12px; }
+  .wd-brand span { display: block; color: var(--w-t5); font-size: 11px; font-weight: 400; }
+  .wd-navitem { padding: 7px 8px; border-radius: 7px; color: var(--w-t5); font-size: 12.5px; }
+  .wd-navitem.on { background: rgba(58,183,90,0.13); color: var(--w-t1); font-weight: 500; }
+  .wd-sub { padding: 4px 8px 4px 20px; color: var(--w-t5); font-size: 11.5px; }
+  .wd-sub.on { color: var(--w-t2); }
+  .wd-navfoot { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--w-border); color: var(--w-t5); font-size: 11px; line-height: 1.7; }
+  .wd-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+  .wd-top { display: flex; align-items: center; gap: 9px; padding: 12px 16px; border-bottom: 1px solid var(--w-border); }
+  .wd-top h2 { margin: 0; color: var(--w-t1); font-size: 16px; font-weight: 600; letter-spacing: -0.2px; }
+  .wd-btn { background: var(--w-surface2); border: 1px solid var(--w-border); color: var(--w-t2); border-radius: 7px; padding: 5px 10px; font-size: 11.5px; font-family: inherit; }
+  .wd-btn.main { background: var(--w-t1); border-color: var(--w-t1); color: #17150F; font-weight: 600; }
+  .wd-eye { background: var(--w-surface2); border: 1px solid var(--w-border); color: var(--w-t3); border-radius: 7px; height: 27px; padding: 0 10px; font-size: 11px; font-family: inherit; cursor: pointer; }
+  .wd-eye[aria-pressed="true"] { background: rgba(58,183,90,0.14); border-color: rgba(58,183,90,0.45); color: var(--w-t1); }
+  .wd-strip { display: flex; border-bottom: 1px solid var(--w-border); }
+  .wd-strip > div { padding: 9px 14px; border-right: 1px solid var(--w-border); }
+  .wd-strip > div:last-child { border-right: 0; }
+  .wd-k { color: var(--w-t5); font-size: 10.5px; margin-bottom: 2px; }
+  .wd-v { color: var(--w-t1); font-size: 16px; font-weight: 600; white-space: nowrap; letter-spacing: -0.2px; }
+  .wd-v .cur { font-size: 11px; color: var(--w-t4); font-weight: 400; margin-right: 2px; }
+  .wd-v small { font-size: 11px; font-weight: 400; }
+  .wd-main { flex: 1 1 auto; min-height: 0; display: flex; }
+  .wd-col { flex: 1 1 auto; min-width: 0; }
+  .wd-rail { width: 208px; flex: 0 0 208px; border-left: 1px solid var(--w-border); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .wd-card { border: 1px solid var(--w-border); border-radius: 9px; background: var(--w-surface); padding: 11px 12px; }
+  .wd-card h4 { margin: 0 0 6px; color: var(--w-t1); font-size: 12px; font-weight: 500; }
+  .wd-card .cap { color: var(--w-t5); font-size: 10.5px; margin-bottom: 6px; }
+  .wd-say { border: 1px solid var(--w-border); border-radius: 9px; background: rgba(232,150,58,0.07); padding: 11px 12px; }
+  .wd-say .h { color: var(--w-t5); font-size: 10.5px; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .wd-say p { margin: 0 0 5px; color: var(--w-t2); }
+  .wd-say p:last-child { margin-bottom: 0; }
+  .wd-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .wd-table th { text-align: right; font-weight: 400; color: var(--w-t5); font-size: 10.5px; padding: 8px 5px; border-bottom: 1px solid var(--w-border); white-space: nowrap; }
+  .wd-table th:first-child, .wd-table td:first-child { text-align: left; padding-left: 16px; }
+  .wd-table th:last-child, .wd-table td:last-child { padding-right: 16px; }
+  .wd-table td { text-align: right; padding: 8px 5px; border-bottom: 1px solid rgba(45,41,38,0.65); white-space: nowrap; }
+  .wd-table tr.on td { background: rgba(232,150,58,0.08); }
+  .wd-table tr.on td:first-child { box-shadow: inset 3px 0 0 var(--w-orange); }
+  .wd-name { color: var(--w-t1); }
+  .wd-code { color: var(--w-t5); font-size: 10.5px; }
+  .wd-chips { display: flex; gap: 6px; padding: 10px 16px 0; }
+  .wd-chip { border: 1px solid var(--w-border); background: var(--w-surface2); color: var(--w-t3); border-radius: 999px; padding: 4px 11px; font-size: 11.5px; font-family: inherit; }
+  .wd-chip.on { background: rgba(58,183,90,0.14); border-color: rgba(58,183,90,0.45); color: var(--w-t1); }
+  .wd-cut { color: var(--w-t5); font-size: 10.5px; padding: 12px 16px 0; letter-spacing: 0.4px; }
+  .wd-stage { position: relative; flex: 1 1 auto; display: flex; min-height: 0; }
+  .wd-dim { flex: 1 1 auto; filter: saturate(0.6); opacity: 0.45; display: flex; }
+  .wd-drawer { width: 404px; flex: 0 0 404px; background: var(--w-surface); border-left: 1px solid var(--w-border); padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .wd-drawer h3 { margin: 0; color: var(--w-t1); font-size: 15px; font-weight: 600; }
+  .wd-drop { border: 1px dashed var(--w-border); border-radius: 10px; padding: 26px 16px; text-align: center; color: var(--w-t4); background: var(--w-surface2); }
+  .wd-line { display: flex; align-items: baseline; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(45,41,38,0.7); }
+  .wd-line:last-child { border-bottom: 0; }
+  .wd-line .n { color: var(--w-t1); }
+  .wd-line .v { margin-left: auto; color: var(--w-t2); }
+  .wd-map { flex: 1 1 auto; padding: 14px 16px; display: grid; grid-template-columns: 1fr 22px 1.15fr; gap: 10px 12px; align-content: start; }
+  .wd-old { color: var(--w-t4); font-size: 12px; padding: 7px 10px; border: 1px solid var(--w-border); border-radius: 8px; background: var(--w-surface); }
+  .wd-arrow { color: var(--w-t5); text-align: center; font-size: 12px; padding-top: 8px; }
+  .wd-new { padding: 7px 10px; border: 1px solid var(--w-border); border-radius: 8px; background: rgba(58,183,90,0.07); }
+  .wd-new b { color: var(--w-t1); font-weight: 600; }
+  .wd-new span { color: var(--w-t4); font-size: 11px; }
+</style>
+
+<div class="viz-carousel" id="trading-web-full" aria-label="交易插件 Web 全量 · 六个区 + 导入" data-previous-label="上一屏" data-next-label="下一屏">
+
+  <section data-variant="持仓" aria-label="Web · 持仓（主屏）">
+    <div class="wd">
+      <aside class="wd-nav">
+        <div class="wd-brand">交易<span>AdaiOS</span></div>
+        <div class="wd-navitem on">持仓</div>
+        <div class="wd-sub on">全部 9</div>
+        <div class="wd-sub">持仓 5</div>
+        <div class="wd-sub">自选 4</div>
+        <div class="wd-sub">清仓 12</div>
+        <div class="wd-navitem">账</div>
+        <div class="wd-navitem">分析</div>
+        <div class="wd-navitem">规则</div>
+        <div class="wd-navitem">案例</div>
+        <div class="wd-navitem">计划</div>
+        <div class="wd-navfoot">最近导入 10-06 15:41<br>账实对上了</div>
+      </aside>
+      <div class="wd-body">
+        <div class="wd-top">
+          <h2>持仓</h2>
+          <span class="sp"></span>
+          <button class="wd-eye" type="button" data-act="reveal" aria-pressed="false">👁 看金额</button>
+          <button class="wd-btn" type="button">记一笔</button>
+          <button class="wd-btn" type="button">复盘</button>
+          <button class="wd-btn main" type="button">导入</button>
+        </div>
+        <div class="wd-strip">
+          <div><div class="wd-k">总资产</div><div class="wd-v num"><span class="cur">¥</span><span class="masked">••••••</span><span class="secret num">486,320</span></div></div>
+          <div><div class="wd-k">当日</div><div class="wd-v num up">+2,145 <small>+0.44%</small></div></div>
+          <div><div class="wd-k">总盈亏</div><div class="wd-v num up">+38,460 <small>+8.60%</small></div></div>
+          <div><div class="wd-k">持仓市值</div><div class="wd-v num"><span class="cur">¥</span><span class="masked">••••••</span><span class="secret num">402,180</span></div></div>
+          <div><div class="wd-k">到线</div><div class="wd-v warn">2 只</div></div>
+          <div><div class="wd-k">账实</div><div class="wd-v ok" style="font-size:13px">✓ 对上了</div></div>
+        </div>
+        <div class="wd-chips">
+          <button class="wd-chip on" type="button">全部</button>
+          <button class="wd-chip" type="button">持仓 5</button>
+          <button class="wd-chip" type="button">自选 4</button>
+          <button class="wd-chip" type="button">清仓 12</button>
+        </div>
+        <div class="wd-main">
+          <div class="wd-col">
+            <table class="wd-table">
+              <thead>
+                <tr><th>代码 / 名称</th><th>数量</th><th>成本</th><th>现价</th><th>涨跌</th><th>盈亏</th><th>最近的那条线</th><th>近 20 日</th></tr>
+              </thead>
+              <tbody>
+                <tr class="on">
+                  <td><span class="wd-name">紫金矿业</span> <span class="wd-code">601899</span></td>
+                  <td class="num"><span class="masked">••••</span><span class="secret num">1,500</span></td>
+                  <td class="num"><span class="masked">••••</span><span class="secret num">17.32</span></td>
+                  <td class="num">16.55</td>
+                  <td class="num down">−4.45%</td>
+                  <td class="num down"><span class="masked">•••••</span><span class="secret num">−1,155</span></td>
+                  <td class="num warn">止损 16.80 ↓破</td>
+                  <td><svg width="54" height="14" viewBox="0 0 54 14" aria-hidden="true"><polyline points="1,4 8,5 15,4 22,7 29,6 36,9 43,10 51,12" fill="none" stroke="#3AB75A" stroke-width="1.3"/></svg></td>
+                </tr>
+                <tr class="on">
+                  <td><span class="wd-name">中际旭创</span> <span class="wd-code">300308</span></td>
+                  <td class="num"><span class="masked">•••</span><span class="secret num">300</span></td>
+                  <td class="num"><span class="masked">•••</span><span class="secret num">128.40</span></td>
+                  <td class="num">141.20</td>
+                  <td class="num up">+9.97%</td>
+                  <td class="num up"><span class="masked">•••••</span><span class="secret num">+3,840</span></td>
+                  <td class="num warn">放飞 140.00 ↑到</td>
+                  <td><svg width="54" height="14" viewBox="0 0 54 14" aria-hidden="true"><polyline points="1,12 8,11 15,9 22,10 29,7 36,5 43,4 51,2" fill="none" stroke="#D95757" stroke-width="1.3"/></svg></td>
+                </tr>
+                <tr>
+                  <td><span class="wd-name">长江电力</span> <span class="wd-code">600900</span></td>
+                  <td class="num"><span class="masked">••••</span><span class="secret num">2,000</span></td>
+                  <td class="num"><span class="masked">••••</span><span class="secret num">27.86</span></td>
+                  <td class="num">29.14</td>
+                  <td class="num up">+4.59%</td>
+                  <td class="num up"><span class="masked">•••••</span><span class="secret num">+2,560</span></td>
+                  <td class="num quiet">止损 26.20</td>
+                  <td><svg width="54" height="14" viewBox="0 0 54 14" aria-hidden="true"><polyline points="1,11 8,10 15,11 22,8 29,9 36,6 43,5 51,3" fill="none" stroke="#D95757" stroke-width="1.3"/></svg></td>
+                </tr>
+                <tr>
+                  <td><span class="wd-name">中国平安</span> <span class="wd-code">601318</span></td>
+                  <td class="num"><span class="masked">••••</span><span class="secret num">1,000</span></td>
+                  <td class="num"><span class="masked">••••</span><span class="secret num">52.30</span></td>
+                  <td class="num">54.10</td>
+                  <td class="num up">+3.44%</td>
+                  <td class="num up"><span class="masked">•••••</span><span class="secret num">+1,800</span></td>
+                  <td class="num quiet">止损 49.50</td>
+                  <td><svg width="54" height="14" viewBox="0 0 54 14" aria-hidden="true"><polyline points="1,9 8,8 15,9 22,7 29,8 36,6 43,7 51,5" fill="none" stroke="#D95757" stroke-width="1.3"/></svg></td>
+                </tr>
+                <tr>
+                  <td><span class="wd-name">三花智控</span> <span class="wd-code">002050</span></td>
+                  <td class="num"><span class="masked">•••</span><span class="secret num">800</span></td>
+                  <td class="num"><span class="masked">•••</span><span class="secret num">24.15</span></td>
+                  <td class="num">23.90</td>
+                  <td class="num down">−1.04%</td>
+                  <td class="num down"><span class="masked">••••</span><span class="secret num">−200</span></td>
+                  <td class="num quiet">止损 23.00</td>
+                  <td><svg width="54" height="14" viewBox="0 0 54 14" aria-hidden="true"><polyline points="1,7 8,8 15,7 22,8 29,9 36,8 43,10 51,10" fill="none" stroke="#3AB75A" stroke-width="1.3"/></svg></td>
+                </tr>
+                <tr>
+                  <td><span class="wd-name">招商银行</span> <span class="wd-code">600036</span> <span class="quiet">自选</span></td>
+                  <td class="num quiet">—</td><td class="num quiet">—</td>
+                  <td class="num">32.88</td>
+                  <td class="num down">−3.27%</td>
+                  <td class="num quiet">—</td><td class="num quiet">—</td>
+                  <td><svg width="54" height="14" viewBox="0 0 54 14" aria-hidden="true"><polyline points="1,5 8,6 15,5 22,7 29,8 36,8 43,10 51,11" fill="none" stroke="#3AB75A" stroke-width="1.3"/></svg></td>
+                </tr>
+                <tr>
+                  <td><span class="wd-name">华能水电</span> <span class="wd-code">600025</span> <span class="quiet">自选</span></td>
+                  <td class="num quiet">—</td><td class="num quiet">—</td>
+                  <td class="num">10.42</td>
+                  <td class="num up">+5.68%</td>
+                  <td class="num quiet">—</td><td class="num quiet">—</td>
+                  <td><svg width="54" height="14" viewBox="0 0 54 14" aria-hidden="true"><polyline points="1,10 8,9 15,10 22,8 29,7 36,7 43,5 51,4" fill="none" stroke="#D95757" stroke-width="1.3"/></svg></td>
+                </tr>
+                <tr>
+                  <td><span class="wd-name">宁德时代</span> <span class="wd-code">300750</span> <span class="quiet">自选</span></td>
+                  <td class="num quiet">—</td><td class="num quiet">—</td>
+                  <td class="num">179.30</td>
+                  <td class="num down">−3.86%</td>
+                  <td class="num quiet">—</td><td class="num quiet">—</td>
+                  <td><svg width="54" height="14" viewBox="0 0 54 14" aria-hidden="true"><polyline points="1,4 8,5 15,6 22,5 29,7 36,8 43,9 51,10" fill="none" stroke="#3AB75A" stroke-width="1.3"/></svg></td>
+                </tr>
+                <tr>
+                  <td><span class="wd-name">格力电器</span> <span class="wd-code">000651</span> <span class="quiet">自选</span></td>
+                  <td class="num quiet">—</td><td class="num quiet">—</td>
+                  <td class="num">39.02</td>
+                  <td class="num up">+2.14%</td>
+                  <td class="num quiet">—</td><td class="num quiet">—</td>
+                  <td><svg width="54" height="14" viewBox="0 0 54 14" aria-hidden="true"><polyline points="1,9 8,8 15,9 22,7 29,8 36,6 43,6 51,4" fill="none" stroke="#D95757" stroke-width="1.3"/></svg></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <aside class="wd-rail">
+            <div class="wd-say">
+              <div class="h">阿呆说</div>
+              <p>账对上了。</p>
+              <p>601899 现价 16.55，破了你的 16.80；300308 141.20，到了你的 140.00。</p>
+              <p class="quiet">其它没有要动的。</p>
+            </div>
+            <div class="wd-card">
+              <h4>今天</h4>
+              <div class="cap" style="margin:0">09:15 念了你的计划 · 10:32 记了一笔</div>
+            </div>
+            <div class="wd-card">
+              <h4>三条口径</h4>
+              <div class="cap" style="margin:0">数量与成本打码 · 现价与线不打码 · 每个数字点得进去</div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section data-variant="账" aria-label="Web · 账" hidden>
+    <div class="wd">
+      <aside class="wd-nav">
+        <div class="wd-brand">交易<span>AdaiOS</span></div>
+        <div class="wd-navitem">持仓</div>
+        <div class="wd-navitem on">账</div>
+        <div class="wd-sub on">资金</div>
+        <div class="wd-sub">流水</div>
+        <div class="wd-sub">对账</div>
+        <div class="wd-navitem">分析</div>
+        <div class="wd-navitem">规则</div>
+        <div class="wd-navitem">案例</div>
+        <div class="wd-navitem">计划</div>
+        <div class="wd-navfoot">最近导入 10-06 15:41<br>账实对上了</div>
+      </aside>
+      <div class="wd-body">
+        <div class="wd-top">
+          <h2>账</h2>
+          <span class="sp"></span>
+          <button class="wd-eye" type="button" data-act="reveal" aria-pressed="false">👁 看金额</button>
+          <button class="wd-btn" type="button">对账</button>
+          <button class="wd-btn" type="button">导出</button>
+          <button class="wd-btn main" type="button">导入</button>
+        </div>
+        <div class="wd-strip">
+          <div><div class="wd-k">总资产</div><div class="wd-v num"><span class="cur">¥</span><span class="masked">••••••</span><span class="secret num">486,320</span></div></div>
+          <div><div class="wd-k">可用</div><div class="wd-v num"><span class="cur">¥</span><span class="masked">••••••</span><span class="secret num">84,140</span></div></div>
+          <div><div class="wd-k">可取</div><div class="wd-v num"><span class="cur">¥</span><span class="masked">••••••</span><span class="secret num">84,140</span></div></div>
+          <div><div class="wd-k">本金</div><div class="wd-v num"><span class="cur">¥</span><span class="masked">••••••</span><span class="secret num">150,000</span></div></div>
+          <div><div class="wd-k">当日</div><div class="wd-v num up">+0.44%</div></div>
+          <div><div class="wd-k">余额链</div><div class="wd-v ok" style="font-size:13px">✓ 连续 · 断点无</div></div>
+        </div>
+        <div class="wd-cut">最近 6 个月的现金 —— 从流水自己算出来的，不是估的</div>
+        <div style="padding:8px 16px 2px">
+          <svg viewBox="0 0 780 86" width="100%" style="display:block;height:auto" role="img" aria-label="现金余额曲线，整体上行">
+            <line x1="0" y1="20" x2="780" y2="20" stroke="#2D2926" stroke-width="1"/>
+            <line x1="0" y1="50" x2="780" y2="50" stroke="#2D2926" stroke-width="1"/>
+            <line x1="0" y1="78" x2="780" y2="78" stroke="#2D2926" stroke-width="1"/>
+            <polyline points="0,74 71,70 142,73 213,62 284,58 355,64 426,48 497,40 568,44 639,28 710,22 780,18" fill="none" stroke="#D95757" stroke-width="1.8"/>
+          </svg>
+        </div>
+        <div class="wd-cut">流水 · 从你交的文件里来的</div>
+        <div class="wd-main">
+          <div class="wd-col">
+            <table class="wd-table">
+              <thead><tr><th>时间</th><th>代码 / 名称</th><th>方向</th><th>数量</th><th>成交价</th><th>发生额</th><th>来源</th></tr></thead>
+              <tbody>
+                <tr><td class="num">10-06 10:32</td><td><span class="wd-name">紫金矿业</span> <span class="wd-code">601899</span></td><td class="dim">买入</td><td class="num"><span class="masked">•••</span><span class="secret num">300</span></td><td class="num">16.72</td><td class="num"><span class="masked">•••••</span><span class="secret num">5,016</span></td><td class="quiet">截图</td></tr>
+                <tr><td class="num">10-06 14:47</td><td><span class="wd-name">中际旭创</span> <span class="wd-code">300308</span></td><td class="dim">卖出</td><td class="num"><span class="masked">•••</span><span class="secret num">100</span></td><td class="num">141.20</td><td class="num"><span class="masked">•••••</span><span class="secret num">14,120</span></td><td class="quiet">截图</td></tr>
+                <tr><td class="num">10-02 09:41</td><td><span class="wd-name">长江电力</span> <span class="wd-code">600900</span></td><td class="dim">买入</td><td class="num"><span class="masked">•••</span><span class="secret num">500</span></td><td class="num">27.86</td><td class="num"><span class="masked">•••••</span><span class="secret num">13,930</span></td><td class="quiet">截图</td></tr>
+                <tr><td class="num">09-28 13:55</td><td><span class="wd-name">三花智控</span> <span class="wd-code">002050</span></td><td class="dim">买入</td><td class="num"><span class="masked">•••</span><span class="secret num">800</span></td><td class="num">24.15</td><td class="num"><span class="masked">•••••</span><span class="secret num">19,320</span></td><td class="quiet">导入</td></tr>
+                <tr><td class="num">09-26 14:22</td><td><span class="wd-name">中国平安</span> <span class="wd-code">601318</span></td><td class="dim">买入</td><td class="num"><span class="masked">•••</span><span class="secret num">500</span></td><td class="num">52.30</td><td class="num"><span class="masked">•••••</span><span class="secret num">26,150</span></td><td class="quiet">导入</td></tr>
+                <tr><td class="num">09-25 15:03</td><td><span class="wd-name">银证转入</span></td><td class="dim">转入</td><td class="num quiet">—</td><td class="num quiet">—</td><td class="num"><span class="masked">•••••</span><span class="secret num">20,000</span></td><td class="quiet">流水</td></tr>
+                <tr><td class="num">09-23 15:03</td><td><span class="wd-name">银证转出</span></td><td class="dim">转出</td><td class="num quiet">—</td><td class="num quiet">—</td><td class="num"><span class="masked">•••••</span><span class="secret num">13,000</span></td><td class="quiet">流水</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <aside class="wd-rail">
+            <div class="wd-say">
+              <div class="h">阿呆说</div>
+              <p>余额链连续，没有断点。</p>
+              <p class="quiet">本金 150,000 —— 从流水推出来的，不用你手填。</p>
+            </div>
+            <div class="wd-card">
+              <h4>对账</h4>
+              <div class="cap">最近一次 10-06 15:41 · 与券商快照一致</div>
+              <div class="cap" style="margin:0">差额 <span class="ok">0</span> · 缺记录 <span class="ok">0</span></div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section data-variant="分析" aria-label="Web · 分析" hidden>
+    <div class="wd">
+      <aside class="wd-nav">
+        <div class="wd-brand">交易<span>AdaiOS</span></div>
+        <div class="wd-navitem">持仓</div>
+        <div class="wd-navitem">账</div>
+        <div class="wd-navitem on">分析</div>
+        <div class="wd-sub on">这一笔</div>
+        <div class="wd-sub">这只票</div>
+        <div class="wd-sub">这一段</div>
+        <div class="wd-navitem">规则</div>
+        <div class="wd-navitem">案例</div>
+        <div class="wd-navitem">计划</div>
+        <div class="wd-navfoot">看的是事实<br>不是预测</div>
+      </aside>
+      <div class="wd-body">
+        <div class="wd-top">
+          <h2>分析 · 紫金矿业 601899</h2>
+          <span class="sp"></span>
+          <button class="wd-eye" type="button" data-act="reveal" aria-pressed="false">👁 看金额</button>
+          <button class="wd-btn" type="button">生成总结</button>
+        </div>
+        <div class="wd-chips" style="padding-bottom:10px">
+          <button class="wd-chip" type="button">这一笔</button>
+          <button class="wd-chip on" type="button">这只票</button>
+          <button class="wd-chip" type="button">这一段</button>
+          <span style="width:14px"></span>
+          <button class="wd-chip" type="button">交易层</button>
+          <button class="wd-chip on" type="button">资金层</button>
+          <button class="wd-chip" type="button">按批次</button>
+        </div>
+        <div class="wd-main">
+          <div class="wd-col" style="padding:0 16px 14px">
+            <div style="border:1px solid var(--w-border);border-radius:10px;background:var(--w-surface);padding:12px">
+              <div class="wd-k" style="font-size:11px">这只票 · 我在这儿的买卖点（点任意一个点，看当时依据）</div>
+              <svg viewBox="0 0 700 186" width="100%" style="display:block;height:auto;margin-top:8px" role="img" aria-label="紫金矿业走势与我的买卖点">
+                <line x1="0" y1="34" x2="700" y2="34" stroke="#2D2926" stroke-width="1"/>
+                <line x1="0" y1="90" x2="700" y2="90" stroke="#2D2926" stroke-width="1"/>
+                <line x1="0" y1="146" x2="700" y2="146" stroke="#2D2926" stroke-width="1"/>
+                <polyline points="0,150 58,140 116,146 175,126 233,118 291,128 350,102 408,96 466,104 525,84 583,90 641,74 700,66" fill="none" stroke="#B5B0AA" stroke-width="1.4"/>
+                <line x1="0" y1="78" x2="700" y2="78" stroke="#E8963A" stroke-width="1" stroke-dasharray="5 4"/>
+                <line x1="0" y1="42" x2="700" y2="42" stroke="#5299FF" stroke-width="1" stroke-dasharray="5 4"/>
+                <text x="6" y="74" fill="#E8963A" font-size="10" font-family="inherit">你定的止损 16.80</text>
+                <text x="6" y="38" fill="#5299FF" font-size="10" font-family="inherit">你定的放飞 21.50</text>
+                <circle cx="175" cy="126" r="5" fill="#D95757"/>
+                <text x="184" y="130" fill="#D95757" font-size="10" font-family="inherit">08-12 买</text>
+                <circle cx="350" cy="102" r="5" fill="#E8963A"/>
+                <text x="359" y="106" fill="#E8963A" font-size="10" font-family="inherit">09-03 卖</text>
+                <circle cx="525" cy="84" r="5" fill="#D95757"/>
+                <text x="534" y="88" fill="#D95757" font-size="10" font-family="inherit">09-28 买</text>
+                <circle cx="641" cy="74" r="5" fill="#D95757"/>
+                <text x="596" y="64" fill="#D95757" font-size="10" font-family="inherit">10-06 加</text>
+              </svg>
+            </div>
+            <div class="wd-cut">按批次看 —— 同一只票反复买卖，哪一批在赚</div>
+            <table class="wd-table">
+              <thead><tr><th>批次</th><th>建仓</th><th>股数</th><th>成本</th><th>这批现在</th><th>离你最近的线</th><th>了结</th></tr></thead>
+              <tbody>
+                <tr><td><span class="wd-name">批次 1</span></td><td class="num">08-12</td><td class="num"><span class="masked">•••</span><span class="secret num">500</span></td><td class="num"><span class="masked">••••</span><span class="secret num">15.60</span></td><td class="num up">+6.09%</td><td class="num quiet">止损 16.80 ↓破</td><td class="quiet">已卖 500</td></tr>
+                <tr><td><span class="wd-name">批次 2</span></td><td class="num">09-28 · 10-06 加</td><td class="num"><span class="masked">••••</span><span class="secret num">1,000</span></td><td class="num"><span class="masked">••••</span><span class="secret num">18.18</span></td><td class="num down">−8.96%</td><td class="num quiet">止损 16.80 ↓破</td><td class="quiet">—</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <aside class="wd-rail">
+            <div class="wd-say">
+              <div class="h">总结 · 三段</div>
+              <p><span class="dim">描述：</span>四趟来回，批次 1 还在赚、批次 2 在亏。</p>
+              <p><span class="dim">对照：</span>按你 8 月写的「跌破止损先减一半」，现在到了。</p>
+              <p><span class="dim">事实：</span>整体 −4.45%；09-03 那次卖出之后，你没有立刻回补。</p>
+            </div>
+            <div class="wd-card">
+              <h4>数字点得进去</h4>
+              <div class="cap" style="margin:0">每个 +/− 都能展开：哪几天、哪几笔算的</div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section data-variant="清仓" aria-label="Web · 清仓（持续整理）" hidden>
+    <div class="wd">
+      <aside class="wd-nav">
+        <div class="wd-brand">交易<span>AdaiOS</span></div>
+        <div class="wd-navitem on">持仓</div>
+        <div class="wd-sub">全部 21</div>
+        <div class="wd-sub">持仓 5</div>
+        <div class="wd-sub">自选 4</div>
+        <div class="wd-sub on">清仓 12</div>
+        <div class="wd-navitem">账</div>
+        <div class="wd-navitem">分析</div>
+        <div class="wd-navitem">规则</div>
+        <div class="wd-navitem">案例</div>
+        <div class="wd-navitem">计划</div>
+        <div class="wd-navfoot">卖掉的票<br>也一直跟着</div>
+      </aside>
+      <div class="wd-body">
+        <div class="wd-top">
+          <h2>清仓 · 持续整理</h2>
+          <span class="sp"></span>
+          <button class="wd-eye" type="button" data-act="reveal" aria-pressed="false">👁 看金额</button>
+          <button class="wd-btn" type="button">导出</button>
+          <button class="wd-btn" type="button">加进案例</button>
+        </div>
+        <div class="wd-strip">
+          <div><div class="wd-k">清仓</div><div class="wd-v num">12 只</div></div>
+          <div><div class="wd-k">合计</div><div class="wd-v num up">+6.2%</div></div>
+          <div><div class="wd-k">卖掉之后又跌</div><div class="wd-v ok" style="font-size:14px">7 只 · 走对了</div></div>
+          <div><div class="wd-k">卖掉之后又涨</div><div class="wd-v warn" style="font-size:14px">5 只 · 走早了</div></div>
+          <div><div class="wd-k">最长拿着</div><div class="wd-v num">二季度 61 天</div></div>
+        </div>
+        <div class="wd-cut">卖掉之后的走势我也一直跟着 —— 这条只有这儿有</div>
+        <div class="wd-main">
+          <div class="wd-col">
+            <table class="wd-table">
+              <thead><tr><th>代码 / 名称</th><th>了结日</th><th>拿了多久</th><th>这笔</th><th>卖掉之后到现在</th><th>当时按哪条规则</th><th>归档</th></tr></thead>
+              <tbody>
+                <tr class="on"><td><span class="wd-name">洛阳钼业</span> <span class="wd-code">603993</span></td><td class="num">08-19</td><td class="num">25 天</td><td class="num up">+9.6%</td><td class="num warn">+18.4% ↑ 走早了</td><td class="quiet">到线才放</td><td class="quiet">归了</td></tr>
+                <tr class="on"><td><span class="wd-name">中国中免</span> <span class="wd-code">601888</span></td><td class="num">06-11</td><td class="num">34 天</td><td class="num up">+12.7%</td><td class="num warn">+6.0% ↑ 走早了</td><td class="quiet">到线才放</td><td class="quiet">没归</td></tr>
+                <tr class="on"><td><span class="wd-name">五粮液</span> <span class="wd-code">000858</span></td><td class="num">07-18</td><td class="num">9 天</td><td class="num down">−8.3%</td><td class="num ok">−1.1% ↓ 走对了</td><td class="quiet">跌破止损走</td><td class="quiet">归了</td></tr>
+                <tr class="on"><td><span class="wd-name">京东方A</span> <span class="wd-code">000725</span></td><td class="num">05-26</td><td class="num">12 天</td><td class="num down">−2.4%</td><td class="num ok">−7.8% ↓ 走对了</td><td class="quiet">跌破止损走</td><td class="quiet">没归</td></tr>
+                <tr><td><span class="wd-name">工商银行</span> <span class="wd-code">601398</span></td><td class="num">08-29</td><td class="num">61 天</td><td class="num up">+4.1%</td><td class="num ok">−3.2% ↓ 走对了</td><td class="quiet">到线才放</td><td class="quiet">归了</td></tr>
+                <tr><td><span class="wd-name">华能国际</span> <span class="wd-code">600011</span></td><td class="num">04-15</td><td class="num">45 天</td><td class="num up">+2.8%</td><td class="num warn">+1.4% ↑ 走早了</td><td class="quiet">到线才放</td><td class="quiet">归了</td></tr>
+                <tr><td><span class="wd-name">东方财富</span> <span class="wd-code">300059</span></td><td class="num">03-27</td><td class="num">7 天</td><td class="num down">−5.6%</td><td class="num ok">−2.0% ↓ 走对了</td><td class="quiet">跌破止损走</td><td class="quiet">归了</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <aside class="wd-rail">
+            <div class="wd-say">
+              <div class="h">阿呆说</div>
+              <p>12 只里有 5 只，卖掉之后又涨了。</p>
+              <p>按你自己写的「到线才放」，这 5 次都比规则早。</p>
+              <p class="quiet">走对了那 7 只，是按规则走的。</p>
+            </div>
+            <div class="wd-card">
+              <h4>持续整理</h4>
+              <div class="cap">卖掉的票不归档了事 —— 卖后走势、当时依据、能不能当案例，一直跟着。</div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section data-variant="案例" aria-label="Web · 案例" hidden>
+    <div class="wd">
+      <aside class="wd-nav">
+        <div class="wd-brand">交易<span>AdaiOS</span></div>
+        <div class="wd-navitem">持仓</div>
+        <div class="wd-navitem">账</div>
+        <div class="wd-navitem">分析</div>
+        <div class="wd-navitem">规则</div>
+        <div class="wd-navitem on">案例</div>
+        <div class="wd-sub on">等你认 3</div>
+        <div class="wd-sub">已收下 27</div>
+        <div class="wd-navitem">计划</div>
+        <div class="wd-navfoot">案例是规则的出口<br>它从你的记录里长</div>
+      </aside>
+      <div class="wd-body">
+        <div class="wd-top">
+          <h2>案例</h2>
+          <span class="sp"></span>
+          <button class="wd-eye" type="button" data-act="reveal" aria-pressed="false">👁 看金额</button>
+          <button class="wd-btn" type="button">自己写一个</button>
+        </div>
+        <div class="wd-strip">
+          <div><div class="wd-k">已收下</div><div class="wd-v num">27</div></div>
+          <div><div class="wd-k">成功 / 失败</div><div class="wd-v num">18 / 9</div></div>
+          <div><div class="wd-k">本周新增</div><div class="wd-v num up">2</div></div>
+          <div><div class="wd-k">等你认</div><div class="wd-v warn">3</div></div>
+        </div>
+        <div class="wd-cut">从你的记录里长出来的 —— 我不替你定，你认了才算</div>
+        <div style="padding-top:8px">
+          <div class="wd-cand hot">
+            <div class="wd-cand-h"><b>紫金矿业 08-12 买在 5 日线上方</b><span class="tag">买点 · 成功</span><span class="sp"></span><span class="quiet" style="font-size:11px">等你认</span></div>
+            <div class="wd-cand-m">支持你写的规则「不在 5 日线上方不加」—— 这一笔之后涨了 6.1%。</div>
+            <div class="wd-cand-a"><button class="on" type="button">收下</button><button type="button">改一改</button><button type="button">不要</button></div>
+          </div>
+          <div class="wd-cand hot">
+            <div class="wd-cand-h"><b>三花智控 09-28 买在当天高点上方</b><span class="tag">买点 · 失败</span><span class="sp"></span><span class="quiet" style="font-size:11px">等你认</span></div>
+            <div class="wd-cand-m">和你写的「不追高」相反 —— 之后 9 天里跌了 1.0%。</div>
+            <div class="wd-cand-a"><button type="button">收下</button><button type="button">改一改</button><button type="button">不要</button></div>
+          </div>
+          <div class="wd-cand hot">
+            <div class="wd-cand-h"><b>洛阳钼业 08-19 卖了之后又涨 18.4%</b><span class="tag">卖点 · 走早了</span><span class="sp"></span><span class="quiet" style="font-size:11px">等你认</span></div>
+            <div class="wd-cand-m">按你写的「到线才放」，这次比规则早 —— 要不要当个反面例子收着。</div>
+            <div class="wd-cand-a"><button type="button">收下</button><button type="button">改一改</button><button type="button">不要</button></div>
+          </div>
+        </div>
+        <div class="wd-cut">已经收下的</div>
+        <table class="wd-table">
+          <thead><tr><th>案例</th><th>票 / 日期</th><th>类型</th><th>它支持或反对哪条规则</th></tr></thead>
+          <tbody>
+            <tr><td><span class="wd-name">跌破止损就走，没扛</span></td><td class="num">东方财富 03-27</td><td class="quiet">卖点 · 成功</td><td class="quiet">支持「跌破止损先减一半」</td></tr>
+            <tr><td><span class="wd-name">分三次买，越买越轻</span></td><td class="num">长江电力 05-08</td><td class="quiet">买点 · 成功</td><td class="quiet">支持「不在 5 日线上方不加」</td></tr>
+            <tr><td><span class="wd-name">一看到跌就补，结果补在半山腰</span></td><td class="num">三花智控 06-19</td><td class="quiet">买点 · 失败</td><td class="quiet">反对「跌了就补」</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+
+  <section data-variant="K 线" aria-label="Web · K 线（同一张图，横切四个地方）" hidden>
+    <div class="wd">
+      <aside class="wd-nav">
+        <div class="wd-brand">交易<span>AdaiOS</span></div>
+        <div class="wd-navitem">持仓</div>
+        <div class="wd-navitem">账</div>
+        <div class="wd-navitem on">分析</div>
+        <div class="wd-navitem">规则</div>
+        <div class="wd-navitem">案例</div>
+        <div class="wd-navitem">计划</div>
+        <div class="wd-navfoot">同一张图<br>四个地方共用</div>
+      </aside>
+      <div class="wd-body">
+        <div class="wd-top">
+          <h2>洛阳钼业 603993 <span class="quiet" style="font-size:12px;font-weight:400">· 已清仓 08-19</span></h2>
+          <span class="sp"></span>
+          <button class="wd-btn" type="button">加进案例</button>
+          <button class="wd-btn" type="button">看这笔</button>
+        </div>
+        <div class="wd-chips" style="padding-bottom:10px">
+          <button class="wd-chip" type="button">持仓 5</button>
+          <button class="wd-chip" type="button">自选 4</button>
+          <button class="wd-chip on" type="button">清仓 12</button>
+          <button class="wd-chip" type="button">案例 27</button>
+          <span style="width:14px"></span>
+          <span class="quiet" style="font-size:11.5px;align-self:center">四个地方调出来的是同一张图，只是标记不同</span>
+        </div>
+        <div class="wd-main">
+          <div class="wd-col" style="padding:0 16px 14px">
+            <div style="border:1px solid var(--w-border);border-radius:10px;background:var(--w-surface);padding:12px">
+              <svg id="wd-kline" viewBox="0 0 940 430" width="100%" style="display:block;height:auto" role="img" aria-label="洛阳钼业 K 线四区：主图带买卖标记与止损/峰值浮盈线，副图成交量、MACD(12,26,9)、KDJ(9,3,3)"></svg>
+              <div style="display:flex;gap:14px;flex-wrap:wrap;color:var(--w-t4);font-size:11px;margin-top:8px">
+                <span>■ 日 K + <span style="color:#D4D0CB">10 日线</span></span>
+                <span><span style="color:#E8963A">- -</span> 你定的止损 14.80</span>
+                <span><span style="color:#5299FF">- -</span> 峰值浮盈线 17.70（到顶之后才画）</span>
+                <span style="color:#D95757">▲ 买 / 加</span>
+                <span style="color:#3AB75A">▼ 卖</span>
+                <span class="quiet">副图：成交量 · MACD(12,26,9) · KDJ(9,3,3)</span>
+              </div>
+            </div>
+            <div class="wd-strip" style="border-top:1px solid var(--w-border);border-bottom:0;margin-top:10px">
+              <div><div class="wd-k">这笔</div><div class="wd-v up" style="font-size:15px">+9.6%</div></div>
+              <div><div class="wd-k">卖掉之后到现在</div><div class="wd-v warn" style="font-size:15px">+18.4%</div></div>
+              <div><div class="wd-k">当时按哪条规则</div><div class="wd-v" style="font-size:13px">到线才放</div></div>
+              <div><div class="wd-k">图上几个点</div><div class="wd-v" style="font-size:13px">4 个 · 每个点得进去</div></div>
+            </div>
+          </div>
+          <aside class="wd-rail">
+            <div class="wd-say">
+              <div class="h">阿呆说</div>
+              <p>这张图上有你的 4 个点 —— 三次买入、一次卖出。</p>
+              <p>卖出之后价格继续往上走了 18.4%；按你写的「到线才放」，这次走得比规则早。</p>
+            </div>
+            <div class="wd-card">
+              <h4>清仓股也画</h4>
+              <div class="cap" style="margin:0">卖掉不是结束 —— 卖点标在图上，卖后走势接着画。</div>
+            </div>
+            <div class="wd-card">
+              <h4>案例那张多两样</h4>
+              <div class="cap" style="margin:0">案例的图还带 成交量 + KDJ / MACD（前端从 OHLCV 重算）—— 那是目前唯一已经上线的 K 线。</div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+    <script>
+    (function () {
+      var svg = document.getElementById("wd-kline");
+      if (!svg) return;
+      var NS = "http://www.w3.org/2000/svg";
+      var closes = [15.05,15.22,15.10,15.34,15.48,15.30,15.62,15.85,15.70,16.02,16.20,16.05,16.38,16.62,16.50,16.80,17.05,16.90,17.20,17.45,17.30,17.60,17.85,18.10,18.35,18.60,18.40,18.15,17.90,17.60,17.10,17.35,17.80,18.20,18.60,19.00,19.60,20.20];
+      var seed = 20261007;
+      function rnd() { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; }
+      var bars = closes.map(function (c, i) {
+        var o = i === 0 ? c - 0.1 : closes[i - 1];
+        return { o: o, h: Math.max(o, c) + rnd() * 0.14, l: Math.min(o, c) - rnd() * 0.14, c: c };
+      });
+      // 四区布局，比例对齐生产案例图（主图 40% / 量 20% / MACD 20% / KDJ 20%）
+      var W = 940, padL = 34, padR = 10;
+      var Z = { main: [20, 190], vol: [206, 266], macd: [282, 342], kdj: [358, 418] };
+      var lo = 14.70, hi = 20.55;
+      var step = (W - padL - padR) / bars.length;
+      function X(i) { return padL + (i + 0.5) * step; }
+      function el(tag, attrs) { var e = document.createElementNS(NS, tag); for (var k in attrs) e.setAttribute(k, attrs[k]); svg.appendChild(e); return e; }
+      function sc(v, a, b, y0, y1) { return y0 + (b - v) / (b - a) * (y1 - y0); }
+      function Ymain(v) { return sc(v, lo, hi, Z.main[0], Z.main[1]); }
+      function frame(z) { el("rect", { x: padL, y: z[0], width: W - padL - padR, height: z[1] - z[0], fill: "none", stroke: "#2D2926", "stroke-width": 1 }); }
+      function zlab(t, z) { el("text", { x: padL + 5, y: z[0] + 11, fill: "#66615C", "font-size": "10", "font-family": "inherit" }).textContent = t; }
+      // ---- 指标（与生产同口径：MACD 12,26,9 · KDJ 9,3,3）----
+      var C = bars.map(function (b) { return b.c; });
+      function MA(a, n, i) { if (i < n - 1) return null; var s = 0; for (var j = i - n + 1; j <= i; j++) s += a[j]; return s / n; }
+      function EMA(a, n) { var k = 2 / (n + 1), out = [], p = 0; for (var i = 0; i < a.length; i++) { p = i === 0 ? a[0] : a[i] * k + p * (1 - k); out.push(p); } return out; }
+      var ma10 = C.map(function (_, i) { return MA(C, 10, i); });
+      var e12 = EMA(C, 12), e26 = EMA(C, 26);
+      var dif = C.map(function (_, i) { return e12[i] - e26[i]; });
+      var dea = EMA(dif, 9);
+      var hist = dif.map(function (v, i) { return (v - dea[i]) * 2; });
+      var K = [], D = [], J = [], kk = 50, dd = 50;
+      for (var ii = 0; ii < bars.length; ii++) {
+        var st = Math.max(0, ii - 8), hh = -1e9, ll = 1e9;
+        for (var jj = st; jj <= ii; jj++) { hh = Math.max(hh, bars[jj].h); ll = Math.min(ll, bars[jj].l); }
+        var rsv = hh === ll ? 50 : (bars[ii].c - ll) / (hh - ll) * 100;
+        kk = (2 / 3) * kk + (1 / 3) * rsv; dd = (2 / 3) * dd + (1 / 3) * kk;
+        K.push(kk); D.push(dd); J.push(3 * kk - 2 * dd);
+      }
+      bars.forEach(function (b) { b.v = 40 + rnd() * 70 + Math.abs(b.c - b.o) * 520; });
+      // ---- 主图 ----
+      frame(Z.main);
+      [15.0, 16.0, 17.0, 18.0, 19.0, 20.0].forEach(function (v) {
+        el("line", { x1: padL, y1: Ymain(v), x2: W - padR, y2: Ymain(v), stroke: "#2D2926", "stroke-width": 1 });
+        el("text", { x: padL - 6, y: Ymain(v) + 3, fill: "#66615C", "font-size": "10", "text-anchor": "end", "font-family": "inherit" }).textContent = v.toFixed(2);
+      });
+      var sellIdx = 30;
+      el("rect", { x: X(sellIdx), y: Z.main[0], width: W - padR - X(sellIdx), height: Z.main[1] - Z.main[0], fill: "rgba(232,150,58,0.06)" });
+      el("text", { x: X(sellIdx) + 8, y: Z.main[0] + 13, fill: "#66615C", "font-size": "10", "font-family": "inherit" }).textContent = "卖掉之后 —— 一直跟着";
+      el("line", { x1: padL, y1: Ymain(14.80), x2: W - padR, y2: Ymain(14.80), stroke: "#E8963A", "stroke-width": 1, "stroke-dasharray": "5 4" });
+      el("text", { x: padL + 6, y: Ymain(14.80) - 5, fill: "#E8963A", "font-size": "10", "font-family": "inherit" }).textContent = "你定的止损 14.80";
+      el("line", { x1: X(25), y1: Ymain(17.70), x2: W - padR, y2: Ymain(17.70), stroke: "#5299FF", "stroke-width": 1, "stroke-dasharray": "5 4" });
+      el("text", { x: X(25) + 6, y: Ymain(17.70) - 5, fill: "#5299FF", "font-size": "10", "font-family": "inherit" }).textContent = "峰值浮盈线 17.70";
+      bars.forEach(function (b, i) {
+        var col = b.c >= b.o ? "#D95757" : "#3AB75A";
+        el("line", { x1: X(i), y1: Ymain(b.h), x2: X(i), y2: Ymain(b.l), stroke: col, "stroke-width": 1 });
+        var top = Ymain(Math.max(b.o, b.c)), bot = Ymain(Math.min(b.o, b.c));
+        el("rect", { x: X(i) - step * 0.3, y: top, width: step * 0.6, height: Math.max(1, bot - top), fill: col });
+      });
+      var maPts = [];
+      ma10.forEach(function (v, i) { if (v !== null) maPts.push(X(i) + "," + Ymain(v)); });
+      el("polyline", { points: maPts.join(" "), fill: "none", stroke: "#D4D0CB", "stroke-width": 1.5, opacity: "0.9" });
+      [5, 13, 19, 30].forEach(function (i) {
+        var buy = i !== sellIdx, cx = X(i), cy = buy ? Ymain(bars[i].l) + 13 : Ymain(bars[i].h) - 13;
+        el("polygon", { points: buy ? (cx - 5) + "," + (cy + 6) + " " + (cx + 5) + "," + (cy + 6) + " " + cx + "," + cy : (cx - 5) + "," + (cy - 6) + " " + (cx + 5) + "," + (cy - 6) + " " + cx + "," + cy, fill: buy ? "#D95757" : "#3AB75A" });
+        el("text", { x: cx + 8, y: cy + (buy ? 6 : -2), fill: buy ? "#D95757" : "#3AB75A", "font-size": "10", "font-family": "inherit" }).textContent = buy ? (i === 5 ? "买" : "加") : "卖 08-19";
+      });
+      // ---- 副图 1：成交量 ----
+      frame(Z.vol); zlab("成交量", Z.vol);
+      var vmax = Math.max.apply(null, bars.map(function (b) { return b.v; }));
+      bars.forEach(function (b, i) {
+        var h = (b.v / vmax) * (Z.vol[1] - Z.vol[0] - 4);
+        el("rect", { x: X(i) - step * 0.3, y: Z.vol[1] - h, width: step * 0.6, height: h, fill: b.c >= b.o ? "#D95757" : "#3AB75A", opacity: "0.75" });
+      });
+      var vma = [];
+      for (var vi = 4; vi < bars.length; vi++) { var vs = 0; for (var vj = vi - 4; vj <= vi; vj++) vs += bars[vj].v; vma.push(X(vi) + "," + (Z.vol[1] - (vs / 5 / vmax) * (Z.vol[1] - Z.vol[0] - 4))); }
+      el("polyline", { points: vma.join(" "), fill: "none", stroke: "#D4A043", "stroke-width": 1.2, opacity: "0.85" });
+      el("text", { x: W - padR - 4, y: Z.vol[0] + 11, fill: "#66615C", "font-size": "10", "text-anchor": "end", "font-family": "inherit" }).textContent = "黄线 5 日均量";
+      // ---- 副图 2：MACD ----
+      frame(Z.macd); zlab("MACD(12,26,9)", Z.macd);
+      var mAll = dif.concat(dea, hist), mAbs = Math.max.apply(null, mAll.map(function (v) { return Math.abs(v); })) * 1.15;
+      function Ymacd(v) { return sc(v, -mAbs, mAbs, Z.macd[1], Z.macd[0]); }
+      el("line", { x1: padL, y1: Ymacd(0), x2: W - padR, y2: Ymacd(0), stroke: "#2D2926", "stroke-width": 1 });
+      hist.forEach(function (v, i) {
+        var y0 = Ymacd(0), y1 = Ymacd(v);
+        el("rect", { x: X(i) - step * 0.28, y: Math.min(y0, y1), width: step * 0.56, height: Math.max(1, Math.abs(y1 - y0)), fill: v >= 0 ? "#D95757" : "#3AB75A", opacity: "0.6" });
+      });
+      [[dif, "#D4D0CB"], [dea, "#D4A043"]].forEach(function (pair) {
+        var pts = pair[0].map(function (v, i) { return X(i) + "," + Ymacd(v); });
+        el("polyline", { points: pts.join(" "), fill: "none", stroke: pair[1], "stroke-width": 1.4 });
+      });
+      el("text", { x: W - padR - 4, y: Z.macd[0] + 11, fill: "#66615C", "font-size": "10", "text-anchor": "end", "font-family": "inherit" }).textContent = "白 DIF · 黄 DEA · 柱 = 2×(DIF−DEA)";
+      // ---- 副图 3：KDJ ----
+      frame(Z.kdj); zlab("KDJ(9,3,3)", Z.kdj);
+      function Ykdj(v) { return sc(Math.max(-25, Math.min(125, v)), -25, 125, Z.kdj[1], Z.kdj[0]); }
+      [[80, "#66615C"], [20, "#66615C"]].forEach(function (pair) {
+        el("line", { x1: padL, y1: Ykdj(pair[0]), x2: W - padR, y2: Ykdj(pair[0]), stroke: pair[1], "stroke-width": 1, "stroke-dasharray": "4 4" });
+      });
+      [[K, "#D4D0CB"], [D, "#D4A043"], [J, "#9B7FD4"]].forEach(function (pair) {
+        var pts = pair[0].map(function (v, i) { return X(i) + "," + Ykdj(v); });
+        el("polyline", { points: pts.join(" "), fill: "none", stroke: pair[1], "stroke-width": 1.3 });
+      });
+      el("text", { x: W - padR - 4, y: Z.kdj[0] + 11, fill: "#66615C", "font-size": "10", "text-anchor": "end", "font-family": "inherit" }).textContent = "白 K · 黄 D · 紫 J（虚线 = 80 / 20）";
+    })();
+    </script>
+  </section>
+
+  <section data-variant="导入" aria-label="Web · 导入抽屉" hidden>
+    <div class="wd">
+      <div class="wd-stage">
+        <div class="wd-dim">
+          <aside class="wd-nav">
+            <div class="wd-brand">交易<span>AdaiOS</span></div>
+            <div class="wd-navitem on">持仓</div>
+            <div class="wd-navitem">账</div>
+            <div class="wd-navitem">分析</div>
+            <div class="wd-navitem">规则</div>
+            <div class="wd-navitem">案例</div>
+            <div class="wd-navitem">计划</div>
+          </aside>
+          <div class="wd-body">
+            <div class="wd-top"><h2>持仓</h2><span class="sp"></span><button class="wd-btn" type="button">记一笔</button></div>
+            <div class="wd-strip">
+              <div><div class="wd-k">总资产</div><div class="wd-v num"><span class="cur">¥</span><span class="masked">••••••</span></div></div>
+              <div><div class="wd-k">当日</div><div class="wd-v num up">+0.44%</div></div>
+              <div><div class="wd-k">账实</div><div class="wd-v ok" style="font-size:13px">✓ 对上了</div></div>
+            </div>
+            <div class="wd-cut">持仓</div>
+          </div>
+        </div>
+        <div class="wd-drawer">
+          <h3>导入</h3>
+          <div class="quiet" style="font-size:11.5px">一次交齐就行 —— 不用记顺序、不用分次。</div>
+          <div class="wd-drop">把「资金流水 + 历史成交」拖到这里<br><span style="font-size:11px">或者点选文件</span></div>
+          <div class="wd-card">
+            <h4>这次认出来的</h4>
+            <div class="wd-line"><span class="n">资金流水</span><span class="v num">128 条</span></div>
+            <div class="wd-line"><span class="n">历史成交</span><span class="v num">341 条</span></div>
+            <div class="wd-line"><span class="n">落在哪个区间</span><span class="v num">2025-04 至今</span></div>
+            <div class="wd-line"><span class="n">认不出来的</span><span class="v num warn">3 行</span></div>
+          </div>
+          <div class="wd-say">
+            <div class="h">对完账才发现的事</div>
+            <p>余额链连续，没有断点。</p>
+            <p>本金 150,000 —— 这次是从流水里推出来的，不用你手填。</p>
+            <p class="quiet">2025-04 之前没有出入金记录，那段时间的现金我不猜。</p>
+          </div>
+          <div style="margin-top:auto;display:flex;gap:10px">
+            <button class="wd-btn main" type="button" style="flex:1;height:36px;font-size:13px">确认入账 469 条</button>
+            <button class="wd-btn" type="button" style="height:36px">再看看</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section data-variant="全量地图" aria-label="Web · 全量地图" hidden>
+    <div class="wd">
+      <div class="wd-body">
+        <div class="wd-top">
+          <h2>全量在哪 —— 9 个 Tab 收成 6 个区 + 3 个动作</h2>
+          <span class="sp"></span>
+          <span class="quiet" style="font-size:11.5px">功能一个没删；只是不再平铺成 9 个 Tab</span>
+        </div>
+        <div class="wd-map">
+          <div class="wd-old">持仓</div>
+          <div class="wd-arrow">→</div>
+          <div class="wd-new"><b>持仓</b> <span>· 全部 / 持仓 / 自选 / 清仓收成一条筛选</span></div>
+          <div class="wd-old">自选</div>
+          <div class="wd-arrow">↙</div>
+          <div class="wd-new"><b>（同上）</b> <span>· 不再是独立 Tab</span></div>
+          <div class="wd-old">清仓</div>
+          <div class="wd-arrow">↙</div>
+          <div class="wd-new"><b>（同上）</b> <span>· 筛到「清仓」时表格换列：了结日 / 拿了多久 / 这笔 / <b>卖掉之后到现在</b></span></div>
+          <div class="wd-old">资金</div>
+          <div class="wd-arrow">→</div>
+          <div class="wd-new"><b>账</b> <span>· 资金 + 流水 + 对账三合一：现金自证、本金从数据推</span></div>
+          <div class="wd-old">历史成交</div>
+          <div class="wd-arrow">↗</div>
+          <div class="wd-new"><b>（同上）</b> <span>· 与资金同屏，对账不用来回跳</span></div>
+          <div class="wd-old">分析</div>
+          <div class="wd-arrow">→</div>
+          <div class="wd-new"><b>分析</b> <span>· 这一笔 / 这只票 / 这一段 × 交易 / 资金 × 按笔 / 按批次</span></div>
+          <div class="wd-old">规则</div>
+          <div class="wd-arrow">→</div>
+          <div class="wd-new"><b>规则</b> <span>· 自建 / 导入 / 从你的数据里长出来；也是提醒的判据来源</span></div>
+          <div class="wd-old">案例</div>
+          <div class="wd-arrow">→</div>
+          <div class="wd-new"><b>案例</b> <span>· 完美案例持续添加（成功 / 失败 · 买点 / 卖点）</span></div>
+          <div class="wd-old">计划</div>
+          <div class="wd-arrow">→</div>
+          <div class="wd-new"><b>计划</b> <span>· 次日一句话；次日早盘由 app 念给你听</span></div>
+          <div class="wd-old">页头 4 个入口</div>
+          <div class="wd-arrow">→</div>
+          <div class="wd-new"><b>动作，不再是 Tab</b> <span>· 导入 / 记一笔 / 复盘 常驻顶栏；推送设置与复盘历史收进右上角</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+<style>
+  .wd-cand { border: 1px solid var(--w-border); border-radius: 10px; background: var(--w-surface); padding: 11px 12px; margin: 0 16px 8px; }
+  .wd-cand.hot { border-color: rgba(232,150,58,0.35); background: rgba(232,150,58,0.07); }
+  .wd-cand-h { display: flex; align-items: baseline; gap: 8px; }
+  .wd-cand-h b { color: var(--w-t1); font-weight: 600; }
+  .wd-cand-h .tag { font-size: 10.5px; border: 1px solid var(--w-border); border-radius: 999px; padding: 1px 8px; color: var(--w-t3); }
+  .wd-cand-m { margin-top: 5px; color: var(--w-t3); font-size: 11.5px; }
+  .wd-cand-a { display: flex; gap: 7px; margin-top: 9px; }
+  .wd-cand-a button { border: 1px solid var(--w-border); background: var(--w-surface2); color: var(--w-t2); border-radius: 999px; padding: 4px 11px; font-size: 11.5px; font-family: inherit; }
+  .wd-cand-a button.on { background: rgba(58,183,90,0.14); border-color: rgba(58,183,90,0.45); color: var(--w-t1); }
+</style>
+
+</div>
+
+<script>
+(function () {
+  const root = document.getElementById("trading-web-full");
+  if (!root) return;
+  const state = { revealed: false };
+  const apps = Array.from(root.querySelectorAll(".wd"));
+  const eyes = Array.from(root.querySelectorAll('[data-act="reveal"]'));
+  function render() {
+    apps.forEach(function (a) { a.classList.toggle("is-revealed", state.revealed); });
+    eyes.forEach(function (e) { e.setAttribute("aria-pressed", String(state.revealed)); });
+  }
+  eyes.forEach(function (e) {
+    e.addEventListener("click", function () { state.revealed = !state.revealed; render(); });
+  });
+  render();
+})();
+</script>

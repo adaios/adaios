@@ -907,6 +907,75 @@ class ApiService {
     _check(resp);
   }
 
+  // ── R-06 规则集三态（2026-10-07 差异决算批 5 · P3-7 补对齐）──
+  // 与上面 GET/PUT /trading/rules（参数阈值 rules.yaml）**并存不冲突**：
+  // 那是「你设的数」，这是「你的规则条文」（只存文本 + 参数）。
+
+  /// 规则集全列表（GET /trading/rules/user）：{total, candidates, accepted, custom}——
+  /// 候选（系统提、每条带据）→ 已认（你勾选/改）→ 自定义（你写）；一次拿全。
+  Future<Map<String, dynamic>> getUserRules() async {
+    final resp = await _client.get(
+        Uri.parse('$baseUrl/api/v1/trading/rules/user'), headers: _headers);
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 从数据里照一遍候选（POST /trading/rules/candidates）：描述性统计 → 候选规则（每条带据），
+  /// 返回刷新后全列表。红线：候选是「描述」（你实际在做什么）不是「建议」；样本不足宁可不出。
+  Future<Map<String, dynamic>> generateRuleCandidates() async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/rules/candidates'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: '{}',
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 认下一条候选（POST /trading/rules/{id}/accept；text 非空 = 「改一改」认下时改）。
+  Future<Map<String, dynamic>> acceptUserRule(String id, {String? text}) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/rules/${Uri.encodeComponent(id)}/accept'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: jsonEncode({
+        if (text != null && text.isNotEmpty) 'text': text,
+      }),
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 改文本（PUT /trading/rules/{id}；仅已认/自定义——候选要先认下）。
+  Future<Map<String, dynamic>> editUserRule(String id, String text) async {
+    final resp = await _client.put(
+      Uri.parse('$baseUrl/api/v1/trading/rules/${Uri.encodeComponent(id)}'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: jsonEncode({'text': text}),
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 弃掉一条（DELETE /trading/rules/{id}）：墓碑——不再出现、生成不复活；幂等。
+  Future<void> dismissUserRule(String id) async {
+    final resp = await _client.delete(
+      Uri.parse('$baseUrl/api/v1/trading/rules/${Uri.encodeComponent(id)}'),
+      headers: _headers,
+    );
+    _check(resp);
+  }
+
+  /// 自己写一条（POST /trading/rules/custom，三态之自定义——三来源之「自建」）。
+  Future<Map<String, dynamic>> createCustomRule(String text) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/rules/custom'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: jsonEncode({'text': text}),
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
   /// v3.41（2026-09-04）：活跃市值区间（用户手动判定，GET /trading/market-stage）。
   /// 返回 {"exists":bool,"stage":"bull"|"bear"|null,"updatedAt":String|null}。
   Future<Map<String, dynamic>> getMarketStage() async {
@@ -1017,6 +1086,43 @@ class ApiService {
     );
     _check(resp);
     return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 案例候选（GET /trading/cases/candidates，2026-10-08 UI/UX 批 ③）：
+  /// {pending: 等你认的候选（从你的记录里长出来）, accepted: 已经收下的}——
+  /// 候选每次现算（数据变了候选跟着变），你认了才算；「不要」= 墓碑（下次刷新不复活）。
+  Future<Map<String, List<Map<String, dynamic>>>> getCaseCandidates() async {
+    final resp = await _client.get(
+        Uri.parse('$baseUrl/api/v1/trading/cases/candidates'), headers: _headers);
+    _check(resp);
+    final data = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    List<Map<String, dynamic>> rows(dynamic v) =>
+        ((v as List?) ?? const []).cast<Map<String, dynamic>>();
+    return {'pending': rows(data['pending']), 'accepted': rows(data['accepted'])};
+  }
+
+  /// 收下一条候选（POST /trading/cases/candidates/{id}/accept；title 非空 = 「改一改」改名）。
+  /// 幂等：重复收下原样返回（第一次决定为准）。
+  Future<Map<String, dynamic>> acceptCaseCandidate(String id, {String? title}) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/cases/candidates/$id/accept'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: jsonEncode({
+        if (title != null && title.isNotEmpty) 'title': title,
+      }),
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 不要一条候选（POST /trading/cases/candidates/{id}/dismiss）：墓碑——下次刷新不复活；幂等。
+  Future<void> dismissCaseCandidate(String id) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/cases/candidates/$id/dismiss'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: '{}',
+    );
+    _check(resp);
   }
 
   /// RFC 20260817：确认交易日志落库（今日候选逐笔入账）。
@@ -1153,6 +1259,16 @@ class ApiService {
     return (data as List).map((e) => SoldScoreDto.fromJson(e)).toList();
   }
 
+  /// 清仓「卖掉之后到现在」（GET /api/v1/trading/sold/after-close，2026-10-08 UI/UX 重做批）：
+  /// 卖出日收盘 → 最新收盘的涨跌幅（回答「我卖飞了没」：涨=走早了 / 跌=走对了）。
+  /// 按清仓列表顺序逐笔返回（前端按索引匹配，同 /sold/score）；拿不到的 pct=null + note。
+  Future<List<SoldAfterCloseDto>> getSoldAfterClose() async {
+    final resp = await _client.get(Uri.parse('$baseUrl/api/v1/trading/sold/after-close'), headers: _headers);
+    _check(resp);
+    final data = jsonDecode(utf8.decode(resp.bodyBytes));
+    return (data as List).map((e) => SoldAfterCloseDto.fromJson(e)).toList();
+  }
+
   /// 资金快照**对账**（POST /api/v1/trading/imports/cash + dryRun，RFC 20261003 C4）：
   /// **只读不落盘**——返回 {brokerCash, systemCash, diff, since[], ledgerOnlyCount, note}，
   /// 让人先看见「券商现金 vs 系统推算」差多少、差在哪，再决定要不要覆盖。
@@ -1201,6 +1317,51 @@ class ApiService {
     _check(resp);
     final data = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
     return ImportFileSaveResult.fromJson(data);
+  }
+
+  /// 统一导入（`R-12`「一次把导出的文件交给它就行」· 2026-10-06）。
+  /// POST /api/v1/trading/import（multipart，`files` 可一次多份）→
+  /// {dryRun, okCount, failedCount, files:[{filename, savedPath?, kind, kindLabel, ok, error?, detail?}]}。
+  /// 后端逐份识别（表头 fail-closed）、内部排序（快照先 / 流水后）、逐份回执——**一份失败不影响其他份**；
+  /// [dryRun]=true 只识别 + 报「会做什么」，不落盘不留存。
+  Future<BundleImportReceipt> importTradingBundle(List<BundleUploadFile> files,
+      {bool dryRun = false}) async {
+    final req = http.MultipartRequest('POST', Uri.parse('$baseUrl/api/v1/trading/import'))
+      ..headers.addAll(_headers)
+      ..fields['dryRun'] = dryRun ? 'true' : 'false';
+    for (final f in files) {
+      req.files.add(http.MultipartFile.fromBytes('files', f.bytes, filename: f.name));
+    }
+    final streamed = await _client.send(req);
+    final resp = await http.Response.fromStream(streamed);
+    _check(resp);
+    return BundleImportReceipt.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
+  /// 三粒度分析（`R-05`：全局 / 单标的 / 单笔）· 2026-10-06。
+  /// GET /api/v1/trading/analysis/{scope}（scope=global|symbol|round；symbol、roundId 按 scope 二选一）。
+  /// 契约（design §5）：缺数据 → value=null + 说明（**不出 0**）；每个数字带 trace（可回溯哪几笔 / 哪几天）；
+  /// 只陈述、不评价、不建议；没有规则时 contrast.hasRules=false 且明说「判不了」。
+  /// R-04（2026-10-07）：通用 K 线 —— 一张图四处共用（持仓 / 自选 / 清仓 / 案例）。
+  /// 后端一次给齐：蜡烛 + 我的买卖点 + 你定的止损线 + 峰值浮盈线 + 上下文。
+  /// 副图（量 / MACD / KDJ）不在这里 —— 与生产案例图同口径，前端从 OHLCV 重算。
+  Future<TradingKlineDto> fetchTradingKline(String symbol, {int window = 90}) async {
+    final uri = Uri.parse('$baseUrl/api/v1/trading/kline')
+        .replace(queryParameters: {'symbol': symbol, 'window': '$window'});
+    final resp = await _client.get(uri, headers: _headers);
+    _check(resp);
+    return TradingKlineDto.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
+  Future<TradingAnalysisDto> fetchTradingAnalysis(String scope, {String? symbol, String? roundId}) async {
+    final params = <String, String>{};
+    if (symbol != null && symbol.isNotEmpty) params['symbol'] = symbol;
+    if (roundId != null && roundId.isNotEmpty) params['id'] = roundId;
+    final uri = Uri.parse('$baseUrl/api/v1/trading/analysis/$scope')
+        .replace(queryParameters: params.isNotEmpty ? params : null);
+    final resp = await _client.get(uri, headers: _headers);
+    _check(resp);
+    return TradingAnalysisDto.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
   /// 交易历史逐笔流水（web 独有，RFC 20260816 §4.2）。
@@ -3083,6 +3244,35 @@ class SoldScoreDto {
   }
 }
 
+/// 清仓「卖掉之后到现在」一行（GET /api/v1/trading/sold/after-close，2026-10-08 清仓列）。
+/// 基准 = 卖出日（或其后第一根）K 线收盘，最新 = 区间最后一根；
+/// pct/direction 为 null = 没算出来（note 说明原因人话，显示「—」不编）。
+class SoldAfterCloseDto {
+  final String symbol, name;
+  final String? sellDate, baseDate, latestDate, direction, note;
+  final double? baseClose, latestClose, pct;
+
+  SoldAfterCloseDto({required this.symbol, required this.name, this.sellDate,
+      this.baseDate, this.baseClose, this.latestDate, this.latestClose,
+      this.pct, this.direction, this.note});
+
+  factory SoldAfterCloseDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return SoldAfterCloseDto(
+      symbol: m['symbol']?.toString() ?? '',
+      name: m['name']?.toString() ?? '',
+      sellDate: m['sellDate']?.toString(),
+      baseDate: m['baseDate']?.toString(),
+      baseClose: (m['baseClose'] as num?)?.toDouble(),
+      latestDate: m['latestDate']?.toString(),
+      latestClose: (m['latestClose'] as num?)?.toDouble(),
+      pct: (m['pct'] as num?)?.toDouble(),
+      direction: m['direction']?.toString(),
+      note: m['note']?.toString(),
+    );
+  }
+}
+
 /// 丢行明细（`unparsed`）统一解析（P2-交易83，2026-10-04）：非列表/缺字段 → 空列表；
 /// 元素安全转字符串（后端下发的是人话字符串，类型不符也不炸）。与历史成交导入同口径。
 List<String> _unparsedLines(dynamic json) {
@@ -3170,6 +3360,268 @@ class ImportFileSaveResult {
     return ImportFileSaveResult(
       path: json['path']?.toString() ?? '',
       content: json['content']?.toString() ?? '',
+    );
+  }
+}
+
+// ── 统一导入 / 三粒度分析（R-12 / R-05 · 2026-10-06）──
+
+/// 统一导入的一份文件载荷（`R-12`）：文件名（只用于识别日期，类别靠内容认）+ 原始字节。
+class BundleUploadFile {
+  final String name;
+  final List<int> bytes;
+  const BundleUploadFile(this.name, this.bytes);
+}
+
+/// 统一导入回执（POST /api/v1/trading/import）：逐份结果 + 成功/失败计数。
+/// 契约：{dryRun, okCount, failedCount, files:[{filename, savedPath?, kind, kindLabel, ok, error?, detail?}]}。
+class BundleImportReceipt {
+  final bool dryRun;
+  final int okCount;
+  final int failedCount;
+  final List<BundleFileResultDto> files;
+
+  BundleImportReceipt({required this.dryRun, required this.okCount,
+      required this.failedCount, required this.files});
+
+  factory BundleImportReceipt.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return BundleImportReceipt(
+      dryRun: m['dryRun'] == true,
+      okCount: (m['okCount'] as num?)?.toInt() ?? 0,
+      failedCount: (m['failedCount'] as num?)?.toInt() ?? 0,
+      files: ((m['files'] as List?) ?? [])
+          .map((e) => BundleFileResultDto.fromJson(e))
+          .toList(),
+    );
+  }
+}
+
+/// 统一导入的单份回执：ok=false 时 error 为后端人话原因；
+/// detail = 该份具体结果（形状随 kind 不同，界面按常见键渲染摘要）。
+class BundleFileResultDto {
+  final String filename;
+  final String? savedPath;
+  final String? kind; // CASH / POSITIONS / TRADES / SOLD / WATCHLIST / UNKNOWN
+  final String? kindLabel; // 资金股份 / 持仓股 / 历史成交 / 清仓股 / 自选股 / 无法识别
+  final bool ok;
+  final String? error;
+  final Map<String, dynamic> detail;
+
+  BundleFileResultDto({required this.filename, this.savedPath, this.kind,
+      this.kindLabel, required this.ok, this.error, this.detail = const {}});
+
+  factory BundleFileResultDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return BundleFileResultDto(
+      filename: m['filename']?.toString() ?? '未命名文件',
+      savedPath: m['savedPath']?.toString(),
+      kind: m['kind']?.toString(),
+      kindLabel: m['kindLabel']?.toString(),
+      ok: m['ok'] == true,
+      error: m['error']?.toString(),
+      detail: m['detail'] is Map ? Map<String, dynamic>.from(m['detail'] as Map) : const {},
+    );
+  }
+}
+
+/// 三粒度分析视图（GET /api/v1/trading/analysis/{scope}，`R-05`）。
+/// scope=global 全局 / symbol 单标的 / round 单笔；label=人话标题。
+/// R-04 通用 K 线（2026-10-07）：一张图四处共用 —— 持仓 / 自选 / 清仓 / 案例。
+class TradingKlineDto {
+  TradingKlineDto({
+    required this.symbol,
+    required this.window,
+    required this.candles,
+    required this.marks,
+    this.stopLine,
+    this.peakLine,
+    this.held = false,
+    this.closedAt,
+    this.holdPnlPct,
+    this.verdict,
+    this.note,
+  });
+
+  final String symbol;
+  final int window;
+  /// 每项 {date, open, high, low, close, volume}（旧→新）。
+  final List<Map<String, dynamic>> candles;
+  /// 我的买卖点：{date, type: B|T|S, price, quantity, note}。
+  final List<Map<String, dynamic>> marks;
+  final double? stopLine;
+  final double? peakLine;
+  final bool held;
+  final String? closedAt;
+  final double? holdPnlPct;
+  final String? verdict;
+  /// 后端如实说法（行情取不到 / 代码不对）—— 有值时前端只显示它，不画空图。
+  final String? note;
+
+  bool get hasData => candles.isNotEmpty;
+
+  factory TradingKlineDto.fromJson(Map<String, dynamic> j) {
+    double? d(Object? v) => v is num ? v.toDouble() : null;
+    final candles = <Map<String, dynamic>>[];
+    for (final e in (j['candles'] as List? ?? const [])) {
+      final m = (e as Map).cast<String, dynamic>();
+      final close = d(m['close']);
+      if (close == null) continue; // 缺值的 K 线宁可少画，不补 0
+      candles.add({
+        'date': '${m['date']}',
+        'open': d(m['open']) ?? close,
+        'high': d(m['high']) ?? close,
+        'low': d(m['low']) ?? close,
+        'close': close,
+        'volume': d(m['volume']) ?? 0,
+      });
+    }
+    final marks = <Map<String, dynamic>>[];
+    for (final e in (j['marks'] as List? ?? const [])) {
+      marks.add((e as Map).cast<String, dynamic>());
+    }
+    final stop = j['stopLine'] is Map ? (j['stopLine'] as Map).cast<String, dynamic>() : null;
+    final peak = j['peakLine'] is Map ? (j['peakLine'] as Map).cast<String, dynamic>() : null;
+    final ctx = j['context'] is Map ? (j['context'] as Map).cast<String, dynamic>() : const {};
+    return TradingKlineDto(
+      symbol: '${j['symbol'] ?? ''}',
+      window: (j['window'] as num?)?.toInt() ?? 90,
+      candles: candles,
+      marks: marks,
+      stopLine: d(stop?['price']),
+      peakLine: d(peak?['price']),
+      held: ctx['held'] == true,
+      closedAt: ctx['closedAt']?.toString(),
+      holdPnlPct: d(ctx['holdPnlPct']),
+      verdict: ctx['verdict']?.toString(),
+      note: j['note']?.toString(),
+    );
+  }
+}
+
+class TradingAnalysisDto {
+  final String scope;
+  final String label;
+  final List<AnalysisFactDto> description;
+  final AnalysisContrastDto contrast;
+  final AnalysisSummaryDto summary;
+
+  TradingAnalysisDto({required this.scope, required this.label,
+      required this.description, required this.contrast, required this.summary});
+
+  factory TradingAnalysisDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return TradingAnalysisDto(
+      scope: m['scope']?.toString() ?? '',
+      label: m['label']?.toString() ?? '',
+      description: ((m['description'] as List?) ?? [])
+          .map((e) => AnalysisFactDto.fromJson(e))
+          .toList(),
+      contrast: AnalysisContrastDto.fromJson(m['contrast']),
+      summary: AnalysisSummaryDto.fromJson(m['summary']),
+    );
+  }
+}
+
+/// 分析的一个数字（描述块）：value 可为 null（缺数据——界面显示「—」，**绝不渲染成 0**）、
+/// 数字 / 字符串 / 列表（RoundBrief · Bucket · PeriodBucket · SizeBucket 形状的 Map）。
+/// trace = 这个数字的出处（哪几笔 / 哪几天 / 说明）——「每个数字点得进去」的原料。
+class AnalysisFactDto {
+  final String key;
+  final String label;
+  final dynamic value;
+  final String? unit;
+  final AnalysisTraceDto trace;
+
+  AnalysisFactDto({required this.key, required this.label, this.value, this.unit, required this.trace});
+
+  factory AnalysisFactDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return AnalysisFactDto(
+      key: m['key']?.toString() ?? '',
+      label: m['label']?.toString() ?? '',
+      value: m['value'],
+      unit: m['unit']?.toString(),
+      trace: AnalysisTraceDto.fromJson(m['trace']),
+    );
+  }
+}
+
+/// 数字的出处：roundIds / dates / note（全可空，空则不显示）。
+class AnalysisTraceDto {
+  final List<String> roundIds;
+  final List<String> dates;
+  final String? note;
+
+  AnalysisTraceDto({this.roundIds = const [], this.dates = const [], this.note});
+
+  factory AnalysisTraceDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return AnalysisTraceDto(
+      roundIds: ((m['roundIds'] as List?) ?? []).map((e) => e.toString()).toList(),
+      dates: ((m['dates'] as List?) ?? []).map((e) => e.toString()).toList(),
+      note: m['note']?.toString(),
+    );
+  }
+
+  bool get isEmpty => roundIds.isEmpty && dates.isEmpty && (note == null || note!.isEmpty);
+}
+
+/// 规则对照：hasRules=false → reason 明说「判不了」（不拿别人的规则替他判）。
+class AnalysisContrastDto {
+  final bool hasRules;
+  final String? reason;
+  final List<AnalysisRuleHitDto> ruleHits;
+
+  AnalysisContrastDto({required this.hasRules, this.reason, this.ruleHits = const []});
+
+  factory AnalysisContrastDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return AnalysisContrastDto(
+      hasRules: m['hasRules'] == true,
+      reason: m['reason']?.toString(),
+      ruleHits: ((m['ruleHits'] as List?) ?? [])
+          .map((e) => AnalysisRuleHitDto.fromJson(e))
+          .toList(),
+    );
+  }
+}
+
+/// 一条规则的命中：rule（编号）+ text（规则原文）+ count（命中几笔）+ roundIds（哪几笔）。
+class AnalysisRuleHitDto {
+  final String rule;
+  final String text;
+  final int count;
+  final List<String> roundIds;
+
+  AnalysisRuleHitDto({required this.rule, required this.text, required this.count,
+      this.roundIds = const []});
+
+  factory AnalysisRuleHitDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return AnalysisRuleHitDto(
+      rule: m['rule']?.toString() ?? '',
+      text: m['text']?.toString() ?? '',
+      count: (m['count'] as num?)?.toInt() ?? 0,
+      roundIds: ((m['roundIds'] as List?) ?? []).map((e) => e.toString()).toList(),
+    );
+  }
+}
+
+/// 总结三句：fact 事实 / contrast 规则对照 / question 留给你的问题（全可空）。
+class AnalysisSummaryDto {
+  final String? fact;
+  final String? contrast;
+  final String? question;
+
+  AnalysisSummaryDto({this.fact, this.contrast, this.question});
+
+  factory AnalysisSummaryDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return AnalysisSummaryDto(
+      fact: m['fact']?.toString(),
+      contrast: m['contrast']?.toString(),
+      question: m['question']?.toString(),
     );
   }
 }

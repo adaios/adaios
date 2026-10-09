@@ -3,9 +3,9 @@ title: mechanism/ 目录索引
 description: .agents/mechanism/ 的文件清单与过期判断；目录的职责边界与依赖契约见 ./_directory.md
 version: 1
 created: 2026-10-04
-updated: 2026-10-06
+updated: 2026-10-09
 status: active
-lines: 76
+lines: 80
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index]
@@ -17,7 +17,7 @@ tags: [meta, index]
 
 **职责**：见 [`_directory.md`](./_directory.md)（此处不重复——S5 判据：同一知识只在一处详述）
 
-## 文件清单（41 项）
+## 文件清单（45 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -30,6 +30,7 @@ tags: [meta, index]
 | `guards/ai-guard-prod.sh` | 生产日报（每日流程）— 生产日志 + 真实对话卡片，一条命令看全 | active |
 | `guards/ai-guard-release.sh` | 发版体检（发布前随时问一句：现在欠着什么没发） | active |
 | `guards/ai-guard-roadmap.sh` | 规划状态对拍（roadmap 体检）— 回答「未来规划如何 / 规划是否可信」 | active |
+| `guards/ai-guard-scope.sh` | 交付完备性守卫（ai-guard-scope）—— scope 对照表自检 | active |
 | `guards/ai-guard-sediment.sh` | 沉淀检查器（进攻侧 ②③）— 提交前检查"该沉淀的有没有沉淀" | active |
 | `guards/ai-guard-skills.sh` | 技能包质量校验（S3 / S4 / S5 / S7）—— 补 ai-guard-tools T3 之外的部分 | active |
 | `guards/ai-guard-structure.sh` | 目录级自洽守卫（ai-guard-structure）—— 补 ai-guard-meta（文件级）之外的那一半 | active |
@@ -37,6 +38,7 @@ tags: [meta, index]
 | `guards/ai-guard-unfixed.sh` | 未修复问题总清单（聚合 4 个维护点）— 用户问「还有哪些未修」一条命令拿全 | active |
 | `guards/guard.sh` | 守护检查执行器 — /review 每次必跑，防 P0 复发（数据丢失/契约破坏） | active |
 | `guards/tests/guard-feature-fixture.py` | — | active |
+| `guards/tests/guard-scope-fixture.py` | — | active |
 | `scripts/ai-domain-view.py` | 域视图 —— 一条命令答「某个域现在怎么样 · 还欠什么 · 往哪走」 | active |
 | `scripts/ai-link-skills.sh` | 注册「用户直触发」技能到本机 AI 工具（换机器 clone 后执行一次） | active |
 | `scripts/ai-lint-shell-vars.py` | 为什么需要它 | active |
@@ -46,6 +48,7 @@ tags: [meta, index]
 | `scripts/ai-sync-agents.sh` | 把「审查官」真相源生成为各工具的 subagent 定义（换机 / 改动后执行） | active |
 | `scripts/ai-sync-all.sh` | AI 资产多工具出口：**一条命令**全量重建 + 自检 | active |
 | `scripts/ai-worktree-prep.sh` | worktree 外挂补齐（AdaiOS 专属）——新建 worktree 后第一件事 | active |
+| `scripts/audit-web.py` | — | active |
 | `scripts/code-backup-prod.sh` | 生产数据定期备份脚本（服务器迁移/到期用，2026-08-14 创建，2026-08-20 更新， | active |
 | `scripts/code-deploy-gate.sh` | 部署门禁 + 部署后验证（触发侧：部署前强制 review，部署后自动 smoke） | active |
 | `scripts/data-migrate-user-layer.sh` | 数据迁移脚本：data/ → data/{userId}/（多用户架构，2026-08-02） | active |
@@ -62,6 +65,7 @@ tags: [meta, index]
 | `scripts/task-noon.d/.gitkeep` | — | active |
 | `scripts/task-noon.sh` | 午间谷时任务壳（工作日 12:01 触发）— 2026-09-16 建 | active |
 | `scripts/task-weekly-audit.sh` | 定时审查（触发侧：每周自动跑，防审查休眠） | active |
+| `scripts/trading-local-up.sh` | ========================================================… | active |
 
 ## 子目录
 

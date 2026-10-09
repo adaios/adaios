@@ -4,6 +4,7 @@ import com.adaiadai.core.application.TradingAdviceAppService;
 import com.adaiadai.core.application.TradingParseAppService;
 import com.adaiadai.core.application.TradingAppService;
 import com.adaiadai.core.application.WatchlistBuyPointService;
+import com.adaiadai.core.application.SoldAfterCloseService;
 import com.adaiadai.core.application.SoldScoreService;
 import com.adaiadai.core.application.TradingReviewAppService;
 import com.adaiadai.core.application.TradeLogCollectService;
@@ -123,6 +124,7 @@ class TradingControllerTest {
         TradingController controller = new TradingController(tradingAppService, reviewAppService,
                 adviceAppService, mock(TradingParseAppService.class), pluginService(defaultPlugins),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(SoldAfterCloseService.class),
                 mock(PushSettingsRepository.class),
                 ruleRepo,
                 mock(TradeLogCollectService.class),
@@ -135,6 +137,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -164,6 +167,7 @@ class TradingControllerTest {
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
                 pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(SoldAfterCloseService.class),
                 mock(PushSettingsRepository.class), ruleRepo,
                 mock(TradeLogCollectService.class),
                 mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
@@ -175,6 +179,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 sync,
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -195,6 +200,7 @@ class TradingControllerTest {
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
                 pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(SoldAfterCloseService.class),
                 mock(PushSettingsRepository.class),
                 mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
                 mock(TradeLogCollectService.class),
@@ -207,6 +213,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 kline,
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -225,6 +232,7 @@ class TradingControllerTest {
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
                 pluginService(defaultPlugins.length > 0 ? defaultPlugins : new String[]{"trading"}),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(SoldAfterCloseService.class),
                 mock(PushSettingsRepository.class),
                 mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
                 mock(TradeLogCollectService.class),
@@ -237,6 +245,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -260,6 +269,7 @@ class TradingControllerTest {
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
                 pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(SoldAfterCloseService.class),
                 mock(PushSettingsRepository.class),
                 mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
                 tradeLogCollectService,
@@ -272,6 +282,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -289,6 +300,7 @@ class TradingControllerTest {
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
                 pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(SoldAfterCloseService.class),
                 mock(PushSettingsRepository.class),
                 mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
                 mock(TradeLogCollectService.class),
@@ -301,6 +313,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -311,15 +324,16 @@ class TradingControllerTest {
                 .build();
     }
 
-    /** P3（2026-08-17）：注入自定义买点/打分服务的重载（sold/score、buy-points 测试用）。 */
+    /** P3（2026-08-17）：注入自定义买点/打分服务的重载（sold/score、buy-points 测试用）；2026-10-08 加 after-close。 */
     private MockMvc buildMvc(TradingAppService tradingAppService,
                              TradingReviewAppService reviewAppService,
                              String[] defaultPlugins,
                              WatchlistBuyPointService buyPointService,
-                             SoldScoreService soldScoreService) {
+                             SoldScoreService soldScoreService,
+                             SoldAfterCloseService afterCloseService) {
         TradingController controller = new TradingController(tradingAppService, reviewAppService,
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
-                pluginService(defaultPlugins), buyPointService, soldScoreService,
+                pluginService(defaultPlugins), buyPointService, soldScoreService, afterCloseService,
                 mock(PushSettingsRepository.class),
                 mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
                 mock(TradeLogCollectService.class),
@@ -332,6 +346,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -520,6 +535,7 @@ class TradingControllerTest {
         TradingController controller = new TradingController(trading, mock(TradingReviewAppService.class),
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class), pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(SoldAfterCloseService.class),
                 mock(PushSettingsRepository.class),
                 mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
                 mock(TradeLogCollectService.class),
@@ -532,6 +548,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
@@ -1160,6 +1177,7 @@ class TradingControllerTest {
         TradingController controller = new TradingController(trading, mock(TradingReviewAppService.class),
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class), pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(SoldAfterCloseService.class),
                 mock(PushSettingsRepository.class),
                 mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
                 mock(TradeLogCollectService.class),
@@ -1172,6 +1190,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
@@ -1585,6 +1604,7 @@ class TradingControllerTest {
                 mock(TradingReviewAppService.class), mock(TradingAdviceAppService.class),
                 mock(TradingParseAppService.class), pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(SoldAfterCloseService.class),
                 mock(PushSettingsRepository.class),
                 mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
                 mock(TradeLogCollectService.class),
@@ -1596,6 +1616,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                  testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -1629,6 +1650,7 @@ class TradingControllerTest {
                 mock(TradingReviewAppService.class), mock(TradingAdviceAppService.class),
                 mock(TradingParseAppService.class), pluginService(),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(SoldAfterCloseService.class),
                 mock(PushSettingsRepository.class),
                 mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
                 mock(TradeLogCollectService.class),
@@ -1640,6 +1662,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                  testStorage);
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -1939,6 +1962,7 @@ class TradingControllerTest {
                 mock(TradingReviewAppService.class), mock(TradingAdviceAppService.class),
                 mock(TradingParseAppService.class), pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(SoldAfterCloseService.class),
                 mock(PushSettingsRepository.class),
                 mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
                 mock(TradeLogCollectService.class),
@@ -1950,6 +1974,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -1971,6 +1996,7 @@ class TradingControllerTest {
                 mock(TradingReviewAppService.class), mock(TradingAdviceAppService.class),
                 mock(TradingParseAppService.class), pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(SoldAfterCloseService.class),
                 mock(PushSettingsRepository.class),
                 mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
                 mock(TradeLogCollectService.class),
@@ -1982,6 +2008,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -2001,6 +2028,7 @@ class TradingControllerTest {
                 mock(TradingReviewAppService.class), mock(TradingAdviceAppService.class),
                 mock(TradingParseAppService.class), pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(SoldAfterCloseService.class),
                 mock(PushSettingsRepository.class),
                 mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
                 mock(TradeLogCollectService.class),
@@ -2012,6 +2040,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -2135,10 +2164,34 @@ class TradingControllerTest {
         when(scoreService.score(any(), any())).thenReturn(java.util.List.of(
                 new SoldScoreService.SoldScore("600519", "贵州茅台", 88, "B1", "回调 52%",
                         90, "盈利了结", 89.0, "盈利了结")));
-        MockMvc mvc = buildMvc(trading, mock(TradingReviewAppService.class), new String[]{"trading"}, mock(WatchlistBuyPointService.class), scoreService);
+        MockMvc mvc = buildMvc(trading, mock(TradingReviewAppService.class), new String[]{"trading"}, mock(WatchlistBuyPointService.class), scoreService, mock(SoldAfterCloseService.class));
         mvc.perform(get("/api/v1/trading/sold/score").header("X-User-Id", "adai"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].buyPointScore").value(88));
+    }
+
+    @Test
+    void soldAfterClose_returnsRows() throws Exception {
+        // 2026-10-08 清仓「卖掉之后到现在」：卖后涨=up（走早了）/ 跌=down（走对了）；
+        // 取不到行 pct=null + note（前端显示「—」）——端点原样透传服务结果。
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.soldList(any())).thenReturn(java.util.List.of());
+        SoldAfterCloseService afterClose = mock(SoldAfterCloseService.class);
+        when(afterClose.compute(any())).thenReturn(java.util.List.of(
+                new SoldAfterCloseService.AfterClose("603993", "洛阳钼业", "2026-08-19",
+                        "2026-08-19", 12.34, "2026-10-07", 14.61, 18.4, "up", null),
+                new SoldAfterCloseService.AfterClose("000725", "京东方A", "2026-05-26",
+                        null, null, null, null, null, null, "行情取不到")));
+        MockMvc mvc = buildMvc(trading, mock(TradingReviewAppService.class), new String[]{"trading"},
+                mock(WatchlistBuyPointService.class), mock(SoldScoreService.class), afterClose);
+
+        mvc.perform(get("/api/v1/trading/sold/after-close").header("X-User-Id", "adai"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].symbol").value("603993"))
+                .andExpect(jsonPath("$[0].pct").value(18.4))
+                .andExpect(jsonPath("$[0].direction").value("up"))
+                .andExpect(jsonPath("$[1].pct").doesNotExist())
+                .andExpect(jsonPath("$[1].note").value("行情取不到"));
     }
 
     @Test
@@ -2177,7 +2230,7 @@ class TradingControllerTest {
         when(bp.scanWatchlist(any(), anyString())).thenReturn(java.util.List.of(
                 new WatchlistBuyPointService.WatchBuyPoint("000725", "京东方A", "B1", 87,
                         java.util.List.of("回调 52%"), java.util.List.of(), "2026-09-04")));
-        MockMvc mvc = buildMvc(trading, mock(TradingReviewAppService.class), new String[]{"trading"}, bp, mock(SoldScoreService.class));
+        MockMvc mvc = buildMvc(trading, mock(TradingReviewAppService.class), new String[]{"trading"}, bp, mock(SoldScoreService.class), mock(SoldAfterCloseService.class));
         mvc.perform(get("/api/v1/trading/buy-points").header("X-User-Id", "adai"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].buyPoint").value("B1"));
@@ -2545,6 +2598,7 @@ class TradingControllerTest {
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
                 pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(SoldAfterCloseService.class),
                 mock(PushSettingsRepository.class),
                 mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
                 mock(TradeLogCollectService.class),
@@ -2557,6 +2611,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -2652,6 +2707,7 @@ class TradingControllerTest {
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
                 pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(SoldAfterCloseService.class),
                 mock(PushSettingsRepository.class),
                 mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
                 mock(TradeLogCollectService.class),
@@ -2664,6 +2720,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -2740,6 +2797,7 @@ class TradingControllerTest {
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
                 pluginService(new String[0]),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(SoldAfterCloseService.class),
                 mock(PushSettingsRepository.class),
                 mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
                 mock(TradeLogCollectService.class),
@@ -2752,6 +2810,7 @@ class TradingControllerTest {
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -2773,6 +2832,7 @@ class TradingControllerTest {
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
                 pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(SoldAfterCloseService.class),
                 mock(PushSettingsRepository.class),
                 mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
                 mock(TradeLogCollectService.class),
@@ -2785,6 +2845,7 @@ class TradingControllerTest {
                 psychology,
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -2810,6 +2871,7 @@ class TradingControllerTest {
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
                 pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(SoldAfterCloseService.class),
                 mock(PushSettingsRepository.class),
                 mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
                 mock(TradeLogCollectService.class),
@@ -2822,6 +2884,7 @@ class TradingControllerTest {
                 psychology,
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 mock(com.adaiadai.core.application.KlineService.class),
+                mock(com.adaiadai.core.application.TradingKlineAppService.class),
                 testStorage);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())

@@ -4,7 +4,7 @@ description: 当开发批次完成需要收尾（/ship）时加载——五件�
 name: task-ship
 version: 1
 created: 2026-08-20
-updated: 2026-10-06
+updated: 2026-10-07
 status: active
 lines: 51
 depends-on:
@@ -31,7 +31,7 @@ tags: [skill, build, ship]
 3. **契约同步**：新增/修改 API → `api-spec.md`（版本+变更记录）；data 格式变更 → `freeze`；新功能 → `feature-reference.md`
 4. **文档登记**：对应目录 `_index.md` 文件清单；子项目 AGENTS.md 批次状态；`.agents/records/change-log.md` 顶部追加（日期 | 批次 | 摘要 | 测试数变化）
 5. **决策沉淀**：RFC 验收标准逐条 PASS/FAIL 留痕；ADR 三问全中才建（否则 change-log 写「为什么这么定」）；踩坑入 checklists + pitfalls；`bash .agents/mechanism/guards/ai-guard-sediment.sh`
-6. **门禁**：`ai-guard-meta.sh --fix` + `ai-guard-meta.sh` + `ai-guard-align.sh` 全 PASS（禁止带 FAIL 提交；pre-commit hook 自动兜底）
+6. **门禁**：`ai-guard-meta.sh --fix` + `ai-guard-meta.sh` + `ai-guard-align.sh` + `ai-guard-scope.sh`（有 scope 表的任务，核交付完备性）全 PASS（禁止带 FAIL 提交；pre-commit hook 自动兜底）
 7. **规范提交**：一提交一主题（feat:/fix:/docs:），不混合无关改动
 
 ## 约束与规则
@@ -48,4 +48,4 @@ tags: [skill, build, ship]
 
 - 权威流程：`../../../rules/process/ship.md`
 - 元治理：`../../mechanism/guards/ai-guard-meta.sh`；对齐：`../../mechanism/guards/ai-guard-align.sh`
-- 沉淀：`../../mechanism/guards/ai-guard-sediment.sh`；部署门禁：`../../mechanism/scripts/code-deploy-gate.sh`；审查：`../../../rules/process/review.md`
+- scope 核：`../../mechanism/guards/ai-guard-scope.sh`；沉淀：`../../mechanism/guards/ai-guard-sediment.sh`；部署门禁：`../../mechanism/scripts/code-deploy-gate.sh`；审查：`../../../rules/process/review.md`

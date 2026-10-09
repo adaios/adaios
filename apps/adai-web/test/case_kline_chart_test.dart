@@ -95,10 +95,10 @@ void main() {
     // 主图指标名 + 数值标签
     expect(find.text('MA2(10,60)'), findsOneWidget, reason: '主图指标名');
     expect(find.textContaining('MA10:'), findsOneWidget, reason: '主图左上角数值标签');
-    // 三个副图固定：量 / MACD / KDJ 标签都在
-    expect(find.textContaining('成交量'), findsOneWidget, reason: '副图①成交量标签');
-    expect(find.textContaining('MACD(12,26,9)'), findsOneWidget, reason: '副图②MACD标签');
-    expect(find.textContaining('KDJ(9,3,3)'), findsOneWidget, reason: '副图③KDJ标签');
+    // 三个副图固定：量 / MACD / KDJ 标签都在（批 4：图例行含同名口径 → 各 2 处）
+    expect(find.textContaining('成交量'), findsNWidgets(2), reason: '副图①成交量标签 + 图例行口径');
+    expect(find.textContaining('MACD(12,26,9)'), findsNWidgets(2), reason: '副图②MACD标签 + 图例行口径');
+    expect(find.textContaining('KDJ(9,3,3)'), findsNWidgets(2), reason: '副图③KDJ标签 + 图例行口径');
 
     // 主图切换 MA2 → MA4（副图不受影响）
     await tester.tap(find.text('MA2(10,60)'));
@@ -106,5 +106,48 @@ void main() {
     await tester.tap(find.text('MA4(5,10,20,60)').last);
     await tester.pumpAndSettle();
     expect(find.textContaining('MA5:'), findsOneWidget, reason: 'MA4 含 MA5 数值');
+  });
+
+  testWidgets('CaseKlineChart：图例行（批 4 · D4）——图上有的才列，字母口径 B/T/S', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: CaseKlineChart(
+            kline: klineData(90),
+            marks: const [
+              {'date': 'x', 'type': 'B', 'price': 10.0},
+              {'date': 'x', 'type': 'T', 'price': 10.1},
+              {'date': 'x', 'type': 'S', 'price': 10.2},
+            ],
+            stopLine: 9.5,
+            peakLine: 12.0,
+            height: 400,
+          ),
+        ),
+      ),
+    ));
+    await tester.pump();
+    expect(find.text('日 K + 均线'), findsOneWidget);
+    expect(find.text('你定的止损 9.50'), findsOneWidget);
+    expect(find.textContaining('峰值浮盈线 12.00'), findsOneWidget);
+    expect(find.text('B 买 · T 加仓'), findsOneWidget, reason: '买卖点图例用字母 B/T');
+    expect(find.text('S 卖'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('CaseKlineChart：图例不编——没给的不列（批 4）', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: CaseKlineChart(kline: klineData(90), height: 400),
+        ),
+      ),
+    ));
+    await tester.pump();
+    expect(find.text('日 K + 均线'), findsOneWidget);
+    expect(find.textContaining('你定的止损'), findsNothing);
+    expect(find.textContaining('峰值浮盈线'), findsNothing);
+    expect(find.textContaining('B 买'), findsNothing);
+    expect(find.text('S 卖'), findsNothing);
   });
 }

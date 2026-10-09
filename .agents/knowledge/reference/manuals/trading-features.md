@@ -21,8 +21,8 @@ related:
   - ../../../direction/rfc/20260823-trading-history-tab-backfill.md
   - ../../../direction/rfc/20260814-domain-plugin-model.md
 tags: [trading, plugin, reference]
-updated: 2026-10-06
-lines: 406
+updated: 2026-10-08
+lines: 409
 ---
 
 # 交易模块功能手册（trading 插件）
@@ -170,6 +170,9 @@ lines: 406
 | POST | `/trading/cases/{caseId}/insight` | **生成 AI 理解（环 3）** | LLM 读特征画像 + K 线统计 → 结构化「为什么这是完美买点」（summary/keyFeatures/confidence）→ aiInsight 落盘；LLM 失败 400 不落半成品 |
 | POST | `/trading/cases/import` | **批量导入完美案例笔记（2026-08-31）** | 粘贴 B1/B2 笔记 → 解析（名称【缩写】+日期行 / 名称[缩写_日期]，飞书转义 `\-`/8 位日期/区间取首/类型分组跳过）→ 名称转代码（本地全 A 名称表 data/market/names.json 精确 → 东财 suggest 兜底）→ 逐条标注（前复权/特征/共识校验，幂等跳过已存在）；北交所 920 明确失败；实测 26 条含双创 |
 | POST | `/trading/cases/match` | **判定当下（环 4，核心价值）** | 当前标的形态 vs 案例库归一化相似度 Top 5（加权欧氏，date 可空=最近交易日）；空库 matches:[] 静默降级；相似度不覆盖规则硬判定 |
+| GET | `/trading/cases/candidates` | **案例候选（2026-10-08 UI/UX 批 ③）** | 「从你的记录里长出来的——我不替你定，你认了才算」：候选每次现算（卖点类清仓「卖掉之后到现在」+ 买点类轮「买入之后到现在」；\|变化\|≥8%；四方向各 2 条最多 8）+ 规则对照（user-rules 参数形状 / 轮引擎命中 R55/R66/R69/R53，贴不上不硬编）；返回 {pending, accepted} |
+| POST | `/trading/cases/candidates/{id}/accept` | 收下一条候选（可改名） | body `{title?}`（「改一改」= 收下时顺手改名）→ 落盘决定 `trading/case-candidates.json`；幂等（已收再收原样返回）；**弃过的再收 400（墓碑不复活）** |
+| POST | `/trading/cases/candidates/{id}/dismiss` | 不要一条候选（墓碑） | 幂等（已弃再弃 / 候选随数据消失都成功——记最小墓碑）；已收下的反悔也走这里 |
 
 ---
 
@@ -229,7 +232,7 @@ lines: 406
 | 历史成交 Tab | **RFC 20260823：常驻第 5 Tab（取代页头交易历史 Dialog）**——日期范围查询（默认近 30 天，DatePicker 改日期自动重载）；按日分组列表（日期+笔数，未标注日期置底）；**列（2026-08-25 用户拍板）：源文件原生在前——方向/时间 HH:mm/代码/名称/数量/价格/成交金额/发生金额（买入为负扣款）/成交编号；系统计算的「费用」=｜发生金额−成交金额｜单独放最后区分开**；止损/买点/原因三列已删（历史成交源文件无此数据）；区间统计行「共 N 笔 · 买 X 卖 Y」；旧数据无时间/费用/成交编号显示 '—'；导入后 inline 展示结果（新增/回填/跳过/非交易 + 对账行） | 进 Tab 自动加载 + 手动刷新（无定时轮询）；行首「导入历史成交」 | GET `/trading/trades?from=&to=`、POST `/trading/trades/import` |
 | 历史成交导入 | **独立入口（RFC 20260823：只认通达信历史成交导出格式）**——粘贴或选文件，`isTdxHistoryExport` 识别；非历史成交格式人话拒绝不静默落零；幂等 + 缺失成交时间回填；**RFC 20260825：响应含 `syncMode` + `summary`**——sync 模式展示「今日操作总结」卡片（买 X 笔 ¥Y · 卖 X 笔 · 新增/扣减批次 + 行为标注列表，亏损加仓/追高等醒目色）；append 模式提示「已按历史补录处理（只补流水，持仓未动）」 | Tab 内「导入历史成交」按钮 → 粘贴/选文件 → 导入 | POST `/trading/imports/save`、POST `/trading/trades/import` |
 | 推送设置 | 8 个推送开关（时段节奏/买点/止损/接近止损/大跌/放飞/破成本/行情条）；缺失 key 默认开；仅请求成功更新本地状态。**RFC 20260902 §四：给熟人开 trading 时按用户只开风控类（stop-loss/near-stop-loss/loss/gain/break-cost/market），建议类（session 时段逐票、buy-point 到买点）对熟人默认关——per-user 开关零开发；本人（owner adai）保留全开（记忆需要事件积累，推送是记录触发点）** | 页头铃铛按钮 → 拨动 Switch | GET/PUT `/trading/push-settings[/{type}]` |
-| **案例 Tab（第 7 Tab，2026-08-30 第四阶段环 1-2）** | 完美买点案例列表（名称/日期/买点类型/+5d 后验/特征摘要）+「标注案例」按钮（代码+日期+类型+描述 → POST）+ 详情弹窗（**K 线图还原**：主图蜡烛 + MA10 白线 + MA60 黄线 + 买点日标记，副图成交量 + KDJ/MACD——指标前端从 OHLCV 重算，口径对齐后端 CaseFeatureExtractor）+ 特征 chips + 后验 chips + 删除确认 | GET/POST `/trading/cases`、GET/DELETE `/trading/cases/{caseId}?kline=true` |
+| **案例 Tab（第 7 Tab，2026-08-30 第四阶段环 1-2；2026-10-08 UI/UX 批 ③ 加候选区）** | **候选区（批 ③，列表上方）**：「从你的记录里长出来的——我不替你定，你认了才算」候选卡（结果签 买点·成功/失败、卖点·走早了/走对了 + 标题 + 卡体文案 + 收下/改一改/不要 三动作）+「已经收下的」四列小表（案例/票·日期/类型/它支持或反对哪条规则）；没数据/拿不到整区不显示（零噪音是默认）。**完美买点案例列表**（名称/日期/买点类型/+5d 后验/特征摘要）+「标注案例」按钮（代码+日期+类型+描述 → POST）+ 详情弹窗（**K 线图还原**：主图蜡烛 + MA10 白线 + MA60 黄线 + 买点日标记，副图成交量 + KDJ/MACD——指标前端从 OHLCV 重算，口径对齐后端 CaseFeatureExtractor）+ 特征 chips + 后验 chips + 删除确认 | GET/POST `/trading/cases`、GET/DELETE `/trading/cases/{caseId}?kline=true`、GET `/trading/cases/candidates`、POST `/trading/cases/candidates/{id}/accept`、POST `/trading/cases/candidates/{id}/dismiss` |
 | **规则 Tab（第 6 Tab，2026-08-30 第三阶段）** | 我的交易规则参数展示（16 参数中文标签：仓位上限/默认止损/浮盈回吐/短线超期/清仓阈值/买点 5 参/打分权重/硬约束区间）+ 编辑弹窗（表单化 PUT）+ 加载失败降级（显示默认值） | 点「规则」Tab → 行内编辑 → 保存 | GET `/trading/rules`、PUT `/trading/rules` |
 
 **导入解析规则（前端 `trade_import_parser.dart`）**：

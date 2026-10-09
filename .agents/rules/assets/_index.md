@@ -3,9 +3,9 @@ title: assets/ 目录索引
 description: assets/ 的文件清单与过期判断；目录的职责边界与依赖契约见 ./_directory.md
 version: 1
 created: 2026-10-03
-updated: 2026-10-04
+updated: 2026-10-08
 status: active
-lines: 58
+lines: 59
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index]
@@ -15,7 +15,7 @@ tags: [meta, index]
 
 > 本文件只列**有什么**；**规则与依赖**见 [`_directory.md`](./_directory.md)。
 
-## 文件清单（18 项）
+## 文件清单（19 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -25,11 +25,12 @@ tags: [meta, index]
 | `adr/ADR-004.md` | 决策：推送 per-user 开关（写读双侧门控）+ 交易日志归集三步流水线（识别→候选→审核落库，仅插件用户）… | accepted |
 | `adr/ADR-005.md` | 决策：全库 CLAUDE.md→AGENTS.md 迁移（工具无关统一入口）+ 建设/收尾/审查技能封装为 SK… | accepted |
 | `adr/ADR-006.md` | 决策：所有用户可见能力分三层——core（记录/问答/记忆/上下文/身份/存储，不可关）/ builtin（待办… | accepted |
-| `ai-calling-governance.md` | AI 调用治理方案（模型路由 / 流式 / 超时矩阵 / 上下文瘦身）——13 处 LLM + 3 处视觉调用按体验敏感度分档，四维治理 + 降级矩阵 | draft |
-| `ai-context-engineering.md` | ★ **AI 上下文工程体系总览**——分层模型（L0 入口 / L1 任务 / L2 约束 / L3 事实 + 横跨工具层）· 目录与文件全量定位 · 六张流程图 · 触发词工作流 · 个人与团队两种配置 · 防腐机制 · 落地缺口 · 审核驱动主链（**2026-10-04 自 `.agents/knowledge/reference/` 转入**） | active |
+| `ai-calling-governance.md` | 全场景 AI 调用治理设计稿——13 处 LLM + 3 处视觉调用按体验敏感度分档，四维治理（模型路由/传输模… | draft |
+| `ai-context-engineering.md` | 项目级 AI 上下文工程的总览——分层模型（L0 入口 / L1 任务 / L2 约束 / L3 事实 + 横跨… | active |
 | `ai-context-layer-spec.md` | AdaiOS 项目级 AI 上下文的中间层规范——定义 AI 资产**放在哪**（真相源）、**怎么被各工具发现… | active |
 | `boundaries.md` | AdaiOS「不做什么」的集中声明——原则级（不可违反）与功能级（当前不做）；任何新功能先查边界再定方案 | active |
 | `conventions.md` | 代码/文档/协作三组规范集中声明——从原根 CLAUDE.md（2026-08-19 删除）与 AI 工程层归集… | active |
+| `design-lexicon.md` | 阶段词（探索→定义→原型→设计→实施→走查→发布）与专业术语（信息架构/交互设计/视觉设计/可用性/体验走查）的… | active |
 | `naming-spec.md` | skill / subagent / 脚本的统一命名体系——六个域 + 封闭角色词表 + 硬规则；含本项目的历史… | active |
 | `pitfalls.md` | 跨 checklists 归集的「踩过的坑」索引——症状/根因/修复/复发信号，按域分组；完整逐条在 check… | active |
 | `projects/adai-admin.md` | 从管理员使用角度，具体到每个页面每个功能地描述 adai-admin——四区模块/每个 tab 能做什么/职责边… | active |

@@ -5,6 +5,7 @@ import com.adaiadai.core.application.TradingParseAppService;
 import com.adaiadai.core.application.TradingAppService;
 import com.adaiadai.core.application.WatchlistBuyPointService;
 import com.adaiadai.core.application.SoldScoreService;
+import com.adaiadai.core.application.SoldAfterCloseService;
 import com.adaiadai.core.application.TradingReviewAppService;
 import com.adaiadai.core.application.TradingLotService;
 import com.adaiadai.core.domain.trading.TradingProfileService;
@@ -30,6 +31,7 @@ import com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository;
 import com.adaiadai.core.application.TradeLogCollectService;
 import com.adaiadai.core.application.TradingScreenshotAppService;
 import com.adaiadai.core.application.KlineService;
+import com.adaiadai.core.application.TradingKlineAppService;
 import com.adaiadai.core.application.TradingSessionPushService;
 import jakarta.validation.Constraint;
 import jakarta.validation.ConstraintValidator;
@@ -93,6 +95,10 @@ public class TradingController {
     private final TradingSessionPushService sessionPushService;
     /** RFC 20260923 D 批：行情（K 线）链路可用性——让「整段拿不到行情」在用户侧可见。 */
     private final KlineService klineService;
+    /** R-04（2026-10-07）：通用 K 线 —— 一张图四处共用（持仓 / 自选 / 清仓 / 案例）。 */
+    private final TradingKlineAppService tradingKlineAppService;
+    /** 2026-10-08 清仓「卖掉之后到现在」：卖出日收盘 → 最新收盘（回答「我卖飞了没」）。 */
+    private final SoldAfterCloseService soldAfterCloseService;
 
     public TradingController(TradingAppService tradingAppService,
                              TradingReviewAppService reviewAppService,
@@ -101,6 +107,7 @@ public class TradingController {
                              PluginService pluginService,
                              WatchlistBuyPointService buyPointService,
                              SoldScoreService soldScoreService,
+                             SoldAfterCloseService soldAfterCloseService,
                              PushSettingsRepository pushSettingsRepository,
                              TradingRuleSettingsRepository ruleSettingsRepository,
                              TradeLogCollectService tradeLogCollectService,
@@ -113,6 +120,7 @@ public class TradingController {
                              TradePsychologyService psychologyService,
                              TradingSessionPushService sessionPushService,
                              KlineService klineService,
+                             TradingKlineAppService tradingKlineAppService,
                              FileStorage fileStorage) {
         this.tradingAppService = tradingAppService;
         this.reviewAppService = reviewAppService;
@@ -133,7 +141,31 @@ public class TradingController {
         this.psychologyService = psychologyService;
         this.sessionPushService = sessionPushService;
         this.klineService = klineService;
+        this.tradingKlineAppService = tradingKlineAppService;
+        this.soldAfterCloseService = soldAfterCloseService;
         this.fileStorage = fileStorage;
+    }
+
+    /**
+     * R-04 通用 K 线（2026-10-07）。
+     *
+     * <p>一张图，四处共用：持仓 / 自选 / 清仓 / 案例 —— 返回蜡烛 + **我的买卖点（B/T/S）**
+     * + **你定的止损线** + **峰值浮盈线** + 上下文（现在还拿着吗 / 什么时候清的）。
+     * 副图（成交量 / MACD / KDJ）与生产案例图同口径，**前端从 OHLCV 重算**。
+     *
+     * <p>诚实口径：行情取不到 → 200 + 空 candles + 一句人话 note（不沿用旧价凑图）。
+     *
+     * @param symbol 6 位代码
+     * @param window 交易日根数（30~400，默认 90）
+     */
+    @GetMapping("/kline")
+    public ResponseEntity<?> kline(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestParam("symbol") String symbol,
+            @RequestParam(value = "window", required = false) Integer window) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(tradingKlineAppService.kline(userId, symbol, window));
     }
 
     /**
@@ -870,6 +902,20 @@ public class TradingController {
         if (denied != null) return denied;
         List<SoldTrade> trades = tradingAppService.soldList(userId);
         return ResponseEntity.ok(soldScoreService.score(trades, userId));
+    }
+
+    /**
+     * 卖掉之后到现在（2026-10-08，清仓页新列）：每笔清仓 = 卖出日收盘 → 最新收盘的涨跌——
+     * ↑ 走早了（卖后又涨）/ ↓ 走对了（卖后又跌），直接回答「我卖飞了没」。
+     * 独立端点（不动 /sold 的列表形状）：拉 K 线是慢链路，清仓基础数据不能被行情拖慢；
+     * 单笔取不到行情 → pct=null + 人话 note（前端显示「—」，不编数）。需 trading 插件（403）。
+     */
+    @GetMapping("/sold/after-close")
+    public ResponseEntity<?> soldAfterClose(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(soldAfterCloseService.compute(tradingAppService.soldList(userId)));
     }
 
     /** 银证转账（转入/转出，净投入跟踪，POST /api/v1/trading/transfer）。 */

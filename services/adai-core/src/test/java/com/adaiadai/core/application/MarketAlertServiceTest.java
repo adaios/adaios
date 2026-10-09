@@ -74,6 +74,9 @@ class MarketAlertServiceTest {
     }
 
     /** 构造依赖：snapshot 带「内存快照」语义（save 后下一次 alerted 可见）；push 由调用方 mock 传入。 */
+    /** 2026-10-09：尾盘确认窗口的桩（默认在窗口内；验门控的用例临时置 false）。 */
+    private static boolean tailWindowStub = true;
+
     private MarketAlertService build(MarketDataSource market, PositionRepository positions,
                                      boolean breakCostEnabled, PushChannel push) {
         AccountRepository accounts = mock(AccountRepository.class);
@@ -90,10 +93,44 @@ class MarketAlertServiceTest {
 
         PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
         when(pushSettings.findByUser(anyString())).thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
+        // 2026-10-09：止损类提醒改「尾盘确认窗口」门控（用户口径：日线级别、尾盘确认）——
+        // 本用例类固定「在窗口内」，让既有的破线/临近/破成本断言与时间无关（同 isTradingDayToday 的桩法）。
         return new MarketAlertService(market, positions, accounts, snapshot, java.util.List.of(push),
                 mock(PluginService.class), new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(defaultRuleRepo()),
                 pushSettings, mock(TradingLotService.class), governor(),
-                3.0, 5.0, breakCostEnabled, 2.0);
+                3.0, 5.0, breakCostEnabled, 2.0) {
+            @Override
+            boolean inTailConfirmWindow() {
+                return tailWindowStub; // 用例默认「在窗口内」；验门控的用例临时置 false
+            }
+        };
+    }
+
+    /**
+     * 2026-10-09（用户口径「不用那么严格…按日线级别、尾盘确认」）：
+     * **盘中**（不在尾盘窗口）不发止损类（破线/临近/破成本），但**异动类**（单日大跌）照发。
+     */
+    @Test
+    void stopLossTypes_areGatedToTailConfirmWindow() {
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of("000725", quoteAt("000725", "4.80", "-5.00")));
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll(anyString())).thenReturn(List.of(posWithStopLoss("000725", "京东方A", "5.20", "4.90")));
+        PushChannel push = mock(PushChannel.class);
+        when(push.enabled()).thenReturn(true);
+
+        tailWindowStub = false; // 盘中
+        try {
+            build(market, positions, false, push).poll("default");
+        } finally {
+            tailWindowStub = true;
+        }
+
+        ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
+        verify(push, atLeastOnce()).push(eq("default"), captor.capture());
+        List<String> types = captor.getAllValues().stream().map(PushChannel.PushMessage::type).toList();
+        assertFalse(types.contains("stop-loss"), "盘中不该发破线（尾盘确认）: " + types);
+        assertTrue(types.contains("loss"), "异动类是「今天跌多少」，仍按盘中发: " + types);
     }
 
     /** RFC 20260825 批次级止损测试：注入可桩 derive 的批次服务。 */
@@ -113,10 +150,17 @@ class MarketAlertServiceTest {
 
         PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
         when(pushSettings.findByUser(anyString())).thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
+        // 2026-10-09：止损类提醒改「尾盘确认窗口」门控（用户口径：日线级别、尾盘确认）——
+        // 本用例类固定「在窗口内」，让既有的破线/临近/破成本断言与时间无关（同 isTradingDayToday 的桩法）。
         return new MarketAlertService(market, positions, accounts, snapshot, java.util.List.of(push),
                 mock(PluginService.class), new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(defaultRuleRepo()),
                 pushSettings, lotService, governor(),
-                3.0, 5.0, breakCostEnabled, 2.0);
+                3.0, 5.0, breakCostEnabled, 2.0) {
+            @Override
+            boolean inTailConfirmWindow() {
+                return tailWindowStub; // 用例默认「在窗口内」；验门控的用例临时置 false
+            }
+        };
     }
 
     /** 带止损位/买点的持仓（真止损预警测试用，RFC 20260816 用户提供数据）。 */
@@ -166,7 +210,8 @@ class MarketAlertServiceTest {
         PushChannel.PushMessage e = captor.getValue();
         assertEquals("loss", e.type());
         assertEquals("600519", e.symbol());
-        assertTrue(e.content().contains("单日大跌"));
+        // 2026-10-09（推送文案库 v1）：正文改成「今天跌 X%，现价 Y（离你的止损 …）」——不带「单日大跌」这类形容词
+        assertTrue(e.content().contains("今天跌"));
         assertTrue(e.content().contains("还没设止损位"));
     }
 
@@ -204,7 +249,8 @@ class MarketAlertServiceTest {
 
         ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
         verify(push, times(1)).push(eq("default"), captor.capture());
-        assertTrue(captor.getValue().content().contains("止损位 7.44"), "已设止损 → 应提止损位");
+        // 2026-10-09（v1 B 组）：改成「离你的 7.44 还有 X%」——数字仍是**他自己写的止损位**
+        assertTrue(captor.getValue().content().contains("7.44"), "已设止损 → 应提他自己的止损位");
         assertFalse(captor.getValue().content().contains("还没设止损位"), "已设止损 → 不应再说没设");
     }
 
@@ -252,8 +298,8 @@ class MarketAlertServiceTest {
         // 类型保留最严重（loss > break-cost）
         assertEquals("loss", m.type());
         // 内容拼接了两种提醒（大跌 + 跌破成本）
-        assertTrue(m.content().contains("单日大跌"), "合并内容应含单日大跌提醒");
-        assertTrue(m.content().contains("跌破成本"), "合并内容应含跌破成本提醒");
+        assertTrue(m.content().contains("今天跌"), "合并内容应含大跌那条");
+        assertTrue(m.content().contains("跌过你的成本"), "合并内容应含跌破成本那条");
 
         // ── P0-1（2026-09-14 增量深审）：行情推送也要锁屏脱敏，且**合并不得把脱敏丢掉** ──
         // 完整版（站内 Feed）：标题点名 + 正文带现价——这是它该有的样子
@@ -265,8 +311,8 @@ class MarketAlertServiceTest {
         assertFalse(lock.contains("贵州茅台"), "锁屏不得出现股票名，实际: " + lock);
         assertFalse(lock.contains("600519"), "锁屏不得出现代码，实际: " + lock);
         assertFalse(lock.contains("9.5"), "锁屏不得出现现价，实际: " + lock);
-        assertTrue(lock.contains("单日大跌"), "合并后应保留各类型的锁屏提示，实际: " + lock);
-        assertTrue(lock.contains("跌破成本线"), "合并后应保留各类型的锁屏提示，实际: " + lock);
+        assertTrue(lock.contains("跌得不少"), "合并后应保留各类型的锁屏提示，实际: " + lock);
+        assertTrue(lock.contains("跌过你的成本"), "合并后应保留各类型的锁屏提示，实际: " + lock);
     }
 
     @Test
@@ -426,7 +472,8 @@ class MarketAlertServiceTest {
         PushChannel.PushMessage e = captor.getValue();
         assertEquals("stop-loss", e.type());
         assertEquals("000725", e.symbol());
-        assertTrue(e.content().contains("跌破你的止损位 4.9"), "文案应含止损位，实际: " + e.content());
+        // 2026-10-09（v1 B1）：破线文案＝「在你写的止损 4.9 下方。要不要按你昨晚定的处理？」
+        assertTrue(e.content().contains("在你写的止损 4.9 下方"), "文案应含止损位，实际: " + e.content());
         assertTrue(e.content().contains("R66"), "文案应引用纪律规则 R66");
     }
 
@@ -535,7 +582,8 @@ class MarketAlertServiceTest {
         ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
         verify(push, times(1)).push(eq("default"), captor.capture());
         assertEquals("near-stop-loss", captor.getValue().type());
-        assertTrue(captor.getValue().content().contains("距你的止损位"));
+        // 2026-10-09（v1 B2）：改成「离你的止损 <价格> 还有 <实际距离>%」——给距离而不是给阈值
+        assertTrue(captor.getValue().content().contains("离你的止损"));
     }
 
     @org.junit.jupiter.api.Test
@@ -742,4 +790,3 @@ class MarketAlertServiceTest {
         assertTrue(MarketAlertService.CRON_POLL.endsWith("* * MON-FRI"), "周末仍由 cron 排除");
     }
 }
-

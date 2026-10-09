@@ -248,6 +248,15 @@ cmd_ship() {
         printf '  %s本批无代码文件 → light：ai-guard-meta + ai-guard-align + 守护快扫%s\n' "$DIM" "$RST"
     fi
 
+    hr "③·5 scope 表核（交付完备性 · 防止设计范围被静默裁剪）"
+    # P1-交易101 机制（2026-10-06）：设计 §6 前端整体被裁未声明，一路绿灯到上线——
+    # 收工时机械核 scope 表闭合（计划=本批必有状态/证据；未交付必有去向）；无表任务自动 PASS。
+    SCOPE_OUT="$(bash .agents/mechanism/guards/ai-guard-scope.sh 2>&1)"; SCOPE_RC=$?
+    printf '%s\n' "$SCOPE_OUT" | sed 's/^/  /'
+    if [ "$SCOPE_RC" -ne 0 ]; then
+        printf '  %s⚠ scope 表未闭合 → 先修（补状态/证据/去向）再提交；不许带 FAIL 收工%s\n' "$RED" "$RST"
+    fi
+
     hr "④ 收尾两步（AGENTS.md 规则 0b，强制）"
     bash .agents/mechanism/guards/ai-guard-context.sh --write-local | tail -2 || true
     bash .agents/mechanism/guards/ai-guard-cost.sh --record | tail -6 || true

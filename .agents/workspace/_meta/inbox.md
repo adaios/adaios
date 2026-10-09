@@ -3,9 +3,9 @@ title: 派单收件箱（子代理投递兜底通道）
 description: 消息通道丢载荷时的兜底派单通道；任何 AI 开工先看本文件（AGENTS.md 规则 0c）
 version: 1
 created: 2026-10-06
-updated: 2026-10-06
+updated: 2026-10-09
 status: active
-lines: 108
+lines: 199
 depends-on: []
 related:
   - ./process-issues-20261006.md
@@ -18,6 +18,97 @@ tags: [workspace, meta, dispatch]
 > **任何 AI 开工先看本文件**（`AGENTS.md` 规则 0c）。**有分配给你的任务就执行；没有就忽略**。
 
 ## 当前待处理派单
+
+> **本轮（2026-10-09 · app 端体验重构 · **编码段增量深审**）待办派单 = `D-20261009-03`（前端官）· `D-20261009-04`（后端官）· `D-20261009-05`（对抗官）**；`D-20261009-01/02` 与 `D-20261008-*` 均**已交付**（见 `explore-app-trading-page-20261009.md` / `review-app-design-20261009.md` / `review-uiux-*-20261008.md`），**不要再领**。**只领与你角色匹配的那一条**。
+
+---
+
+## 本轮派单（2026-10-09 · 编码段深审 · 三条并行）
+
+> **共同背景一句话**：app 端交易插件体验重构刚做完 **批 1–5**（首屏四层 / 截图入账三卡点 / 推送设置页 / 复盘历史页 / 提醒落点），
+> 测试 **474 全绿**、`flutter analyze` 0 issue、四守卫 PASS、真机走查六张实拍已入库；随后**后端推送文案**按 v1 落地。
+> **共同判据**：只判**改动对不对**（正确性 + 边界 + 完备性），不判「该不该做」（已拍板）。**只报告不改**（B7）。
+> **共同材料**（不要自己找）：交付表 `.agents/workspace/trading-plugin/scope-app-20261009.md`（逐条状态/证据）· 设计规格 `design-app-20261009.md`（§三 I-1~I-8 交互决定 + §七之二 主链对审核的收口）· 走查报告 `review-app-uiux-20261009.md`（§1 六张实拍与取证方式）· 推送文案稿 `design-push-copy-20261009.md`（§三 模板 · §五 拍板 · §六 落地记录）。
+> **共同范围**：本批自 `e87f926e` 之后的提交（约 12 个）。
+
+- **D-20261009-03**（**编码段深审 · 前端官** · `code-frontend-reviewer`）
+  - 【任务】只判 **app 端本批改动对不对**：① 形态重构（`trading_page.dart` 首屏四层 / 持仓一行+就地展开 / 自选只读 / 今天区）；② `utils/trading_verdict.dart`（判断句与「与你的线」纯逻辑）；③ `utils/trading_deeplink.dart` + `main.dart` 深链路由 + `trading_page.dart#_applyFocusSymbol`（提醒落点）；④ 两个新屏 `pages/push_settings_page.dart` / `pages/review_history_page.dart` 与两个抽出的共享件 `widgets/push_settings.dart` / `widgets/review_dialog.dart`（含 `main_page.dart` 的连带改动）；⑤ 截图入账三卡点（分张提交/指纹去重/异常优先/回执）。
+    重点看：状态管理与生命周期（`mounted`/代际令牌/`initState`）、DTO 契约与降级（缺字段不编）、跨端一致性（与 web 的口径）、**测试是否真断言**（有无假绿）。
+  - 【产出】`.agents/workspace/trading-plugin/review-code-app-20261009.md`
+
+- **D-20261009-04**（**编码段深审 · 后端官** · `code-backend-reviewer`）
+  - 【任务】只判 **后端推送文案批**：`MarketAlertService`（`message()` 四类重写 · 新增 `distancePctText()` · `lockScreenMessage()`）+ `TradingSessionPushService#buildCloseContent` 收尾一句 + `MarketAlertServiceTest` 的断言改动。
+    重点看：① 数值边界（`distancePctText` 的除零/负值/null 兜底、四舍五入）；② **隐私口径**（正文不再出现成本数字，锁屏仍不点标的/不带价）；③ **合并逻辑**（多条告警合并那条路径是否仍成立、锁屏拼接）；④ 规则引用（R66 保留）与产品约定（design-final §11.6）是否一致；⑤ 测试是否真断言（有没有为了过而改弱的断言）。
+  - 【产出】`.agents/workspace/trading-plugin/review-code-backend-push-20261009.md`
+
+- **D-20261009-05**（**对抗官** · `ai-adversarial-reviewer`）
+  - 【任务】**假设本批一定有坑**，从「哪里会炸 / 用户哪里会骂 / 边界哪里漏」三个方向攻击性找茬（不复述前面两位的清单，专挑他们视角外的）：
+    ① **提醒落点**：深链格式漂移（后端换格式/多段深链/大小写）、`focusSymbol` 不在持仓、连点、`Navigator` 在 `initState` 后立即 push、用户从落点返回后停在 Feed（不是交易页）是否会骂；
+    ② **截图入账分张提交**：第 2 张失败时的部分成功语义、客户端指纹去重会不会**误杀**真分单（同价同量同日两笔 = 指纹相同！生产实据 000831 两笔各 200 股）、丢弃明细的可读性；
+    ③ **判断句**「不编」的漏洞：`_integrity`/`_marketHealth` 取不到时的空洞、破线口径与后端 R66 是否一致；
+    ④ **隐私**：打码态截图 vs 显形态、推送正文、复盘历史页有没有可能露金额；
+    ⑤ **并发**：30 分钟自动刷新与「展开态/落点/新页面」并存时的竞态、代际令牌是否覆盖新写入路径。
+  - 【产出】`.agents/workspace/trading-plugin/review-adversarial-app-20261009.md`
+
+- **D-20261009-02**（**`design-app` 独立审核 · 交互层** · `ux-interaction-reviewer`）
+  - 【任务】**只判交互层**：`design-app-20261009.md` §二（首屏四层 IA）与 §三（I-1 ~ I-8 八条交互决定）是否**流程完整 · 反馈到位 · 异常有兜底 · 状态不歧义**；并与**已圈选的可点稿**独立对照（`.agents/workspace/trading-plugin/mockups/png/ref-1.png` · `ref-2.png` · `flow-1..4.png`）——**判「规格是否忠实于已拍板的方向」**，不要照抄主链结论。
+    **不判**：代码实现细节（归 `code-frontend-reviewer`，稍后另派）· 视觉观感（归 `ux-visual-reviewer`）· 功能该不该做（已拍板：`plan-app-20261009.md` §四 11 条默认）。
+  - 【角色真相源】`.agents/toolkit/roles/ux-interaction-reviewer.md` + `.agents/toolkit/checklists/ux-interaction-reviewer.md`（**动手前先读**）
+  - 【材料】（不要自己找）
+    - **审核对象**：`.agents/workspace/trading-plugin/design-app-20261009.md`
+    - **方向与原型**：`.agents/workspace/trading-plugin/uiux-discovery-20261007.md` §5.2–§5.5、§十（分层口径）
+    - **形态草案**：`.agents/direction/rfc/20260924-trading-app-form.md` §四/§五
+    - **本轮角色边界**：`.agents/workspace/trading-plugin/plan-app-20261009.md` §三（范围）
+    - **现状事实**：`.agents/workspace/trading-plugin/explore-app-trading-page-20261009.md`（若尚未落盘，可读 `apps/adai-app/lib/pages/trading_page.dart` 的 `build()` 与 `_buildPositionCards`）
+    - **背景一句话**：app 端体验重构刚定规格（web 轮已闭环，那轮 14 条审核建议全部处理）；本轮方向＝「甲·清单优先：密清单 + 结论在最上面一行」。
+  - 【产出】`.agents/workspace/trading-plugin/review-app-design-20261009.md`
+  - 【第一动作】先把 `.agents/workspace/_templates/review-design.md` **复制**成上面的产出文件（先落空文件再填）
+  - 【时间】3 分钟内必须看到文件；看不到主链会重派
+  - 【硬要求】中文；**只报告不改**（B7）；**不要改 `_index.md`**（主链统一登记）；frontmatter 10 字段齐全 + `lines:` 与实际一致；写一节落一节
+
+- **D-20261009-01**（**`apps/adai-app` 交易页结构测绘** · `explorer`）
+  - 【任务】**只做一件事**：把 `apps/adai-app/lib/pages/trading_page.dart`（4215 行）的**结构地图**落成一份文件，供主链做「首屏四层」重构（判断句 / 入账 / 持仓一行+就地展开 / 今天时态区）。要回答六项：
+    ① `build()` 内 `ListView.children` 的**逐项顺序 + 行号**；
+    ② 关键构建器（`_buildPrivacyBar` · `_buildEntrySection` · `_buildUploadPlaceholder` · `_buildCandidatesCard` · `_buildConfirmReceipt` · `_buildDroppedNotice` · `_buildDayStatusRow` · `_buildDailyPositionsHeader` · `_buildPositionCards` · `_buildReviewBanner` · `_buildSnapshotCard` · `_buildCashSection` · `_buildMarketStageCard` · `_buildPlanSection` · `_buildFoldSection`）的**起始行号 + 一句话职责 + 依赖的状态字段**；
+    ③ **打码/隐私**的全部状态与开关（字段名 · 默认值 · 哪些组件读它 · 持久化在哪）；
+    ④ **持仓数据模型**（`PositionItem` 在哪定义 · 字段清单 · 来自哪个 DTO / 端点）；
+    ⑤ **测试触点**：`apps/adai-app/test/` 里哪些文件、哪些锚点（`Key` / 文案 / 语义）会因「首屏重排」而红；
+    ⑥ **入口**：`main_page.dart` / `launcher_page.dart` 怎么进 `TradingPage`（谁调、有没有传参）。
+  - 【产出】`.agents/workspace/trading-plugin/explore-app-trading-page-20261009.md`
+  - 【第一动作】先 `cp .agents/workspace/_templates/design.md` 成上面的产出文件（**先落空文件再填**）——这是唯一的送达证明
+  - 【硬要求】中文；**只报告不改代码/不改任何现有文件**；每条给 `文件:行号`；3 分钟无落盘＝主链重派
+
+- **D-20261008-01**（**`design-uiux` 独立设计审核 · 交互层** · `ux-interaction-reviewer`）
+  - 【任务】**只判交互层**：`design-uiux-20261007.md` §三（I-1 ~ I-7）七条交互决定，是否**流程完整 · 反馈到位 · 异常有兜底 · 状态不歧义**；并**独立复核** `review-web-uiux-20261007.md` §七/§八 的实拍结论是否成立（尤其 §8.1 对 `R6` 的更正）。
+    **不判**：代码实现细节（归 `code-frontend-reviewer`）· 功能该不该做（已拍板）· 视觉观感（归 `ux-visual-reviewer`，由 D-02 并行处理）· 已在走查报告记录在案的条目（可确认，不必逐条重报）。
+  - 【角色真相源】`.agents/toolkit/roles/ux-interaction-reviewer.md` + `.agents/toolkit/checklists/ux-interaction-reviewer.md`
+  - 【材料】（主链前置，不要自己找）
+    - **审核对象**：`.agents/workspace/trading-plugin/design-uiux-20261007.md`（§二 IA 作背景、**§三 交互** 为主判对象）
+    - **实拍结论**：`.agents/workspace/trading-plugin/review-web-uiux-20261007.md`（§七 = 7 批验收 · §八 = 批 8 验收 + `R6` 更正）
+    - **交付状态**：`.agents/workspace/trading-plugin/scope-uiux-20261008.md`（条目表 + 验收走查节）
+    - **证据图**：`.agents/workspace/trading-plugin/audit-shots-20261008/`（11 张：`01-holding` … `p8-analysis`）
+    - **原型对照**：`.agents/workspace/trading-plugin/mockups/png/web-1..8.png`
+    - **背景一句话**：web 端交易插件刚做完体验重构（一级 8 区横 Tab + 去二级 + 表格自适应 + K 线统一组件 + 打码两层），实施 8 批 + 走查 5 轮；本轮请**独立**判交互层，别读我的结论照抄。
+  - 【产出】`.agents/workspace/trading-plugin/review-uiux-ixd-20261008.md`
+  - 【第一动作】先把 `.agents/workspace/_templates/review-design.md` **复制**成上面的产出文件（**先落空文件再填**——主链唯一能看到你还活着的方式）
+  - 【时间】3 分钟内必须看到文件；看不到主链会**打断重派**
+  - 【先行回执】收到先回一句「已收到，开始交互层审核」
+  - 【硬要求】中文；**只报告不改**（B7）；**不要改 `_index.md`**（主链统一登记）；frontmatter 10 字段齐全 + `lines:` 与实际一致；写一节落一节
+
+- **D-20261008-02**（**`design-uiux` 独立设计审核 · 视觉层** · `ux-visual-reviewer`）
+  - 【任务】**只判视觉层**：`design-uiux-20261007.md` §二（IA 呈现：8 区横 Tab、badge、状态条、表格列密度）与 §四（视觉口径：涨红跌绿 · 密清单 · 状态条 + 副注 · 诚实提示）在**实拍**里是否立得住——布局层级 / 触达面积 / 可读性（字号对比度）/ 深色模式 / 空态与加载态 / 三端一致（本轮只 web）。
+    **不判**：交互流程与反馈（归 `ux-interaction-reviewer`，由 D-01 并行处理）· 代码实现细节 · 功能该不该做。
+  - 【角色真相源】`.agents/toolkit/roles/ux-visual-reviewer.md` + `.agents/toolkit/checklists/ux-visual-reviewer.md`
+  - 【材料】（主链前置）
+    - **审核对象**：`.agents/workspace/trading-plugin/design-uiux-20261007.md`（§二 IA 呈现 + §四 视觉）
+    - **实拍**：`.agents/workspace/trading-plugin/audit-shots-20261008/`（11 张）+ `audit-shots-20261007-v3/`（11 张，含打码/窄窗/自选换列）
+    - **原型对照**：`.agents/workspace/trading-plugin/mockups/png/web-1..8.png`（尤其 `web-1` 持仓主屏、`web-4` 清仓）
+    - **背景一句话**：刚做完体验重构（8 区横 Tab · 表格自适应 · K 线统一组件），证据图是 1600×1000 与 1280×900 两档的真实渲染（金额已打码）。
+  - 【产出】`.agents/workspace/trading-plugin/review-uiux-visual-20261008.md`
+  - 【第一动作】先把 `.agents/workspace/_templates/review-design.md` **复制**成上面的产出文件
+  - 【时间】3 分钟内必须看到文件；看不到主链会**打断重派**
+  - 【先行回执】收到先回一句「已收到，开始视觉层审核」
+  - 【硬要求】中文；**只报告不改**（B7）；**不要改 `_index.md`**；frontmatter 10 字段 + `lines:` 一致；写一节落一节
 
 - **D-20261006-10**（**AI 上下文体系体检 · r4 · 封箱判定轮** · `ai-context-health-reviewer`）
   - **背景**：r3 报「2 未清 + 6 新」，已全部修（`cb89e6e5`，27 文件，已 push）。**本轮是止损线判定轮**：

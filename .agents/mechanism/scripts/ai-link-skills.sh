@@ -39,6 +39,7 @@ REGISTER=(
   code-api-writer        # ② AI 自主判断：动端点时该自己加载（2026-10-06 补，见 spec §六「注册判据」）
   code-domain-writer     # ② AI 自主判断：加新功能域时
   task-ship              # ② AI 自主判断：收尾提交时
+  code-mockup-writer     # ① 用户直呼：「画原型 / 出图 / 概念图我看看」（2026-10-07 补）
 )
 
 # ── 目标工具 skills 目录：**清单的唯一真相源在 lib/ai-export-targets.sh**（2026-10-05 起）──

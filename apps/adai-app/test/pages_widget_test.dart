@@ -329,6 +329,26 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    /// 2026-10-09（design-app §二 首屏四层）：页面变长、且 ListView 是**懒构建**——
+    /// 底部折叠区已不在首屏的构建窗口里，直接 `ensureVisible` 会抛
+    /// 「Bad state: No element」。统一先滚到目标再操作。
+    Future<void> scrollTo(WidgetTester tester, Finder target, {double delta = 240}) async {
+      // 必须显式指定 scrollable：本页有多个 Scrollable（主 ListView + 其它），
+      // 不指定会抛「Bad state: Too many elements」。
+      // delta 为「每次滚动的量」，沿用 Flutter 约定：正数向下滚、负数向上滚。
+      await tester.scrollUntilVisible(target, delta,
+          scrollable: find.byType(Scrollable).first, maxScrolls: 60);
+      await tester.pumpAndSettle();
+    }
+
+    /// 2026-10-09（design-app §三 I-2）：持仓行收起后，数量/成本/批次/当日三指标都在
+    /// **展开态**里——要看细节先点开那只票（行内点击＝就地展开）。
+    Future<void> expandPosition(WidgetTester tester, String name) async {
+      await scrollTo(tester, find.text(name));
+      await tester.tap(find.text(name));
+      await tester.pumpAndSettle();
+    }
+
     // 通用基础 handler（positions/portfolio/has-activity）
     void mockBase(_Backend b, {List<Map<String, dynamic>> positions = const []}) {
       b.handlers['/api/v1/trading/positions'] = (_) async =>
@@ -399,7 +419,8 @@ void main() {
       // 2026-09-19（A2 隐私）：金额默认打码——本用例断言的正是金额，先揭开
       await tester.tap(find.text('看金额'));
       await tester.pumpAndSettle();
-
+      // 2026-10-09（I-2）：当日三指标在**展开态**里——先点开这只票
+      await expandPosition(tester, '云南锗业');
       expect(find.text('+756.00'), findsOneWidget);   // 当日盈亏（券商口径；千分位 + 两位小数）
       expect(find.text('+2.14%'), findsOneWidget); // 今日涨跌幅
       expect(find.text('33.27%'), findsOneWidget); // 该票市值占总资产
@@ -418,7 +439,9 @@ void main() {
       await pumpTrading(tester, b);
 
       expect(find.text('云南锗业'), findsOneWidget); // 页面照常渲染，不崩
-      expect(find.text('—'), findsNWidgets(3));     // 三样都不知道 → 三个「—」
+      // 2026-10-09（I-2）：当日三样在展开态里；另外收起态也会出现「—」（今日涨跌/未设线）
+      await expandPosition(tester, '云南锗业');
+      expect(find.text('—'), findsAtLeastNWidgets(3)); // 三样都不知道 → 「—」（不渲染 0）
       expect(find.text('0.00%'), findsNothing);
       expect(find.textContaining('仓位 '), findsNothing); // 总仓位 null → 整行不显示（不是 0%）
     });
@@ -537,8 +560,7 @@ void main() {
       expect(find.text('交易'), findsOneWidget);
       // 2026-09-18（RFC 20260918 A2）：账户/资金/市值收进「资金与配置」折叠区——先展开再断言
       // 2026-09-19：折叠区在页面底部，**tap 前必须先滚入视口**（否则 tap 落空、展开不生效）
-      await tester.ensureVisible(find.text('资金与配置'));
-      await tester.pumpAndSettle();
+      await scrollTo(tester, find.text('资金与配置'));
       await tester.tap(find.text('资金与配置'));
       await tester.pumpAndSettle();
       expect(find.text('总资产'), findsOneWidget);
@@ -625,6 +647,392 @@ void main() {
       expect(find.text('重试'), findsNothing);
     });
 
+    // ── 2026-10-09（design-app §二 / §三 I-1·I-2·I-3）：首屏四层 ──
+    // 形态口径：判断句先说结论 → 入账 → 持仓一行+就地展开 → 自选（只读）→ 今天。
+
+    testWidgets('判断句念结论：有持仓、没到线 → 「持仓 1 只 · 不用动」', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/positions'] = (_) async => _json({
+            'positions': [
+              {'symbol': '600519', 'name': '贵州茅台', 'quantity': 100,
+                'avgCost': 1500.0, 'currentPrice': 1600.0,
+                'marketValue': 160000.0, 'pnl': 10000.0, 'pnlPercent': 6.7,
+                'stopLossPrice': 1400.0},
+            ],
+          });
+      await pumpTrading(tester, b);
+
+      expect(find.text('持仓 1 只 · 不用动'), findsOneWidget);
+      // 行内第二行 = 「与你的线的关系」（首屏第一眼要看的对照）
+      expect(find.text('离你的 1400.00 还有 14.3%'), findsOneWidget);
+    });
+
+    testWidgets('判断句有事换句：破了止损 → 换句 + 小字点名 + 行内标「破了你的 X」', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/positions'] = (_) async => _json({
+            'positions': [
+              {'symbol': '600519', 'name': '贵州茅台', 'quantity': 100,
+                'avgCost': 1700.0, 'currentPrice': 1600.0,
+                'marketValue': 160000.0, 'pnl': -10000.0, 'pnlPercent': -5.9,
+                'stopLossPrice': 1650.0},
+            ],
+          });
+      await pumpTrading(tester, b);
+
+      expect(find.text('持仓 1 只 · 1 只破了你的线'), findsOneWidget);
+      expect(find.text('破了你的线：贵州茅台'), findsOneWidget);
+      expect(find.text('破了你的 1650.00'), findsOneWidget);
+    });
+
+    testWidgets('持仓一行 + 点开就地展开：展开出「这只票阿呆怎么说」「批次明细」，再点收起', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/positions'] = (_) async => _json({
+            'positions': [
+              {'symbol': '600519', 'name': '贵州茅台', 'quantity': 100,
+                'avgCost': 1500.0, 'currentPrice': 1600.0,
+                'marketValue': 160000.0, 'pnl': 10000.0, 'pnlPercent': 6.7,
+                'stopLossPrice': 1400.0},
+            ],
+          });
+      await pumpTrading(tester, b);
+
+      // 收起态：展开区里的动作不在场（信息密度优先）
+      expect(find.text('这只票阿呆怎么说'), findsNothing);
+      await tester.tap(find.text('贵州茅台'));
+      await tester.pumpAndSettle();
+      expect(find.text('这只票阿呆怎么说'), findsOneWidget);
+      expect(find.text('批次明细'), findsOneWidget);
+      // 成本/现价/止损在展开态才出现
+      expect(find.textContaining('现价 1600.00'), findsOneWidget);
+      await tester.tap(find.text('贵州茅台'));
+      await tester.pumpAndSettle();
+      expect(find.text('这只票阿呆怎么说'), findsNothing);
+    });
+
+    testWidgets('自选只读一段：名称 代码 · 行业 · 买点信号；端点不含行情就不给涨跌', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/watchlist'] = (_) async => _json([
+            {'symbol': '000001', 'name': '平安银行', 'industry': '银行',
+              'signal': 'B1 回调缩量', 'longForm': '', 'midForm': '', 'shortForm': ''},
+          ]);
+      await pumpTrading(tester, b);
+      // 2026-10-09（前端官 P2-2）：自选段默认**收起**（23 行会把今天区推远）——先点开
+      expect(find.text('自选'), findsOneWidget);
+      expect(find.text('1 只 · 管理在电脑端'), findsOneWidget); // 收起态的摘要行也给计数
+      await scrollTo(tester, find.text('自选'));
+      await tester.tap(find.text('自选'));
+      await tester.pumpAndSettle();
+      expect(find.text('平安银行'), findsOneWidget);
+      expect(find.text('银行 · B1 回调缩量'), findsOneWidget);
+    });
+
+    // ── 2026-10-09（design-app §三 I-5）：截图入账主线三卡点 ──
+
+    testWidgets('卡点① 分张提交：3 张 = 3 次请求（不再打包等 90 秒）+ 疑似同一笔只标注不丢弃', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      var calls = 0;
+      b.handlers['/api/v1/trading/screenshots'] = (_) async {
+        calls++;
+        // 同一张成交截图被连传多次的形态：每张都认到同一笔
+        return _json({
+          'total': 1, 'processed': 1,
+          'candidates': [
+            {'symbol': '002428', 'name': '云南锗业', 'direction': 'BUY', 'price': '93.48',
+              'volume': 100, 'tradeTime': '10:03:44', 'tradeDate': '2026-10-09',
+              'source': 'image', 'complete': true, 'id': 'c$calls'},
+          ],
+          'dropped': <String>[], 'errors': <String>[],
+        });
+      };
+      await tester.pumpWidget(MaterialApp(
+        home: TradingPage(
+          api: _apiFor(b),
+          debugPickImages: () async => [
+            PickedImage(const [1], 'a.jpg', 'jpg'),
+            PickedImage(const [2], 'b.jpg', 'jpg'),
+            PickedImage(const [3], 'c.jpg', 'jpg'),
+          ],
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('截图入账'));
+      await tester.pumpAndSettle();
+
+      // 3 张 → 3 次单图请求：第一张认完就能出候选（不再等三张全跑完）
+      expect(calls, 3, reason: '分张提交：客户端不该再把多张打包成一个请求');
+      // 2026-10-09（前端官 P1-2 修复后）：**不丢弃**——三张认到同一笔就摆三条、后两条标「可疑」，
+      // 交用户核对（真正的重复由后端 confirm 的 sameTrade 兜住）。宁可多标可疑，不可放过一笔。
+      expect(find.textContaining('今日截图候选 3 笔'), findsOneWidget);
+      expect(find.textContaining('看着和本批里另一笔是同一笔'), findsNWidgets(2));
+      expect(find.textContaining('已标成「可疑」'), findsOneWidget);
+    });
+
+    testWidgets('P1-2（前端官）：同价同量的**真分单**（成交时刻不同）不许被判重', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      // 生产实据：000831 两笔各 200 股 @53.300，10:03:44 与 10:04:09（P0-交易59 就是为它修的）
+      b.handlers['/api/v1/trading/screenshots'] = (_) async => _json({
+            'total': 1, 'processed': 1,
+            'candidates': [
+              {'symbol': '000831', 'name': '中国稀土', 'direction': 'BUY', 'price': '53.30',
+                'volume': 200, 'tradeTime': '10:03:44', 'tradeDate': '2026-10-09',
+                'source': 'image', 'complete': true, 'id': 'a'},
+              {'symbol': '000831', 'name': '中国稀土', 'direction': 'BUY', 'price': '53.30',
+                'volume': 200, 'tradeTime': '10:04:09', 'tradeDate': '2026-10-09',
+                'source': 'image', 'complete': true, 'id': 'b'},
+            ],
+            'dropped': <String>[], 'errors': <String>[],
+          });
+      await tester.pumpWidget(MaterialApp(
+        home: TradingPage(
+          api: _apiFor(b),
+          debugPickImages: () async => [PickedImage(const [1], 'a.jpg', 'jpg')],
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('截图入账'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('今日截图候选 2 笔'), findsOneWidget);
+      expect(find.text('中国稀土 (000831)'), findsNWidgets(2));
+      // 两笔都**不该**被标可疑（成交时刻不同＝真分单）
+      expect(find.textContaining('看着和本批里另一笔是同一笔'), findsNothing);
+    });
+
+    testWidgets('卡点② 异常优先：卖超持仓单独醒目 + 其余折成一行（默认全信）', (tester) async {
+      final b = _Backend();
+      mockBase(b, positions: [
+        {
+          'symbol': '002428', 'name': '云南锗业', 'quantity': 100,
+          'avgCost': 90.0, 'currentPrice': 93.48,
+          'marketValue': 9348.0, 'pnl': 348.0, 'pnlPercent': 3.9,
+        },
+      ]);
+      b.handlers['/api/v1/trading/trade-log'] = (_) async => _json([
+            // 可疑：卖出 500 股，手上一共 100 股
+            {'symbol': '002428', 'name': '云南锗业', 'direction': 'SELL', 'price': '93.48',
+              'volume': 500, 'tradeDate': '2026-10-09', 'source': 'image',
+              'complete': true, 'id': 's1'},
+            // 正常：看着没问题 → 折成一行
+            {'symbol': '000725', 'name': '京东方A', 'direction': 'BUY', 'price': '5.20',
+              'volume': 1000, 'tradeDate': '2026-10-09', 'source': 'image',
+              'complete': true, 'id': 'n1'},
+          ]);
+      await pumpTrading(tester, b);
+
+      expect(find.text('这几笔我看着不对劲，先过一眼：'), findsOneWidget);
+      expect(find.textContaining('卖出 500 股，我这儿只有 100 股'), findsOneWidget);
+      expect(find.text('另外 1 笔看着没问题（点开看）'), findsOneWidget);
+      // 正常项默认折起（默认信它，不再逐笔要你过一遍）
+      expect(find.text('京东方A (000725)'), findsNothing);
+
+      await tester.tap(find.text('另外 1 笔看着没问题（点开看）'));
+      await tester.pumpAndSettle();
+      expect(find.text('京东方A (000725)'), findsOneWidget);
+    });
+
+    testWidgets('卡点③ 回执说「这次改变了什么」：持仓 N→M 只 + 现金增减', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      var positionsCalls = 0;
+      b.handlers['/api/v1/trading/positions'] = (_) async {
+        positionsCalls++;
+        return _json({
+          'positions': positionsCalls == 1
+              ? <Object>[]
+              : [
+                  {'symbol': '600519', 'name': '贵州茅台', 'quantity': 100,
+                    'avgCost': 1500.0, 'currentPrice': 1600.0,
+                    'marketValue': 160000.0, 'pnl': 10000.0, 'pnlPercent': 6.7},
+                ],
+        });
+      };
+      b.handlers['/api/v1/trading/trade-log'] = (_) async => _json([
+            {'symbol': '600519', 'name': '贵州茅台', 'direction': 'BUY', 'price': '1500.00',
+              'volume': 100, 'tradeDate': '2026-10-09', 'source': 'image',
+              'complete': true, 'id': 'n1'},
+          ]);
+      b.handlers['/api/v1/trading/trade-log/confirm'] = (_) async => _json(
+          {'confirmed': 1, 'failed': 0, 'skipped': 0, 'failures': <String>[],
+            'duplicated': 0, 'ledgerOnly': 0});
+      await pumpTrading(tester, b);
+
+      await tester.tap(find.text('都记上（1 笔）'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认入账'));
+      await tester.pumpAndSettle();
+
+      // 落账后当场说清「改变了什么」——不只报「记上了几笔」
+      expect(find.textContaining('这次过后：持仓 0 → 1 只'), findsOneWidget);
+    });
+
+    testWidgets('今天区：深处入口常驻（收益日历 / 资金），无活动不出复盘横幅', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      await pumpTrading(tester, b);
+      // 「今天」在页面里有两处（入账区的「今天没动」行 + 本区标题），故只断存在
+      await scrollTo(tester, find.text('收益日历'));
+      expect(find.text('今天'), findsWidgets);
+      expect(find.text('收益日历'), findsOneWidget);
+      expect(find.text('资金'), findsOneWidget);
+      // 2026-10-09（批 4）：两个「原有能力」补上直达入口
+      expect(find.text('推送设置'), findsOneWidget);
+      expect(find.text('复盘历史'), findsOneWidget);
+      expect(find.text('生成复盘'), findsNothing);
+    });
+
+    // ── 2026-10-09（批 4 · IA-8）：把两个「入口隐蔽 / 零入口」的屏补上 ──
+
+    // ── 2026-10-09（批 5 · R-07/R-11 提醒落点）：点推送 → 落到那只票并就地展开 ──
+
+    testWidgets('口径统一（P2-1）：没手填止损时用**后端的生效线**判破线（不再是「没设线」）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/positions'] = (_) async => _json({
+            'positions': [
+              // 系统算的默认线（人工位为 null）——2026-10-09 口径：生效线＝人工覆盖、系统兜底
+              {'symbol': '600206', 'name': '有研新材', 'quantity': 200,
+                'avgCost': 50.0, 'currentPrice': 8.60,
+                'marketValue': 1720.0, 'pnl': -100.0, 'pnlPercent': -2.0,
+                'stopLossPrice': null, 'effectiveStopLoss': 9.00},
+            ],
+          });
+      await pumpTrading(tester, b);
+
+      expect(find.text('持仓 1 只 · 1 只破了你的线'), findsOneWidget);
+      expect(find.text('破了你的 9.00'), findsOneWidget);
+      // 展开态说明来源：这是系统默认线，不是他手填的
+      await expandPosition(tester, '有研新材');
+      expect(find.textContaining('止损 9.00（默认）'), findsOneWidget);
+    });
+
+    testWidgets('提醒落点：带 focusSymbol 进页 → 那只票就地展开（其余保持收起）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/positions'] = (_) async => _json({
+            'positions': [
+              {'symbol': '002428', 'name': '云南锗业', 'quantity': 100,
+                'avgCost': 90.0, 'currentPrice': 85.71,
+                'marketValue': 8571.0, 'pnl': -429.0, 'pnlPercent': -4.8,
+                'stopLossPrice': 88.1},
+              // 现价严格低于他的线（日线口径：等于不算破）
+              {'symbol': '600206', 'name': '有研新材', 'quantity': 200,
+                'avgCost': 50.0, 'currentPrice': 48.5,
+                'marketValue': 9700.0, 'pnl': -300.0, 'pnlPercent': -3.0,
+                'stopLossPrice': 49.0},
+            ],
+          });
+      await tester.pumpWidget(MaterialApp(
+        home: TradingPage(api: _apiFor(b), focusSymbol: '600206'),
+      ));
+      await tester.pumpAndSettle();
+
+      // 展开态的动作行只出现一次（就是被推送那一只）
+      expect(find.text('这只票阿呆怎么说'), findsOneWidget);
+      expect(find.text('有研新材'), findsOneWidget);
+      expect(find.text('云南锗业'), findsOneWidget);
+      expect(find.text('破了你的 49.00'), findsOneWidget); // 有研新材那一行（破线中）
+    });
+
+    testWidgets('提醒落点：focusSymbol 不在持仓里 → 如实不动（不编一行、不崩）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/positions'] = (_) async => _json({
+            'positions': [
+              {'symbol': '002428', 'name': '云南锗业', 'quantity': 100,
+                'avgCost': 90.0, 'currentPrice': 85.71,
+                'marketValue': 8571.0, 'pnl': -429.0, 'pnlPercent': -4.8,
+                'stopLossPrice': 88.1},
+            ],
+          });
+      await tester.pumpWidget(MaterialApp(
+        home: TradingPage(api: _apiFor(b), focusSymbol: '000001'),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('云南锗业'), findsOneWidget);
+      expect(find.text('这只票阿呆怎么说'), findsNothing, reason: '不在持仓里 → 不展开任何行');
+      expect(find.text('重试'), findsNothing);
+    });
+
+    testWidgets('推送设置：从交易页直达 + 12 个开关 + 改一个发 PUT（清单唯一一份）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/push-settings'] = (_) async => _json({
+            'session': true, 'buy-point': false, 'close-summary': true, 'plan': true,
+            'learn-review': true, 'todo-due': true, 'stop-loss': true, 'near-stop-loss': true,
+            'loss': true, 'gain': true, 'break-cost': true, 'market': true,
+          });
+      String? putPath;
+      b.handlers['/api/v1/trading/push-settings/plan'] = (req) async {
+        putPath = req.url.path;
+        return _json({'enabled': false});
+      };
+      await pumpTrading(tester, b);
+      await scrollTo(tester, find.text('推送设置'));
+      await tester.tap(find.text('推送设置'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('时段节奏（早盘/午间/尾盘/收盘确认）'), findsOneWidget);
+      expect(find.text('大盘行情条'), findsOneWidget);
+      expect(find.byType(SwitchListTile), findsNWidgets(12));
+      // ⚠️ 测试跑在 VM 里：**非 iOS 端没有任何推送渠道**（PushService.supported=false）——
+      // 按 D2 口径这里是**禁用开关 + 如实告知**，不是假装能收（也不会发 PUT）。
+      expect(find.textContaining('这台收不到通知'), findsOneWidget);
+      expect(tester.widget<SwitchListTile>(find.byType(SwitchListTile).first).onChanged, isNull);
+      await tester.tap(find.text('次日计划提醒（20:30 提醒写下个交易日的计划）'));
+      await tester.pumpAndSettle();
+      expect(putPath, isNull, reason: '收不到推送的端不该写这份设置（写了也是假的）');
+    });
+
+    testWidgets('复盘历史：日期倒序 + 点开看当天（reviews → review?date=）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/reviews'] = (_) async => _json(['2026-10-01', '2026-10-08', '2026-10-03']);
+      String? askedDate;
+      b.handlers['/api/v1/trading/review'] = (req) async {
+        askedDate = req.url.queryParameters['date'];
+        return _json({'date': askedDate, 'content': '## 那天\n执行了纪律'});
+      };
+      await pumpTrading(tester, b);
+      await scrollTo(tester, find.text('复盘历史'));
+      await tester.tap(find.text('复盘历史'));
+      await tester.pumpAndSettle();
+
+      final tiles = tester
+          .widgetList<Text>(find.textContaining('2026-10-'))
+          .map((t) => t.data)
+          .toList();
+      expect(tiles.first, '2026-10-08', reason: '最近的排最上面');
+      expect(tiles.last, '2026-10-01');
+
+      await tester.tap(find.text('2026-10-03'));
+      await tester.pumpAndSettle();
+      expect(askedDate, '2026-10-03');
+      expect(find.text('2026-10-03 复盘'), findsOneWidget);
+      expect(find.textContaining('执行了纪律'), findsOneWidget);
+    });
+
+    testWidgets('复盘历史：端点失败 → 如实说取不到 + 重试（不摆「暂无复盘」空壳）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/reviews'] = (_) async => _json({'error': 'boom'}, status: 500);
+      await pumpTrading(tester, b);
+      await scrollTo(tester, find.text('复盘历史'));
+      await tester.tap(find.text('复盘历史'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('复盘没取到，稍后再试'), findsOneWidget);
+      expect(find.text('重试'), findsOneWidget);
+      expect(find.textContaining('还没有复盘'), findsNothing);
+    });
+
     testWidgets('账户卡渲染：券商口径总盈亏 = 资产 - 本金（2026-08-22：自选/清仓区块已移除）', (tester) async {
       final b = _Backend();
       mockBase(b);
@@ -636,14 +1044,12 @@ void main() {
       await pumpTrading(tester, b);
 
       // 账户卡：总盈亏 = 资产 - 本金 = -39495.12（亏，绿；app 万单位显示 -3.9万）
-      // 2026-09-18（A2）：账户信息收进折叠区 —— 先展开
-      // 2026-09-19：折叠区在页面底部，**tap 前必须先滚入视口**（否则 tap 落空、展开不生效）
-      await tester.ensureVisible(find.text('资金与配置'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('资金与配置'));
-      await tester.pumpAndSettle();
-      // 2026-09-19（A2 隐私 + B3 口径）：金额默认打码，揭开后按千分位显示
+      // 2026-10-09：👁 在**页顶隐私条**上，滚下去就构不到了——先揭开、再滚去折叠区。
       await tester.tap(find.text('看金额'));
+      await tester.pumpAndSettle();
+      // 2026-09-18（A2）：账户信息收进折叠区 —— 先展开
+      await scrollTo(tester, find.text('资金与配置'));
+      await tester.tap(find.text('资金与配置'));
       await tester.pumpAndSettle();
       expect(find.text('总资产'), findsOneWidget);
       expect(find.text('本金'), findsOneWidget);
@@ -666,8 +1072,7 @@ void main() {
       // 总盈亏「—」+ 未设本金提示（不回落浮盈 1.5万——漏已实现盈亏误导，U32）
       // 2026-09-18（A2）：账户信息收进折叠区 —— 先展开
       // 2026-09-19：折叠区在页面底部，**tap 前必须先滚入视口**（否则 tap 落空、展开不生效）
-      await tester.ensureVisible(find.text('资金与配置'));
-      await tester.pumpAndSettle();
+      await scrollTo(tester, find.text('资金与配置'));
       await tester.tap(find.text('资金与配置'));
       await tester.pumpAndSettle();
       expect(find.text('总盈亏'), findsOneWidget);
@@ -697,8 +1102,7 @@ void main() {
       };
       await pumpTrading(tester, b);
       // 2026-09-19（A2）：当日总结收进「今天的操作」折叠区 —— 先滚入视口再展开
-      await tester.ensureVisible(find.text('今天的操作'));
-      await tester.pumpAndSettle();
+      await scrollTo(tester, find.text('今天的操作'));
       await tester.tap(find.text('今天的操作'));
       await tester.pumpAndSettle();
 
@@ -945,7 +1349,8 @@ void main() {
       expect(find.text('2026-08-26'), findsNWidgets(2)); // 2026-08-27：截图日期列透出，确认入账按此日期
 
       // 全部确认入账 → 二次确认（A1-6，2026-09-18：写操作也确认）→ 清空候选 + 人话反馈
-      await tester.tap(find.text('全部确认入账'));
+      // 2026-10-09（I-5 卡点②）：按钮文案改成「都记上（N 笔）」——默认全信，一次点完
+      await tester.tap(find.text('都记上（2 笔）'));
       await tester.pumpAndSettle();
       expect(find.text('要记这 2 笔？'), findsOneWidget);
       await tester.tap(find.text('确认入账'));
@@ -986,7 +1391,8 @@ void main() {
       // 缺日期候选：警示文案 + 「补日期」按钮；P0-UI13 后丢弃入口正交并存（两行各一个 ×）
       expect(find.textContaining('缺成交日期'), findsOneWidget);
       expect(find.text('补日期'), findsOneWidget);
-      expect(find.byIcon(Icons.close), findsNWidgets(2));
+      // 2026-10-09（I-5 卡点②）：看着没问题的那笔默认折成一行 → 行内的 × 也随之收起（只剩可疑项的）
+      expect(find.byIcon(Icons.close), findsOneWidget);
 
       // A1-7（2026-09-18）：缺日期时按钮**直接置灰**并写明原因（原来点了才被 SnackBar 教育）
       expect(find.text('还有 1 笔缺日期'), findsOneWidget);
@@ -1090,9 +1496,8 @@ void main() {
       await pumpTrading(tester, b);
 
       // 展开折叠区（首页的金额即使展开也不露）
-      // 2026-09-19：折叠区在页面底部，**tap 前必须先滚入视口**（否则 tap 落空、展开不生效）
-      await tester.ensureVisible(find.text('资金与配置'));
-      await tester.pumpAndSettle();
+      // 2026-10-09：折叠区在页底、👁 在页顶，两边都得「滚到位」才构得到——分两段走。
+      await scrollTo(tester, find.text('资金与配置'));
       await tester.tap(find.text('资金与配置'));
       await tester.pumpAndSettle();
       expect(find.textContaining('464,235'), findsNothing, reason: 'A2 隐私：金额默认打码');
@@ -1101,8 +1506,10 @@ void main() {
       expect(find.textContaining('••••'), findsWidgets, reason: '打码占位可见');
 
       // 👁 揭开 → 与 web 同口径的千分位（快照卡「总资产」+ 资金卡「现金…总资产」两处都显示）
+      await scrollTo(tester, find.text('看金额'), delta: -240); // 👁 在页顶：往回滚
       await tester.tap(find.text('看金额'));
       await tester.pumpAndSettle();
+      await scrollTo(tester, find.text('资金与配置')); // 再看折叠区里的结果
       expect(find.textContaining('464,235.18'), findsNWidgets(2), reason: '揭开后千分位 + 两位小数');
       expect(find.textContaining('万'), findsNothing, reason: '揭开后也不得出现「万」（B3 口径统一）');
     });
@@ -1160,7 +1567,7 @@ void main() {
       await tester.tap(find.text('收起'));
       await tester.pumpAndSettle();
       expect(find.text('中国稀土 (000831)'), findsNothing);
-      expect(find.text('全部确认入账'), findsNothing);
+      expect(find.text('都记上（1 笔）'), findsNothing);
       expect(find.textContaining('今日截图候选 1 笔'), findsOneWidget,
           reason: '收起只是隐藏明细，候选没有被删');
 
@@ -1412,6 +1819,9 @@ void main() {
       // 2026-09-19（A2 隐私）：持仓行金额默认打码——本用例断言金额，先揭开
       await tester.tap(find.text('看金额'));
       await tester.pumpAndSettle();
+      // 2026-10-09（I-2）：金额在**展开态**里——两只都点开（点开一只后另一只会被推下去，helper 会先滚到它）
+      await expandPosition(tester, '京东方A');
+      await expandPosition(tester, '贵州茅台');
 
       expect(find.text('京东方A'), findsOneWidget);
       expect(find.text('000725'), findsOneWidget);
@@ -1469,9 +1879,10 @@ void main() {
               },
             ],
             'reconcile': <Object>[],
-          });
+      });
       await pumpTrading(tester, b);
 
+      await expandPosition(tester, '浦发银行'); // 2026-10-09（I-2）：批次行在展开态里
       // 3 个开放批次 · 最近买入 8/03（yyyy-MM-dd → M/d）· 含底仓徽标（07-20 初始批次仍开放）
       expect(find.textContaining('3 个批次'), findsOneWidget);
       expect(find.textContaining('最近买入 8/03'), findsOneWidget);
@@ -1501,9 +1912,10 @@ void main() {
               },
             ],
             'reconcile': <Object>[],
-          });
+      });
       await pumpTrading(tester, b);
 
+      await expandPosition(tester, '京东方A'); // 2026-10-09（I-2）：批次行在展开态里
       expect(find.text('有批次破止损'), findsOneWidget);
       expect(find.textContaining('1 个批次'), findsOneWidget);
       expect(find.text('含底仓'), findsNothing); // 无初始批次 → 无徽标
@@ -1525,6 +1937,7 @@ void main() {
       // 持仓卡原样渲染（无批次行、无整页错误态、无重试按钮）
       await tester.tap(find.text('看金额')); // 2026-09-19（A2 隐私）：金额默认打码
       await tester.pumpAndSettle();
+      await expandPosition(tester, '贵州茅台'); // 2026-10-09（I-2）：金额在展开态里
       expect(find.text('贵州茅台'), findsOneWidget);
       expect(find.textContaining('+10,000.00'), findsOneWidget); // 盈亏（千分位口径）
       expect(find.textContaining('个批次'), findsNothing);
@@ -1585,6 +1998,7 @@ void main() {
       };
       await pumpTrading(tester, b);
 
+      await expandPosition(tester, '浦发银行'); // 2026-10-09（I-2）：批次行在展开态里
       // 简版计数只算开放批次（3 个）：8/03 + 07-20 + 08-10；已清仓回合不计入
       expect(find.textContaining('3 个批次'), findsOneWidget);
       await tester.tap(find.textContaining('3 个批次'));
@@ -1648,6 +2062,7 @@ void main() {
       };
       await pumpTrading(tester, b);
 
+      await expandPosition(tester, '浦发银行'); // 2026-10-09（I-2）：批次行在展开态里
       expect(find.textContaining('1 个批次'), findsOneWidget);
       await tester.tap(find.textContaining('1 个批次'));
       await tester.pumpAndSettle();
@@ -1697,6 +2112,7 @@ void main() {
       };
       await pumpTrading(tester, b);
 
+      await expandPosition(tester, '浦发银行'); // 2026-10-09（I-2）：批次行在展开态里
       expect(find.textContaining('1 个批次'), findsOneWidget);
       await tester.tap(find.textContaining('1 个批次'));
       await tester.pumpAndSettle();
@@ -1726,7 +2142,11 @@ void main() {
           });
       await pumpTrading(tester, b);
 
+      // 2026-10-09（design-app §三 I-2）：行内点击改为**就地展开**（原来直接开弹层）；
+      // 「阿呆说」收进展开态，一次点击变两次——换来的是 5 只票一屏看完。
       await tester.tap(find.text('京东方A'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('这只票阿呆怎么说'));
       await tester.pumpAndSettle();
 
       // 阿呆建议弹层：自然对话 + 动作徽标 + 依据 + 去 web
@@ -1751,6 +2171,7 @@ void main() {
           _json({'date': '2026-08-15', 'content': '## 今日复盘\n执行了纪律'});
       await pumpTrading(tester, b);
 
+      await scrollTo(tester, find.text('今日有交易 · 生成今日复盘？')); // 2026-10-09：复盘横幅移入「今天」区
       expect(find.text('今日有交易 · 生成今日复盘？'), findsOneWidget);
 
       await tester.tap(find.text('生成复盘'));
@@ -1788,8 +2209,7 @@ void main() {
 
       // 2026-09-18（A2）：活跃市值卡收进「资金与配置」折叠区 —— 先展开
       // 2026-09-19：折叠区在页面底部，**tap 前必须先滚入视口**（否则 tap 落空、展开不生效）
-      await tester.ensureVisible(find.text('资金与配置'));
-      await tester.pumpAndSettle();
+      await scrollTo(tester, find.text('资金与配置'));
       await tester.tap(find.text('资金与配置'));
       await tester.pumpAndSettle();
       expect(find.text('活跃市值（指南针）'), findsOneWidget, reason: '开关卡标题');
@@ -1797,8 +2217,7 @@ void main() {
       expect(find.text('手动判定'), findsOneWidget, reason: '已手动判定副文案');
 
       // 2026-09-19：展开后按钮仍在视口外 → 先滚入再点
-      await tester.ensureVisible(find.text('多头'));
-      await tester.pumpAndSettle();
+      await scrollTo(tester, find.text('多头'));
       await tester.tap(find.text('多头'));
       await tester.pumpAndSettle();
 
@@ -1830,8 +2249,7 @@ void main() {
       mockAccount(b, todayPnl: -1759.0, source: 'broker');
       await pumpTrading(tester, b);
       // 2026-09-19（A2）：账户快照收进「资金与配置」折叠区 —— 先滚入并展开
-      await tester.ensureVisible(find.text('资金与配置'));
-      await tester.pumpAndSettle();
+      await scrollTo(tester, find.text('资金与配置'));
       await tester.tap(find.text('资金与配置'));
       await tester.pumpAndSettle();
 
@@ -1845,8 +2263,7 @@ void main() {
       mockAccount(b, todayPnl: -2837.0, source: 'calc', date: ymd(y));
       await pumpTrading(tester, b);
       // 2026-09-19（A2）：账户快照收进「资金与配置」折叠区 —— 先滚入并展开
-      await tester.ensureVisible(find.text('资金与配置'));
-      await tester.pumpAndSettle();
+      await scrollTo(tester, find.text('资金与配置'));
       await tester.tap(find.text('资金与配置'));
       await tester.pumpAndSettle();
 
@@ -1955,7 +2372,7 @@ void main() {
         await pumpTrading(tester, b);
         expect(find.text('今天没买卖的话，点一下就行——没动也是一天的完整记录。'), findsOneWidget);
 
-        await tester.ensureVisible(find.text('今天没动'));
+        await scrollTo(tester, find.text('今天没动'));
         await tester.tap(find.text('今天没动'));
         await tester.pumpAndSettle();
 
@@ -1985,7 +2402,7 @@ void main() {
         };
 
         await pumpTrading(tester, b);
-        await tester.ensureVisible(find.text('想动，没动'));
+        await scrollTo(tester, find.text('想动，没动'));
         await tester.tap(find.text('想动，没动'));
         await tester.pumpAndSettle();
 
