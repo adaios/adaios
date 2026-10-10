@@ -5,7 +5,7 @@ version: 2
 created: 2026-10-04
 updated: 2026-10-09
 status: active
-lines: 226
+lines: 227
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index, workspace]
@@ -27,7 +27,7 @@ tags: [meta, index, workspace]
 
 > **规则**：**一个分支 = 一个目录 = 一个任务**（主键唯一 ⇒ **零冲突**）；目录里**需要什么才有什么**（轻活就一个 `LEDGER.md`）。
 
-## 文件清单（190 项）
+## 文件清单（191 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -66,6 +66,7 @@ tags: [meta, index, workspace]
 | `_meta/ai-context-architecture/png/L3-2-main-path-github-flow.png` | — | active |
 | `_meta/ai-context-architecture/png/L3-3-main-path-gitlab-flow.png` | — | active |
 | `_meta/ai-context-issues-20261007.md` | 体系自洽性问题记录（5 条：图纸无家 / 引用单向 / 图片无契约 / 无人关卡 / 规则没人读）——**只记录不修改**（B7） | draft |
+| `_meta/handoff-funds-flow-20261010.md` | **资金流水（基石数据）· 口径冻结与进度交接**——给下一个会话的接手单：口径结论（资金流水为「钱」的基石 · 与持仓快照互校 · 锚定收窄为防重参数）· 样本事实（11 列 / 10 类业务 / 逐行余额 / 22 处断点）· 改动面与 P0–P3 分期 · 仓库与生产状态；自包含 | active |
 | `_templates/design.md` | 设计文档模板——本轮回应 · 设计 · 取舍 · 未决 · 自评风险；每轮一份、不覆盖；**一轮只收敛一类**（… | active |
 | `_templates/dispatch.md` | 派审核官 / 编写者时的 prompt 骨架——照抄改；含回执 · 材料前置 · 先落文件 · 3 分钟闸门（协… | active |
 | `_templates/ledger.md` | 分支账本模板——本分支的目标 · 进度 · 风险 · 待交接；放在 .agents/workspace/<分支名… | active |
